@@ -1,3 +1,6 @@
 [submodule "vendor/audiobookshelf"]
 	path = vendor/audiobookshelf
 	url = https://github.com/advplyr/audiobookshelf
+[submodule "vendor/aio-abs-providers"]
+	path = vendor/aio-abs-providers
+	url = https://github.com/lakafior/aio-abs-providers
