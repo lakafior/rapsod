@@ -1,12 +1,12 @@
 # audiobookswift
 
-Natywna aplikacja macOS (menu bar) uruchamiająca serwer [audiobookshelf](https://github.com/advplyr/audiobookshelf) bez Dockera, z prostym klientem iOS parowanym przez iCloud.
+Natywna aplikacja macOS (menu bar) uruchamiająca serwer [audiobookshelf](https://github.com/advplyr/audiobookshelf) bez Dockera. Na telefonie słucha się dowolnym istniejącym klientem audiobookshelf (oficjalna aplikacja, Plappa, ShelfPlayer…).
 
 Serwer audiobookshelf jest dołączony jako git submodule (`vendor/audiobookshelf`) przypięty do tagu wydania i uruchamiany jako proces potomny aplikacji. Kod upstreamu nie jest modyfikowany.
 
 ## Budowanie i uruchamianie
 
-Wymagania: Xcode 27 z zalogowanym kontem zespołu deweloperskiego `5TA8RF548P` (podpis i iCloud), ffmpeg i ffprobe z Homebrew (`brew install ffmpeg`), dostęp do sieci przy pierwszym budowaniu serwera.
+Wymagania: Xcode 27 z zalogowanym kontem zespołu deweloperskiego `5TA8RF548P` (podpis), ffmpeg i ffprobe z Homebrew (`brew install ffmpeg`), dostęp do sieci przy pierwszym budowaniu serwera.
 
 ```bash
 git submodule update --init
@@ -19,9 +19,8 @@ W Xcode uruchom schemat `AudiobookSwift`. Aplikacja nie ma ikony w Docku — poj
 ### Codzienna obsługa
 
 - **Pierwsze uruchomienie.** Na czystym serwerze aplikacja sama zakłada konto `root` z losowym hasłem zapisanym w pęku kluczy. Gdy serwer nie ma biblioteki, otwiera się ekran powitalny z przyciskiem wyboru folderu.
-- **Dwa konta.** `root` służy tylko do obsługi serwera (biblioteki, klucze API). Do słuchania jest wymagane zwykłe konto użytkownika — formularz w oknie „Otwórz” i w oknie statusu (nazwa; hasło opcjonalne, puste = losowe w pęku kluczy; podanie hasła istniejącego konta je podpina). „Otwórz” loguje web UI na to konto, a klient iOS dostaje jego klucz API, więc postęp słuchania jest wspólny. **„Zarządzanie serwerem…”** w menu przełącza okno na konto root w sesji trzymanej tylko w pamięci; „Wróć do słuchania” albo zamknięcie okna kończy ten tryb.
-- **Parowanie z iPhone’em** (okno statusu, domyślnie wyłączone) — zob. niżej.
-- **Biblioteka.** „Dodaj folder z audiobookami…” (menu, ekran powitalny, okno statusu) otwiera systemowe okno wyboru folderu; aplikacja tworzy z niego bibliotekę typu „book” i czeka na koniec skanu. Kolejne foldery dają kolejne biblioteki.
+- **Dwa konta.** `root` służy tylko do obsługi serwera (biblioteki, użytkownicy). Do słuchania jest wymagane zwykłe konto użytkownika, bez uprawnień administratora — formularz w oknie „Otwórz” i w oknie statusu (nazwa; hasło opcjonalne, puste = losowe w pęku kluczy; podanie hasła istniejącego zwykłego konta je podpina). „Otwórz” loguje web UI na to konto i na to samo konto loguje się telefon, więc postęp słuchania jest wspólny. **„Zarządzanie serwerem…”** w menu przełącza okno na konto root w sesji trzymanej tylko w pamięci; „Wróć do słuchania” albo zamknięcie okna kończy ten tryb.
+- **Połącz telefon** (okno statusu) — przełącznik „Udostępniaj serwer w sieci lokalnej” (domyślnie wyłączony) oraz wszystko, co trzeba przepisać do klienta na telefonie: adresy serwera, nazwa użytkownika i hasło, każde z przyciskiem „Kopiuj”. Zob. niżej.
 - **Status i logi** (⌘L w menu): stan serwera, wersja audiobookshelf, adres, folder danych, biblioteki, log na żywo z kopiowaniem. Gdy serwer nie wstanie, okno otwiera się samo z czytelnym błędem (np. zajęty port 13378).
 - **Uruchamiaj przy logowaniu** — przełącznik w menu i w oknie statusu (`SMAppService.mainApp`); odczytuje stan z systemu, więc zmiana w Ustawieniach systemowych → Ogólne → Rzeczy otwierane podczas logowania też jest widoczna.
 - Jeśli serwer ma już konto root, a w pęku kluczy nie ma (aktualnego) hasła — np. folder danych zainicjalizowany wcześniej w web UI albo hasło zmienione w web UI — okno statusu prosi o nie i zapisuje je w pęku kluczy.
@@ -34,14 +33,13 @@ Domyślny folder danych można podmienić argumentem uruchomienia (w Xcode: Edit
 open AudiobookSwift.app --args -ABSDataRoot /tmp/abs-test -ABSPort 13400
 ```
 
-`-ABSPort` pozwala uruchomić test obok działającej kopii na 13378. Sekrety są w pęku kluczy pod kontem równym ścieżce folderu danych, a identyfikator serwera i ustawienia parowania w `pairing.json` w folderze danych, więc test nie nadpisze prawdziwych danych ani prawdziwego rekordu w iCloud.
+`-ABSPort` pozwala uruchomić test obok działającej kopii na 13378. Sekrety są w pęku kluczy pod kontem równym ścieżce folderu danych, a ustawienia udostępniania w `sharing.json` w folderze danych, więc test nie nadpisze prawdziwych.
 
-### Podpis, iCloud i pęk kluczy
+### Podpis i pęk kluczy
 
-- Pakiet `net.smigi.abswift`, zespół `5TA8RF548P`, podpis automatyczny (`xcodebuild … -allowProvisioningUpdates` albo Xcode). Entitlements: kontener `iCloud.net.smigi.abswift` z usługą CloudKit i grupa pęku kluczy. Klient iOS użyje tego samego kontenera.
-- Sekrety leżą w pęku kluczy z ochroną danych (dostęp wynika z podpisu, bez pytań po przebudowaniu): `net.smigi.abswift.server-root` (root), `.server-user` (użytkownik), `.pairing-token` (klucz API klienta iOS). Hasło roota z etapów 1–2 (klasyczny pęk, usługa `com.audiobookswift.server-root`) jest przenoszone przy pierwszym odczycie — macOS zapyta wtedy raz o zgodę.
+- Pakiet `net.smigi.abswift`, zespół `5TA8RF548P`, podpis automatyczny (`xcodebuild … -allowProvisioningUpdates` albo Xcode). Jedyne uprawnienie w entitlements to grupa pęku kluczy; aplikacja nie używa iCloud.
+- Sekrety leżą w pęku kluczy z ochroną danych (dostęp wynika z podpisu, bez pytań po przebudowaniu): `net.smigi.abswift.server-root` (root) i `.server-user` (użytkownik). Hasło roota z etapów 1–2 (klasyczny pęk, usługa `com.audiobookswift.server-root`) jest przenoszone przy pierwszym odczycie — macOS zapyta wtedy raz o zgodę.
 - Zmiana identyfikatora pakietu oznacza, że „Uruchamiaj przy logowaniu” trzeba włączyć ponownie.
-- Kompilacje deweloperskie używają środowiska **Development** CloudKit. Typ rekordu `Server` powstaje tam sam przy pierwszym zapisie; przed dystrybucją (etap 6) schemat trzeba wdrożyć do Production w konsoli CloudKit.
 
 ### Co robi `scripts/build-server.sh`
 
@@ -73,49 +71,18 @@ Po podbiciu sprawdź w upstreamie wersję Node (`Dockerfile`) i nazwy zmiennych 
 - `AudiobookSwift/AudiobookSwift/Server/AudiobookshelfClient.swift` — mały klient HTTP API serwera (tylko Foundation; w etapie 4 trafi też do iOS).
 - `AudiobookSwift/AudiobookSwift/Server/ServerAccount.swift` — konto aplikacji na serwerze: zakłada roota, loguje się, tworzy biblioteki i czeka na skan. `CredentialStore.swift` trzyma dane roota w pęku kluczy.
 - `AudiobookSwift/AudiobookSwift/App/LoginItem.swift` — start przy logowaniu.
-- `AudiobookSwift/AudiobookSwift/Pairing/` — parowanie: `PairingRecord.swift` (model rekordu i stałe, bez zależności od macOS), `PairingCloudStore.swift` (zapis, usuwanie i odczyt w CloudKit; też dla iOS), `PairingController.swift` (logika po stronie Maca), `BonjourAdvertiser.swift`, `LocalNetwork.swift`, `PairingSettings.swift`, `PairingSelfCheck.swift`.
-- Serwer słucha na `http://127.0.0.1:13378/audiobookshelf/` (tylko pętla zwrotna), a przy włączonym parowaniu na wszystkich interfejsach. Aplikacja zawsze łączy się przez pętlę zwrotną.
+- `AudiobookSwift/AudiobookSwift/Sharing/` — udostępnianie w sieci lokalnej: `SharingController.swift` (przełącznik, adresy, adres zewnętrzny), `SharingSettings.swift` (`sharing.json`), `LocalNetwork.swift` (nazwa `.local` i adresy IPv4 Maca).
+- Serwer słucha na `http://127.0.0.1:13378/audiobookshelf/` (tylko pętla zwrotna), a przy włączonym udostępnianiu na wszystkich interfejsach. Aplikacja zawsze łączy się przez pętlę zwrotną.
 - Dane serwera (baza, konfiguracja, metadane, logi): `~/Library/Application Support/AudiobookSwift/`.
 
-## Parowanie z klientem iOS (etap 3)
+## Połączenie z telefonu (etap 3)
 
-Przełącznik „Udostępniaj serwer w sieci lokalnej i paruj przez iCloud” w oknie statusu (wymaga konta użytkownika) robi trzy rzeczy; wyłączenie cofa wszystkie:
+Nie ma własnego klienta ani parowania: telefon łączy się istniejącą aplikacją audiobookshelf, podając adres serwera oraz nazwę i hasło konta użytkownika. Aplikacja niczego nie ogłasza w sieci i niczego nie wysyła poza Maca.
 
-1. **Sieć lokalna.** Serwer jest restartowany bez `HOST`, czyli słucha na wszystkich interfejsach. Ruch idzie zwykłym HTTP — token i treść są widoczne dla innych urządzeń w tej samej sieci (świadoma decyzja na tym etapie; HTTPS i dostęp spoza domu są poza zakresem). Po wyłączeniu serwer wraca na `127.0.0.1`.
-2. **Token.** Aplikacja wydaje klucz API (`POST /api/api-keys`) dla konta użytkownika — nigdy roota. Klucz API w audiobookshelf ma dokładnie uprawnienia swojego użytkownika (brak zakresów), nie wygasa i przestaje działać po usunięciu. „Unieważnij…” usuwa klucz i wydaje nowy; wyłączenie parowania usuwa klucz.
-3. **Rekord w iCloud i Bonjour.** Rekord jest zapisywany przy starcie, po zmianie sieci (z 2 s opóźnieniem), tokenu albo adresu zewnętrznego, a przy wyłączeniu parowania usuwany. Bez konta iCloud udostępnianie w sieci lokalnej i Bonjour działają dalej, a okno statusu mówi, co zrobić.
-
-### Schemat rekordu (dla etapu 4)
-
-Prywatna baza kontenera `iCloud.net.smigi.abswift`, strefa `Pairing`, typ rekordu `Server`, nazwa rekordu = identyfikator serwera. Klient pobiera rekordy przez `PairingCloudStore.fetchAll()` (zmiany strefy — bez indeksów i zapytań) i dostaje `PairingRecord`.
-
-| Pole | Typ | Znaczenie |
-| --- | --- | --- |
-| *nazwa rekordu* | String | `serverID`: stały UUID serwera (jeden na folder danych) |
-| `version` | Int | wersja schematu, obecnie `1`; rekordy w innej wersji klient pomija |
-| `name` | String | nazwa Maca do pokazania użytkownikowi |
-| `localHostName` | String | nazwa mDNS, np. `mini.local` (może być pusta) |
-| `addresses` | [String] | adresy IPv4 Maca w sieci lokalnej (brak pola = brak adresów) |
-| `port` | Int | port serwera |
-| `basePath` | String | ścieżka bazowa, np. `/audiobookshelf` |
-| `serverVersion` | String | wersja audiobookshelf |
-| `username` | String | konto, do którego należy token |
-| `externalURL` | String | pełny adres spoza sieci lokalnej razem ze ścieżką bazową; pusty, dopóki użytkownik go nie wpisze |
-| `token` | String, **`encryptedValues`** | klucz API; nagłówek `Authorization: Bearer <token>` |
-| `updatedAt` | Date | czas zapisu |
-
-`PairingRecord.candidateURLs` zwraca adresy bazowe API w kolejności prób: `http://<localHostName>:<port><basePath>`, potem adresy IP, na końcu `externalURL`. Token sprawdza `GET <baza>/api/me` (`AudiobookshelfClient.me`): 401 oznacza, że został unieważniony i trzeba ponownie pobrać rekord.
-
-**Bonjour:** usługa `_abswift._tcp` na porcie serwera, nazwa = nazwa komputera, TXT: `id=<serverID>`, `path=<basePath>`, `v=1`. Klient dopasowuje znalezioną usługę do rekordu po `id`; w TXT nie ma tokenu. Aplikacja iOS musi zadeklarować `NSBonjourServices` z `_abswift._tcp` i `NSLocalNetworkUsageDescription`.
-
-### Niezależne sprawdzenie
-
-```bash
-AudiobookSwift.app/Contents/MacOS/AudiobookSwift -ABSPairingCheck YES
-dns-sd -B _abswift._tcp local.
-```
-
-Pierwsze polecenie w osobnym procesie pobiera rekordy z CloudKit, wypisuje je bez tokenu i sprawdza tokenem każdy adres. Z dodatkowym `-ABSPairingCheckRevocation YES` czeka na zmianę tokenu w iCloud i pokazuje, że stary jest odrzucany (401), a nowy działa.
+- **Sieć lokalna.** Przełącznik „Udostępniaj serwer w sieci lokalnej” (wymaga konta użytkownika, więc także istniejącego roota) restartuje serwer bez `HOST`, czyli z nasłuchem na wszystkich interfejsach. Sekcja pokazuje wtedy adresy `http://<nazwa>.local:13378/audiobookshelf` i `http://<IPv4>:13378/audiobookshelf`, odświeżane po zmianie sieci. Wyłączenie przywraca nasłuch tylko na `127.0.0.1`.
+- **Zwykły HTTP.** Ruch w sieci lokalnej nie jest szyfrowany: hasło i treść są widoczne dla innych urządzeń w tej samej sieci (świadoma decyzja; HTTPS jest poza zakresem).
+- **Adres zewnętrzny.** Opcjonalne pole na adres własnego tunelu lub VPN (Tailscale, Cloudflare Tunnel, cokolwiek). To zwykłe ustawienie lokalne w `sharing.json`: aplikacja niczego pod nim nie zestawia, tylko pokazuje go obok danych logowania. Integracja z konkretnym dostawcą to osobny, późniejszy etap.
+- **Bez kodu QR.** Oficjalna aplikacja (`advplyr/audiobookshelf-app`, stan z 2026-11-19) nie ma dodawania serwera z kodu QR ani z linku — schemat `audiobookshelf://` obsługuje wyłącznie powrót z logowania OpenID (`audiobookshelf://oauth`). Dlatego nie wymyślamy własnego formatu.
 
 ### API audiobookshelf, z którego korzystamy (v2.38.0)
 
@@ -127,8 +94,7 @@ Ustalone w kodzie upstreamu (`server/Server.js`, `server/Auth.js`, `server/auth/
 - `POST /api/libraries` (admin) z `name`, `folders: [{fullPath}]`, `mediaType` — tworzy bibliotekę, ale **jej nie skanuje**.
 - `POST /api/libraries/:id/scan` odpowiada od razu; skan trwa jako zadanie `library-scan` widoczne w `GET /api/tasks`, a po końcu znika z listy. Liczba pozycji: `GET /api/libraries/:id/items?limit=1` → `total`.
 - `POST /api/users` (admin) z `username`, `password`, `type: "user"`, `isActive: true` — zwykłe konto (bez `isActive` powstaje nieaktywne). Zajęta nazwa: 400.
-- `POST /api/api-keys` (admin) z `name`, `userId`, `isActive: true` — klucz API (JWT typu `api`, bez terminu, jeśli nie podać `expiresIn`); token jest w odpowiedzi tylko raz (`apiKey.apiKey`). Uwierzytelnia jako wskazany użytkownik (`server/auth/TokenManager.js`), także w gnieździe socket.io. `DELETE /api/api-keys/:id` unieważnia go natychmiast.
-- `GET /api/me` — użytkownik, do którego należy token.
+- `GET /api/me` — użytkownik, do którego należy token (`type`: `root`, `admin`, `user`, `guest`).
 - Web UI trzyma access token w `localStorage['token']` i wczytuje użytkownika tylko na stronie `/login` (`checkAuth`), dlatego automatyczne logowanie ładuje `/login`.
 
 ## Licencja

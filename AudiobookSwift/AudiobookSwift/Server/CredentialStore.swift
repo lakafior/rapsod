@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Sekret w pęku kluczy użytkownika (ogólne hasło, wartość zakodowana jako JSON):
-/// dane logowania roota i użytkownika oraz klucz API klienta iOS.
+/// dane logowania roota i użytkownika.
 ///
 /// Od etapu 3 aplikacja jest podpisywana zespołem deweloperskim, więc używamy pęku kluczy
 /// z ochroną danych (`kSecUseDataProtectionKeychain`): dostęp wynika z podpisu aplikacji,
@@ -76,10 +76,6 @@ struct CredentialStore<Value: Codable & Sendable & Equatable>: Sendable {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    func delete() throws {
-        let status = SecItemDelete(baseQuery as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
-    }
 }
 
 struct KeychainError: LocalizedError {

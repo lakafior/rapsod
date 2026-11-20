@@ -3,7 +3,7 @@ import Foundation
 /// Mały klient HTTP API serwera audiobookshelf.
 ///
 /// Zależy tylko od Foundation i nie wie nic o procesie serwera, pęku kluczy ani AppKit:
-/// adres i dane logowania dostaje z zewnątrz, więc w etapie 4 trafi też do aplikacji iOS.
+/// adres i dane logowania dostaje z zewnątrz.
 /// Endpointy i kształty odpowiedzi pochodzą z upstreamu (v2.38.0): `server/Server.js`
 /// (`/status`, `/init`), `server/Auth.js` (`/login`) i `server/controllers/LibraryController.js`.
 struct AudiobookshelfClient: Sendable {
@@ -38,13 +38,6 @@ struct AudiobookshelfClient: Sendable {
         let username: String
         /// `root`, `admin`, `user` albo `guest`.
         let type: String
-    }
-
-    /// Klucz API (`server/controllers/ApiKeyController.js`): JWT bez terminu ważności,
-    /// działający z uprawnieniami swojego użytkownika. Token jest zwracany tylko przy utworzeniu.
-    struct APIKey: Codable, Sendable, Equatable {
-        let id: String
-        let token: String
     }
 
     struct Library: Decodable, Sendable, Identifiable, Hashable {
@@ -127,9 +120,9 @@ struct AudiobookshelfClient: Sendable {
         )
     }
 
-    // MARK: Użytkownicy i klucze API
+    // MARK: Użytkownicy
 
-    /// Użytkownik, do którego należy token (access token albo klucz API).
+    /// Użytkownik, do którego należy token.
     func me(token: String) async throws -> User {
         try decode(User.self, from: await send("GET", "api/me", token: token))
     }
@@ -147,29 +140,6 @@ struct AudiobookshelfClient: Sendable {
         struct Response: Decodable { let user: User }
         let body = Body(username: credentials.username, password: credentials.password)
         return try decode(Response.self, from: await send("POST", "api/users", body: body, token: token)).user
-    }
-
-    /// Tworzy aktywny klucz API bez terminu dla wskazanego użytkownika (wymaga administratora).
-    func createAPIKey(name: String, userID: String, token: String) async throws -> APIKey {
-        struct Body: Encodable {
-            let name: String
-            let userId: String
-            let isActive = true
-        }
-        struct Response: Decodable {
-            struct Key: Decodable {
-                let id: String
-                let apiKey: String
-            }
-            let apiKey: Key
-        }
-        let response = try decode(Response.self, from: await send("POST", "api/api-keys", body: Body(name: name, userId: userID), token: token))
-        return APIKey(id: response.apiKey.id, token: response.apiKey.apiKey)
-    }
-
-    /// Usuwa klucz API; od tej chwili serwer odrzuca jego token. Brak klucza: HTTP 404.
-    func deleteAPIKey(id: String, token: String) async throws {
-        _ = try await send("DELETE", "api/api-keys/\(id)", token: token)
     }
 
     // MARK: Biblioteki (wymagają tokenu administratora)

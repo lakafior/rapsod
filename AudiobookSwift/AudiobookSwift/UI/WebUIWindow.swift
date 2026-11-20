@@ -11,7 +11,7 @@ final class WebUIMode {
 
 /// Okno z web UI audiobookshelf; gdy serwer nie działa, pokazuje jego stan.
 ///
-/// Domyślnie loguje zwykłego użytkownika (to samo konto, którego używa klient iOS).
+/// Domyślnie loguje zwykłego użytkownika (to samo konto, na które loguje się telefon).
 /// „Zarządzanie serwerem” przełącza na konto root w sesji trzymanej tylko w pamięci.
 struct WebUIWindow: View {
     static let windowID = "web-ui"

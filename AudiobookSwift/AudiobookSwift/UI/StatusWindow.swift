@@ -7,7 +7,7 @@ struct StatusWindow: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
     let loginItem: LoginItem
-    let pairing: PairingController
+    let sharing: SharingController
 
     var body: some View {
         VSplitView {
@@ -19,8 +19,8 @@ struct StatusWindow: View {
                 Section("Konto użytkownika") {
                     UserAccountSection(account: account)
                 }
-                Section("Parowanie z iPhone’em") {
-                    PairingSection(pairing: pairing, account: account)
+                Section("Połącz telefon") {
+                    ConnectPhoneSection(sharing: sharing, supervisor: supervisor, account: account)
                 }
                 loginItemSection
             }

@@ -9,7 +9,7 @@ struct ServerEnvironment: Sendable {
     // MARK: Konfiguracja sieci
 
     /// Adres pętli zwrotnej. Aplikacja zawsze łączy się z serwerem tędy; serwer słucha
-    /// wyłącznie tutaj, dopóki użytkownik nie włączy parowania (`listensOnLAN`).
+    /// wyłącznie tutaj, dopóki użytkownik nie włączy udostępniania (`listensOnLAN`).
     static let host = "127.0.0.1"
     /// Domyślnie 13378; do testów obok działającej kopii: argument `-ABSPort 13400`.
     static let port: Int = {
@@ -36,14 +36,13 @@ struct ServerEnvironment: Sendable {
     let dataRoot: URL
     var configDirectory: URL { dataRoot.appending(path: "config", directoryHint: .isDirectory) }
     var metadataDirectory: URL { dataRoot.appending(path: "metadata", directoryHint: .isDirectory) }
-    /// Ustawienia parowania (identyfikator serwera, przełącznik, adres zewnętrzny).
-    /// Leżą w folderze danych, więc testowy folder danych ma własną tożsamość.
-    var pairingSettingsURL: URL { Self.pairingSettingsURL(dataRoot: dataRoot) }
-    static func pairingSettingsURL(dataRoot: URL) -> URL { dataRoot.appending(path: "pairing.json") }
+    /// Ustawienia udostępniania (przełącznik sieci lokalnej, adres zewnętrzny).
+    /// Leżą w folderze danych, więc testowy folder danych ma własne.
+    static func sharingSettingsURL(dataRoot: URL) -> URL { dataRoot.appending(path: "sharing.json") }
 
     // MARK: Sieć lokalna
 
-    /// Czy serwer ma słuchać na wszystkich interfejsach (parowanie włączone).
+    /// Czy serwer ma słuchać na wszystkich interfejsach (udostępnianie włączone).
     /// Włączane dopiero, gdy istnieje konto root: niezainicjalizowany serwer pozwala
     /// każdemu w sieci utworzyć roota. Ruch w LAN idzie zwykłym HTTP.
     let listensOnLAN: Bool
@@ -64,10 +63,8 @@ struct ServerEnvironment: Sendable {
     static let keychainService = "net.smigi.abswift.server-root"
     /// Usługa sprzed etapu 3 (klasyczny pęk kluczy, podpis ad hoc) — tylko do migracji.
     static let legacyKeychainService = "com.audiobookswift.server-root"
-    /// Konto zwykłego użytkownika: wspólne dla web UI na Macu i klienta iOS.
+    /// Konto zwykłego użytkownika: wspólne dla web UI na Macu i klienta na telefonie.
     static let userKeychainService = "net.smigi.abswift.server-user"
-    /// Klucz API wydany klientowi iOS (identyfikator klucza i token).
-    static let pairingKeychainService = "net.smigi.abswift.pairing-token"
     var keychainAccount: String { dataRoot.path }
 
     // MARK: Wersja
@@ -132,7 +129,7 @@ struct ServerEnvironment: Sendable {
             ffprobe: ffprobe,
             nusqlite3: fileManager.fileExists(atPath: nusqlite3.path) ? nusqlite3 : nil,
             dataRoot: dataRoot,
-            listensOnLAN: PairingSettings.load(from: pairingSettingsURL(dataRoot: dataRoot)).isEnabled
+            listensOnLAN: SharingSettings.load(from: sharingSettingsURL(dataRoot: dataRoot)).isEnabled
         )
     }
 

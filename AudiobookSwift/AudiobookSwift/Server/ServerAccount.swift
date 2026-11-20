@@ -7,12 +7,12 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Audioboo
 /// Konta aplikacji na serwerze.
 ///
 /// **Root** jest zakładany automatycznie z losowym hasłem w pęku kluczy (decyzja z etapu 2)
-/// i służy wyłącznie do obsługi serwera: biblioteki, zakładanie użytkownika, klucze API
+/// i służy wyłącznie do obsługi serwera: biblioteki, zakładanie użytkownika
 /// oraz tryb „Zarządzanie serwerem” w oknie web UI.
 ///
 /// **Użytkownik** to zwykłe konto do słuchania, wymagane i wspólne dla web UI na Macu
-/// i klienta iOS (decyzja z etapu 3) — dzięki temu postęp słuchania jest jeden.
-/// Klient iOS dostaje klucz API tego konta, nigdy roota.
+/// i klienta na telefonie (decyzja z etapu 3) — dzięki temu postęp słuchania jest jeden.
+/// Telefon loguje się nazwą i hasłem tego konta, nigdy roota.
 @MainActor
 @Observable
 final class ServerAccount {
@@ -72,8 +72,12 @@ final class ServerAccount {
     @ObservationIgnored private var credentials: AudiobookshelfClient.Credentials?
     @ObservationIgnored private var userStore: CredentialStore<AudiobookshelfClient.Credentials>?
     @ObservationIgnored private var userCredentials: AudiobookshelfClient.Credentials?
-    @ObservationIgnored private var userID: String?
-    @ObservationIgnored private var pairingStore: CredentialStore<AudiobookshelfClient.APIKey>?
+
+    /// Dane logowania do wpisania w kliencie na telefonie (sekcja „Połącz telefon”).
+    var phoneCredentials: AudiobookshelfClient.Credentials? {
+        guard case .ready = userState else { return nil }
+        return userCredentials
+    }
     @ObservationIgnored private var accessToken: String?
     /// Rośnie przy każdym połączeniu/rozłączeniu, żeby spóźnione odpowiedzi nie nadpisały stanu.
     @ObservationIgnored private var generation = 0
@@ -95,11 +99,6 @@ final class ServerAccount {
             service: ServerEnvironment.userKeychainService,
             account: environment.keychainAccount,
             label: "AudiobookSwift — konto użytkownika audiobookshelf"
-        )
-        pairingStore = CredentialStore(
-            service: ServerEnvironment.pairingKeychainService,
-            account: environment.keychainAccount,
-            label: "AudiobookSwift — klucz API klienta iOS"
         )
         accessToken = nil
         state = .connecting
@@ -135,7 +134,6 @@ final class ServerAccount {
         accessToken = nil
         credentials = nil
         userCredentials = nil
-        userID = nil
         state = .disconnected
         userState = .unknown
     }
@@ -213,7 +211,6 @@ final class ServerAccount {
             let login = try await client.login(stored)
             guard generation == self.generation else { return }
             userCredentials = stored
-            userID = login.userID
             userState = .ready(username: login.username)
         } catch AudiobookshelfClient.APIError.unauthorized {
             guard generation == self.generation else { return }
@@ -234,7 +231,7 @@ final class ServerAccount {
             switch self {
             case .usernameTaken: "Ta nazwa jest już zajęta na serwerze. Jeśli to Twoje konto, podaj jego hasło."
             case .reserved: "Konto root służy do zarządzania serwerem — wybierz inną nazwę."
-            case .notRegularUser: "To konto ma uprawnienia administratora. Do słuchania wybierz zwykłe konto użytkownika — jego klucz dostaje iPhone."
+            case .notRegularUser: "To konto ma uprawnienia administratora. Do słuchania wybierz zwykłe konto użytkownika — jego hasło wpisujesz w telefonie."
             }
         }
     }
@@ -263,52 +260,11 @@ final class ServerAccount {
             login = try await client.login(credentials)
         }
         guard let login else { throw AudiobookshelfClient.APIError.unauthorized }
-        // Klucz API tego konta trafia do iCloud i do sieci lokalnej — tylko najmniejsze uprawnienia.
+        // Hasło tego konta jest wpisywane w telefonie i idzie przez sieć lokalną — tylko najmniejsze uprawnienia.
         guard try await client.me(token: login.accessToken).type == "user" else { throw UserSetupError.notRegularUser }
         try userStore.save(credentials)
         userCredentials = credentials
-        userID = login.userID
         userState = .ready(username: login.username)
-    }
-
-    // MARK: - Klucz API klienta iOS
-
-    enum PairingKeyError: LocalizedError {
-        case noUser
-
-        var errorDescription: String? { "Najpierw utwórz konto użytkownika." }
-    }
-
-    /// Klucz API konta użytkownika dla klienta iOS. Klucz z pęku kluczy jest sprawdzany
-    /// na serwerze (ktoś mógł go usunąć w web UI); gdy nie działa, powstaje nowy.
-    func pairingKey() async throws -> AudiobookshelfClient.APIKey {
-        guard let pairingStore, let userID else { throw PairingKeyError.noUser }
-        if let stored = try pairingStore.load() {
-            do {
-                if try await client.me(token: stored.token).id == userID { return stored }
-            } catch AudiobookshelfClient.APIError.unauthorized {
-                // Klucz usunięty albo wyłączony — wydajemy nowy.
-            }
-            try? await authorized { try await $0.deleteAPIKey(id: stored.id, token: $1) }
-        }
-        let key = try await authorized {
-            try await $0.createAPIKey(name: "AudiobookSwift — klient iOS", userID: userID, token: $1)
-        }
-        try pairingStore.save(key)
-        logger.notice("Wydano klucz API dla klienta iOS")
-        return key
-    }
-
-    /// Unieważnia klucz API klienta iOS: usuwa go z serwera i z pęku kluczy.
-    func revokePairingKey() async throws {
-        guard let pairingStore, let stored = try pairingStore.load() else { return }
-        do {
-            try await authorized { try await $0.deleteAPIKey(id: stored.id, token: $1) }
-        } catch AudiobookshelfClient.APIError.http(status: 404, _) {
-            // Klucza już nie ma na serwerze.
-        }
-        try pairingStore.delete()
-        logger.notice("Unieważniono klucz API klienta iOS")
     }
 
     // MARK: - Web UI

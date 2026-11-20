@@ -19,7 +19,7 @@ struct AudiobookSwiftApp: App {
         .restorationBehavior(.disabled)
 
         Window("AudiobookSwift — status", id: StatusWindow.windowID) {
-            StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, pairing: appDelegate.pairing)
+            StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, sharing: appDelegate.sharing)
         }
         .defaultSize(width: 720, height: 900)
         .defaultLaunchBehavior(.suppressed)
@@ -71,26 +71,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let account = ServerAccount()
     let loginItem = LoginItem()
     let webMode = WebUIMode()
-    private(set) lazy var pairing = PairingController(supervisor: supervisor, account: account)
+    private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if PairingSelfCheck.isRequested {
-            Task { exit(await PairingSelfCheck.run()) }
-            return
-        }
         supervisor.onStateChange = { [weak self] state in
             guard let self else { return }
             if state == .running, let environment = supervisor.environment {
-                Task {
-                    await self.account.connect(environment: environment)
-                    self.pairing.serverDidConnect()
-                }
+                Task { await self.account.connect(environment: environment) }
             } else if state != .running {
                 account.disconnect()
-                pairing.serverDidStop()
             }
         }
-        pairing.activate()
+        sharing.activate()
         supervisor.start()
     }
 

@@ -47,11 +47,11 @@ struct UserAccountSection: View {
         switch account.userState {
         case .ready(let username):
             LabeledContent("Konto do słuchania", value: "\(username) (hasło w pęku kluczy)")
-            Text("To konto loguje okno „Otwórz” na Macu i klienta iOS, więc postęp słuchania jest wspólny. Konto root służy tylko do zarządzania serwerem.")
+            Text("To konto loguje okno „Otwórz” na Macu i aplikację na telefonie, więc postęp słuchania jest wspólny. Konto root służy tylko do zarządzania serwerem.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         case .missing:
-            Text("Utwórz konto, na którym będziesz słuchać — na Macu i na iPhonie. Konto root zostaje do zarządzania serwerem.")
+            Text("Utwórz konto, na którym będziesz słuchać — na Macu i na telefonie. Konto root zostaje do zarządzania serwerem.")
                 .foregroundStyle(.secondary)
             UserAccountForm(account: account)
         case .invalid(let message):

@@ -9,12 +9,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>AudiobookSwift ogłasza serwer audiobooków w sieci lokalnej, żeby aplikacja na iPhonie mogła go znaleźć.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_abswift._tcp</string>
-	</array>
 	<key>ABSDevelopmentRoot</key>
 	<string>$(SRCROOT)/../build</string>
 	<key>NSDocumentsFolderUsageDescription</key>
