@@ -79,26 +79,13 @@ final class SharingController {
         }
     }
 
+    /// Działa proces dostępu spoza domu, który trzeba zatrzymać przed wyjściem.
+    var hasRunningExternalAccess: Bool { tunnel.isRunning }
+
     /// Zatrzymuje tunel przed zakończeniem aplikacji.
     func shutdown() async {
         tunnelObservation?.cancel()
         await tunnel.stop()
-    }
-
-    /// Ponowna próba po błędzie tunelu albo po doinstalowaniu `cloudflared`.
-    func retryTunnel() async {
-        await tunnel.update(selected: settings.externalAccess == .cloudflareTunnel, serverReady: serverIsReady, retry: true)
-    }
-
-    func saveTunnelToken(_ text: String) async -> Bool {
-        guard await tunnel.saveToken(text) else { return false }
-        await retryTunnel()
-        return true
-    }
-
-    func removeTunnelToken() async {
-        await tunnel.removeToken()
-        await retryTunnel()
     }
 
     func setExternalAccess(_ mode: ExternalAccessMode) {

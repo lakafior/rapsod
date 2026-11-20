@@ -3,14 +3,12 @@ import SwiftUI
 /// Wiersze trybu „Cloudflare Tunnel” w sekcji „Połącz telefon”: instalacja `cloudflared`,
 /// token z panelu, stan połączenia, opublikowany adres i log tunelu.
 struct CloudflareTunnelSection: View {
-    let sharing: SharingController
+    let tunnel: CloudflareTunnel
     /// Hasło konta użytkownika — tylko do ostrzeżenia o słabym haśle.
     let phonePassword: String?
 
     @State private var tokenText = ""
     @State private var showsLog = false
-
-    private var tunnel: CloudflareTunnel { sharing.tunnel }
 
     var body: some View {
         if tunnel.cloudflared == nil {
@@ -40,7 +38,7 @@ struct CloudflareTunnelSection: View {
             .fixedSize(horizontal: false, vertical: true)
         HStack {
             Spacer()
-            Button("Sprawdź ponownie") { Task { await sharing.retryTunnel() } }
+            Button("Sprawdź ponownie") { Task { await tunnel.retry() } }
         }
     }
 
@@ -54,7 +52,7 @@ struct CloudflareTunnelSection: View {
                     Text(tunnelID)
                         .font(.callout.monospaced())
                         .textSelection(.enabled)
-                    Button("Usuń token") { Task { await sharing.removeTunnelToken() } }
+                    Button("Usuń token") { Task { await tunnel.removeToken() } }
                 }
             }
         }
@@ -83,7 +81,7 @@ struct CloudflareTunnelSection: View {
     private func saveToken() {
         let text = tokenText
         Task {
-            if await sharing.saveTunnelToken(text) {
+            if await tunnel.saveToken(text) {
                 tokenText = ""
             }
         }
@@ -112,7 +110,7 @@ struct CloudflareTunnelSection: View {
         if case .failed = tunnel.state {
             HStack {
                 Spacer()
-                Button("Spróbuj ponownie") { Task { await sharing.retryTunnel() } }
+                Button("Spróbuj ponownie") { Task { await tunnel.retry() } }
             }
         }
         if !tunnel.recentLog.isEmpty {

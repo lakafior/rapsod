@@ -64,6 +64,9 @@ final class CloudflareTunnel {
     @ObservationIgnored private var connections: Set<String> = []
     /// Ostatni czytelny powód problemu z logu (do stanu łączenia i błędu).
     @ObservationIgnored private var lastProblem: String?
+    /// Ostatnie wejścia z `update` — do ponownej próby i zmiany tokenu.
+    @ObservationIgnored private var selected = false
+    @ObservationIgnored private var serverReady = false
 
     // MARK: - Token
 
@@ -99,8 +102,9 @@ final class CloudflareTunnel {
         }
         tokenError = nil
         tunnelID = token.tunnelID
-        // Działający `cloudflared` ma stary token — następny `update` uruchomi go z nowym.
+        // Działający `cloudflared` ma stary token — uruchom go od nowa z nowym.
         await stop()
+        await retry()
         return true
     }
 
@@ -110,6 +114,12 @@ final class CloudflareTunnel {
         tunnelID = nil
         tokenError = nil
         hostname = nil
+        await retry()
+    }
+
+    /// Ponowna próba po błędzie albo po doinstalowaniu `cloudflared`.
+    func retry() async {
+        await update(selected: selected, serverReady: serverReady, retry: true)
     }
 
     // MARK: - Uruchamianie
@@ -118,6 +128,8 @@ final class CloudflareTunnel {
     /// każdej zmianie wejść; po błędzie nie wznawia sam, dopóki wejścia się nie zmienią
     /// albo użytkownik nie wybierze „Spróbuj ponownie”.
     func update(selected: Bool, serverReady: Bool, retry: Bool = false) async {
+        self.selected = selected
+        self.serverReady = serverReady
         cloudflared = ServerEnvironment.cloudflared()
         guard selected else {
             await stop()
@@ -300,6 +312,15 @@ final class CloudflareTunnel {
 
         if line.contains("Updated to new configuration") {
             applyConfiguration(line)
+        } else if Self.isRejectedToken(line) {
+            // Odrzuconego tokenu nie naprawi ponawianie — zatrzymaj i pokaż błąd.
+            guard process != nil, !stopRequested else { return }
+            let message = "Cloudflare nie przyjmuje tego tokenu — tunel mógł zostać usunięty w panelu albo token jest nieaktualny. Skopiuj aktualny token z panelu."
+            Task {
+                await stop()
+                state = .failed(message)
+            }
+            return
         } else if let problem = Self.problem(in: line) {
             lastProblem = problem
         }
@@ -308,11 +329,11 @@ final class CloudflareTunnel {
         state = connections.isEmpty ? .connecting(lastProblem) : .connected
     }
 
+    private static func isRejectedToken(_ line: String) -> Bool {
+        ["Failed to get tunnel", "Unauthorized", "Invalid tunnel secret", "token is not valid"].contains { line.contains($0) }
+    }
+
     private static func problem(in line: String) -> String? {
-        if line.contains("Failed to get tunnel") || line.contains("Unauthorized") || line.contains("Invalid tunnel secret")
-            || line.contains("not valid") {
-            return "Cloudflare nie przyjmuje tego tokenu — tunel mógł zostać usunięty w panelu albo token jest nieaktualny. Skopiuj aktualny token z panelu."
-        }
         guard line.contains(" ERR ") else { return nil }
         if line.contains("no such host") || line.contains("network is unreachable") || line.contains("i/o timeout")
             || line.contains("failed to dial") || line.contains("DNS") {
@@ -326,7 +347,11 @@ final class CloudflareTunnel {
     /// Ustala nazwę hosta z konfiguracji tunelu, którą `cloudflared` dostaje od Cloudflare
     /// i wypisuje jako `config="{\"ingress\":[…]}"`.
     private func applyConfiguration(_ line: String) {
-        guard let rules = Self.ingressRules(in: line) else { return }
+        guard let rules = Self.ingressRules(in: line) else {
+            hostname = nil
+            configurationProblem = "Nie udało się odczytać adresu z konfiguracji tunelu (nieznany format logu cloudflared). Wpisz adres ręcznie w trybie „Własny adres”."
+            return
+        }
         let published = rules.filter { $0.hostname != nil }
         if let match = published.first(where: { Self.pointsAtServer($0.service) }) {
             hostname = match.hostname

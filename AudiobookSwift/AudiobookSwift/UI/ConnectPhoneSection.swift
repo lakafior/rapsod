@@ -85,7 +85,7 @@ struct ConnectPhoneSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         case .cloudflareTunnel:
-            CloudflareTunnelSection(sharing: sharing, phonePassword: account.phoneCredentials?.password)
+            CloudflareTunnelSection(tunnel: sharing.tunnel, phonePassword: account.phoneCredentials?.password)
         }
 
         if let error = sharing.lastError {
