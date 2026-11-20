@@ -68,14 +68,18 @@ cp "$ROOT/build/ffmpeg/bin/ffmpeg" "$ROOT/build/ffmpeg/bin/ffprobe" "$PAYLOAD/"
 # klient web, zależności produkcyjne i rozszerzenie SQLite. Źródła, testy,
 # dokumentacja i pliki Dockera upstreamu zostają w repozytorium.
 cp "$SERVER_SRC/package.json" "$SERVER_SRC/LICENSE" "$SERVER_SRC/libnusqlite3.dylib" "$SERVER_SRC/libnusqlite3.dylib.ver" "$ABS/"
-rsync -a --exclude '/test' --exclude '.tsbuildinfo' "$SERVER_SRC/dist-server" "$ABS/"
+# Ukośnik na końcu źródła: wzorce zaczynające się od „/” liczą się od tego folderu.
+rsync -a --exclude '/test' --exclude '.tsbuildinfo' "$SERVER_SRC/dist-server/" "$ABS/dist-server/"
 rsync -a "$SERVER_SRC/client/dist" "$ABS/client/"
 rsync -a \
   --exclude '/.bin' --exclude '/.package-lock.json' \
   --exclude '/@types' --exclude '/node-gyp' \
   --exclude '/sqlite3/deps' --exclude '/sqlite3/src' --exclude '/sqlite3/binding.gyp' \
   --exclude '*.map' --exclude '*.ts' --exclude '*.tsbuildinfo' \
-  "$SERVER_SRC/node_modules" "$ABS/"
+  "$SERVER_SRC/node_modules/" "$ABS/node_modules/"
+for leftover in dist-server/test node_modules/.bin node_modules/node-gyp node_modules/@types node_modules/sqlite3/deps; do
+  [[ ! -e "$ABS/$leftover" ]] || die "Odchudzanie nie usunęło $leftover."
+done
 # Licencje bibliotek wkopiowanych do upstreamu (`server/libs`): tsc przenosi do
 # dist-server tylko kod, więc pliki licencji dokładamy obok niego.
 (cd "$SERVER_SRC" && find server/libs -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) -print0) \
