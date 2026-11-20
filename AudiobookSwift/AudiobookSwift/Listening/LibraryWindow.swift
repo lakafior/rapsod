@@ -48,7 +48,7 @@ struct LibraryWindow: View {
                 unavailable
             }
         }
-        .frame(minWidth: 860, minHeight: 520)
+        .frame(minWidth: 980, minHeight: 560)
         .navigationTitle(Self.title)
         .onDisappear { listening.windowClosed() }
     }
@@ -58,14 +58,13 @@ struct LibraryWindow: View {
             LibrarySidebar(browser: browser)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         } detail: {
+            // Strony otwierane z list zastępują całą kolumnę szczegółów, więc pasek odtwarzania
+            // dostaje i korzeń, i każda strona (na samym stosie znikał po przejściu dalej).
             NavigationStack(path: $browser.path) {
-                root
+                withPlayerBar(root)
                     .navigationDestination(for: LibraryBrowser.Route.self) { route in
-                        destination(route)
+                        withPlayerBar(destination(route))
                     }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
             }
         }
         .searchable(text: $browser.searchText, placement: .toolbar, prompt: browser.isPodcastLibrary ? "Szukaj podcastów i odcinków" : "Szukaj książek, autorów, serii")
@@ -88,13 +87,13 @@ struct LibraryWindow: View {
         }
         .onChange(of: listening.libraries) { browser.ensureLibrary() }
         .task(id: browser.libraryID) { await browser.loadPlaylists() }
-        .alert("Nowa playlista", isPresented: Binding(get: { browser.newPlaylistEntry != nil }, set: { if !$0 { browser.newPlaylistEntry = nil } })) {
+        // `presenting:` przekazuje pozycję do akcji — zamknięcie alertu zeruje `newPlaylistEntry` wcześniej.
+        .alert("Nowa playlista", isPresented: Binding(get: { browser.newPlaylistEntry != nil }, set: { if !$0 { browser.newPlaylistEntry = nil } }),
+               presenting: browser.newPlaylistEntry) { entry in
             TextField("Nazwa", text: $newPlaylistName)
             Button("Utwórz") {
-                if let entry = browser.newPlaylistEntry {
-                    let name = newPlaylistName
-                    Task { await browser.createPlaylist(name: name, with: entry) }
-                }
+                let name = newPlaylistName
+                Task { await browser.createPlaylist(name: name, with: entry) }
                 newPlaylistName = ""
             }
             Button("Anuluj", role: .cancel) { newPlaylistName = "" }
@@ -127,6 +126,12 @@ struct LibraryWindow: View {
             ContentUnavailableView("Brak bibliotek", systemImage: "books.vertical", description: Text("Dodaj folder z audiobookami w ustawieniach aplikacji."))
         } else {
             ProgressView()
+        }
+    }
+
+    private func withPlayerBar(_ content: some View) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
         }
     }
 
@@ -176,21 +181,21 @@ private struct LibrarySidebar: View {
         let podcast = browser.isPodcastLibrary
         List(selection: Binding(get: { browser.section }, set: { if let section = $0 { browser.section = section } })) {
             Section(browser.library?.name ?? "Biblioteka") {
-                Label("Start", systemImage: "house").tag(LibraryBrowser.Section.home)
+                row("Start", "house", .home)
                 if podcast {
-                    Label("Podcasty", systemImage: "mic").tag(LibraryBrowser.Section.items)
-                    Label("Najnowsze odcinki", systemImage: "clock").tag(LibraryBrowser.Section.latestEpisodes)
+                    row("Podcasty", "mic", .items)
+                    row("Najnowsze odcinki", "clock", .latestEpisodes)
                 } else {
-                    Label("Książki", systemImage: "books.vertical").tag(LibraryBrowser.Section.items)
-                    Label("Serie", systemImage: "square.stack").tag(LibraryBrowser.Section.series)
-                    Label("Autorzy", systemImage: "person.2").tag(LibraryBrowser.Section.authors)
-                    Label("Lektorzy", systemImage: "waveform").tag(LibraryBrowser.Section.narrators)
-                    Label("Kolekcje", systemImage: "rectangle.stack").tag(LibraryBrowser.Section.collections)
+                    row("Książki", "books.vertical", .items)
+                    row("Serie", "square.stack", .series)
+                    row("Autorzy", "person.2", .authors)
+                    row("Lektorzy", "waveform", .narrators)
+                    row("Kolekcje", "rectangle.stack", .collections)
                 }
-                Label("Playlisty", systemImage: "music.note.list").tag(LibraryBrowser.Section.playlists)
+                row("Playlisty", "music.note.list", .playlists)
             }
             Section("Twoje słuchanie") {
-                Label("Statystyki", systemImage: "chart.bar").tag(LibraryBrowser.Section.stats)
+                row("Statystyki", "chart.bar", .stats)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -207,6 +212,19 @@ private struct LibrarySidebar: View {
                 .accessibilityIdentifier("libraryPicker")
             }
         }
+    }
+}
+
+extension LibrarySidebar {
+    /// Wiersz sekcji; kliknięcie już wybranej sekcji wraca do jej korzenia (jak w Muzyce i Finderze) —
+    /// zaznaczenie się wtedy nie zmienia, więc robi to gest, nie `selection`.
+    func row(_ title: String, _ symbol: String, _ section: LibraryBrowser.Section) -> some View {
+        Label(title, systemImage: symbol)
+            .tag(section)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded {
+                if browser.section == section { browser.path = [] }
+            })
     }
 }
 

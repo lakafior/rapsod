@@ -256,9 +256,19 @@ enum Formats {
         return "\(total) s"
     }
 
+    /// Jak web UI (`$bytesPretty`): jednostki dziesiętne, do dwóch miejsc po przecinku.
     static func size(_ bytes: Double?) -> String {
         guard let bytes, bytes > 0 else { return "—" }
-        return Int64(bytes).formatted(.byteCount(style: .file))
+        let polish = Locale(identifier: "pl_PL")
+        func number(_ value: Double, _ digits: Int) -> String {
+            value.formatted(.number.precision(.fractionLength(0...digits)).locale(polish))
+        }
+        switch bytes {
+        case ..<1_000: return "\(Int(bytes)) B"
+        case ..<1_000_000: return number(bytes / 1_000, 2) + " KB"
+        case ..<1_000_000_000: return number(bytes / 1_000_000, 2) + " MB"
+        default: return number(bytes / 1_000_000_000, 2) + " GB"
+        }
     }
 
     static func date(ms: Double?) -> String? {

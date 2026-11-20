@@ -58,6 +58,8 @@ final class ListeningController {
     @ObservationIgnored let covers = CoverCache()
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var playingFromQueue = false
+    @ObservationIgnored private var changedLibraries: Set<String> = []
+    @ObservationIgnored private var revisionFlush: Task<Void, Never>?
     /// Plik okładki bieżącej książki (z sesji odtwarzania).
     @ObservationIgnored private(set) var nowPlayingCoverPath: String?
 
@@ -187,8 +189,20 @@ final class ListeningController {
         case .user(let me):
             apply(me)
         case .itemsChanged(let libraryIDs):
-            for id in libraryIDs { libraryRevision[id, default: 0] += 1 }
+            changedLibraries.formUnion(libraryIDs)
+            // Skan dodaje pozycje seriami zdarzeń — listy przeładowują się raz na sekundę, nie przy każdym.
+            if revisionFlush == nil {
+                revisionFlush = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let self else { return }
+                    for id in changedLibraries { libraryRevision[id, default: 0] += 1 }
+                    changedLibraries = []
+                    revisionFlush = nil
+                }
+            }
         case .reconnected:
+            // Zdarzenia z przerwy przepadły: świeży postęp i przeładowanie list.
+            for library in libraries { libraryRevision[library.id, default: 0] += 1 }
             Task { await refresh() }
         }
     }

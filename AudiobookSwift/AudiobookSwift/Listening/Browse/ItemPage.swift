@@ -49,17 +49,16 @@ private struct BookPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack(alignment: .top, spacing: 24) {
-                    AsyncCover(listening: listening, itemID: item.id, path: item.media.coverPath, size: 240)
-                        .frame(width: 240, height: 240)
-                        .shadow(radius: 6, y: 3)
-                    VStack(alignment: .leading, spacing: 10) {
-                        header
-                        details
-                        progressBox
-                        actions
+                // Wąskie okno (panel odtwarzacza otwarty): okładka nad metadanymi zamiast obok.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 24) {
+                        cover(240)
+                        info.frame(minWidth: 380, maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 16) {
+                        cover(180)
+                        info
+                    }
                 }
                 if let description = HTMLText.plain(metadata.description) {
                     ExpandableText(text: description, lines: 8)
@@ -77,6 +76,21 @@ private struct BookPage: View {
             Button("Wyzeruj postęp", role: .destructive) { Task { await listening.resetProgress(itemID: item.id) } }
         } message: {
             Text("Pozycja w książce i data rozpoczęcia znikną z serwera — także na telefonie.")
+        }
+    }
+
+    private func cover(_ size: CGFloat) -> some View {
+        AsyncCover(listening: listening, itemID: item.id, path: item.media.coverPath, size: size)
+            .frame(width: size, height: size)
+            .shadow(radius: 6, y: 3)
+    }
+
+    private var info: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            details
+            progressBox
+            actions
         }
     }
 
@@ -278,9 +292,12 @@ struct BookmarksSection: View {
                 .padding(.top, 6)
             }
             .frame(maxWidth: 760)
-            .alert("Nazwa zakładki", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            .alert("Nazwa zakładki", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { bookmark in
                 TextField("Nazwa", text: $newTitle)
-                Button("Zapisz") { if let renaming { Task { await browser.listening.renameBookmark(renaming, to: newTitle) } } }
+                Button("Zapisz") {
+                    let title = newTitle
+                    Task { await browser.listening.renameBookmark(bookmark, to: title) }
+                }
                 Button("Anuluj", role: .cancel) {}
             }
         }
@@ -488,6 +505,7 @@ struct EpisodeRow: View {
             }
             .buttonStyle(.borderless)
             .help("Odtwarzaj")
+            .accessibilityLabel(isCurrent && listening.player.isPlaying ? "Pauza" : "Odtwarzaj")
             VStack(alignment: .leading, spacing: 3) {
                 if let podcastTitle { Text(podcastTitle).font(.caption).foregroundStyle(.secondary) }
                 Text(episode.title ?? "Odcinek").font(.headline).lineLimit(2)

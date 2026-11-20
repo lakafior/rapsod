@@ -78,6 +78,8 @@ final class ListeningEvents {
             return .closed
         }
         let socket = session.webSocketTask(with: url)
+        // Domyślnie 1 MiB; `user_updated` niesie cały postęp użytkownika, a `items_added` pełne pozycje.
+        socket.maximumMessageSize = 64 * 1024 * 1024
         self.socket = socket
         socket.resume()
         defer { socket.cancel(with: .goingAway, reason: nil) }
