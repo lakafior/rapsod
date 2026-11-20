@@ -17,7 +17,9 @@ scripts/build-ffmpeg.sh
 open AudiobookSwift/AudiobookSwift.xcodeproj
 ```
 
-`scripts/build-ffmpeg.sh` (kilka minut) można pominąć, jeśli jest ffmpeg z Homebrew — aplikacja uruchomiona z Xcode użyje wtedy `/opt/homebrew/bin/ffmpeg`. Ten z Homebrew nie ma jednak kodera WebP, więc miniatury okładek w web UI nie będą się generować.
+Do pracy z Xcode wystarczą te dwa skrypty: aplikacja uruchomiona z Xcode używa oficjalnego Node z `build/node`. Odchudzony Node do paczki (`scripts/build-node.sh`, zob. „Node w paczce”) buduje dopiero `scripts/release.sh`.
+
+`scripts/build-ffmpeg.sh` (ok. 1 minuty) można pominąć, jeśli jest ffmpeg z Homebrew — aplikacja uruchomiona z Xcode użyje wtedy `/opt/homebrew/bin/ffmpeg`. Ten z Homebrew nie ma jednak kodera WebP, więc miniatury okładek w web UI nie będą się generować.
 
 W Xcode uruchom schemat `AudiobookSwift`. Aplikacja nie ma ikony w Docku — pojawia się jako ikona książek na pasku menu. Serwer startuje razem z aplikacją; „Otwórz” pokazuje web UI audiobookshelf w oknie (zalogowane automatycznie).
 
@@ -50,7 +52,7 @@ open AudiobookSwift.app --args -ABSDataRoot /tmp/abs-test -ABSPort 13400
 
 Wszystko trafia do ignorowanego katalogu `build/`; submodule pozostaje czysty.
 
-1. Pobiera przypięty Node.js 24 z nodejs.org do `build/node` (weryfikacja SHA-256). Upstream celuje w Node 24; na Node 25+ serwer nie startuje.
+1. Pobiera przypięty oficjalny Node.js 24 z nodejs.org do `build/node` (wersja i sumy SHA-256 w `scripts/node-version.sh`). Upstream celuje w Node 24; na Node 25+ serwer nie startuje. Ten Node buduje serwer (npm) i uruchamia go w trybie deweloperskim; do paczki trafia odchudzony build w tej samej wersji.
 2. Eksportuje źródła submodule (`git archive`) do `build/abs-server`.
 3. Buduje klienta web (`nuxt generate`) i serwer (`tsc` → `dist-server/`), zostawia tylko zależności produkcyjne.
 4. Pobiera rozszerzenie SQLite `libnusqlite3` 1.2 (to samo, którego używa obraz Dockera upstreamu; weryfikacja SHA-256) — daje wyszukiwanie bez znaków diakrytycznych.
@@ -66,11 +68,11 @@ scripts/build-server.sh
 git add vendor/audiobookshelf
 ```
 
-Po podbiciu sprawdź w upstreamie wersję Node (`Dockerfile`) i nazwy zmiennych środowiskowych (`index.js`, `server/managers/BinaryManager.js`).
+Po podbiciu sprawdź w upstreamie wersję Node (`Dockerfile`) i nazwy zmiennych środowiskowych (`index.js`, `server/managers/BinaryManager.js`). Zmiana wersji Node: `scripts/node-version.sh` (wersja i trzy sumy: dwie binarki i archiwum źródeł). Po zmianach w wywołaniach ffmpeg w upstreamie (`server/utils/ffmpegHelpers.js`, `server/objects/Stream.js`) uruchom test różnicowy z sekcji „ffmpeg”.
 
 ## Jak to działa
 
-- `AudiobookSwift/AudiobookSwift/Server/ServerEnvironment.swift` — jedyne miejsce ze ścieżkami do Node, ffmpeg, kodu serwera i danych oraz z hostem, portem i zmiennymi środowiskowymi serwera. W wydaniu wszystko bierze z `Contents/Resources/Server` w paczce; uruchomiona z Xcode — z katalogu `build/` repozytorium (klucz `ABSDevelopmentRoot` w `Info.plist`, pusty w konfiguracji Release).
+- `AudiobookSwift/AudiobookSwift/Server/ServerEnvironment.swift` — jedyne miejsce ze ścieżkami do Node, ffmpeg, kodu serwera i danych oraz z hostem, portem i zmiennymi środowiskowymi serwera. W wydaniu wszystko bierze z `Contents/Resources/Server` w paczce; uruchomiona z Xcode — z katalogu `build/` repozytorium (klucz `ABSDevelopmentRoot` w `Info.plist`, pusty w konfiguracji Release). Serwer dostaje `NODE_OPTIONS=--max-semi-space-size=1` (mniejsza młoda generacja sterty V8): na bibliotece 1200 pozycji Node zajmuje w spoczynku 63 zamiast 99 MB, a po skanie 238 zamiast 314 MB (`phys_footprint`); skan trwa ok. 5% dłużej.
 - `AudiobookSwift/AudiobookSwift/Server/ServerSupervisor.swift` — uruchamia `node`, zbiera stdout/stderr, wykrywa gotowość po HTTP (`/healthcheck`) i nieoczekiwane zakończenie, zatrzymuje serwer przez SIGINT.
 - `AudiobookSwift/AudiobookSwift/Resources/parent-watch.js` — ładowany przez `node --require`; wyłącza serwer, gdy aplikacja zniknie (także po `kill -9`), więc nie zostaje osierocony proces.
 - `AudiobookSwift/AudiobookSwift/Server/AudiobookshelfClient.swift` — mały klient HTTP API serwera.
@@ -184,11 +186,11 @@ git submodule update --init
 scripts/release.sh
 ```
 
-Skrypt (ok. 10–15 minut za pierwszym razem, potem kilka; większość to czekanie na Apple):
+Czas: za pierwszym razem na danym Macu ok. 45 minut, z czego ok. 30 minut to kompilacja Node; potem ok. 10 minut, w większości czekanie na notaryzację. Szczegóły w krokach:
 
-1. buduje serwer (`scripts/build-server.sh`) i ffmpeg (`scripts/build-ffmpeg.sh`) — pobierane pliki są przypięte do wersji i sprawdzane sumą SHA-256;
-2. składa `Contents/Resources/Server`: `node`, `ffmpeg`, `ffprobe` i odchudzony `abs-server` (skompilowany kod, `client/dist`, zależności produkcyjne bez map źródeł, typów TypeScript, `node-gyp` i źródeł SQLite; pliki licencji pakietów zostają);
-3. podpisuje każdą binarkę Mach-O w tym folderze (w tym moduł natywny `node_sqlite3.node` i `libnusqlite3.dylib`) i sprawdza, że podpisany Node ładuje sqlite3 z rozszerzeniem;
+1. buduje serwer (`scripts/build-server.sh`, ok. 1–2 minut, potem pomijany), Node do paczki (`scripts/build-node.sh`, ok. 30 minut raz na wersję Node, potem kopia z pamięci podręcznej) i ffmpeg (`scripts/build-ffmpeg.sh`, ok. 1 minuty, potem pomijany) — pobierane pliki są przypięte do wersji i sprawdzane sumą SHA-256;
+2. składa `Contents/Resources/Server`: `node`, `ffmpeg/bin` (ffmpeg, ffprobe), `ffmpeg/lib` (ich wspólne biblioteki) i odchudzony `abs-server` (skompilowany kod, `client/dist`, zależności produkcyjne bez map źródeł, typów TypeScript, `node-gyp`, źródeł SQLite i alternatywnych kopii pakietów, których serwer nie ładuje — źródeł ES i paczek dla przeglądarki `moment`, `validator`, `jose`, `node-unrar-js`, `lodash/fp`; pliki licencji pakietów zostają);
+3. podpisuje każdą binarkę Mach-O w tym folderze (w tym biblioteki ffmpeg, moduł natywny `node_sqlite3.node` i `libnusqlite3.dylib`), sprawdza, że podpisany Node ładuje sqlite3 z rozszerzeniem i wszystkie zależności produkcyjne serwera;
 4. archiwizuje aplikację w konfiguracji Release i eksportuje ją z podpisem Developer ID;
 5. wstawia serwer i folder `Licenses` do paczki, podpisuje aplikację od nowa z uprawnieniami z eksportu;
 6. notaryzuje aplikację i zszywa bilet, tworzy DMG (aplikacja + skrót do `/Applications`), podpisuje, notaryzuje i zszywa bilet z DMG;
@@ -207,17 +209,31 @@ Wynik: `build/release/AudiobookSwift-<wersja>.dmg` (pliku nie commitujemy). `scr
 
 - Aplikacja: hardened runtime, bez sandboxa; uprawnienia tylko te, które nadaje profil (identyfikator aplikacji, zespół, grupa pęku kluczy `5TA8RF548P.net.smigi.abswift`). Ta sama grupa co w buildach z Xcode, więc wydana aplikacja czyta istniejące pozycje pęku kluczy.
 - `node`: jedno uprawnienie, `com.apple.security.cs.allow-jit` (`packaging/node.entitlements`). Silnik V8 rezerwuje pamięć wykonywalną dla JIT; bez tego uprawnienia Node pod hardened runtime kończy się przy starcie błędem „Failed to reserve virtual memory for CodeRange”. Pozostałe uprawnienia z oficjalnej binarki Node (`allow-unsigned-executable-memory`, `disable-executable-page-protection`, `disable-library-validation`, `allow-dyld-environment-variables`) nie są potrzebne: moduł `node_sqlite3.node` i `libnusqlite3.dylib` są podpisane tym samym zespołem, więc przechodzą walidację bibliotek.
-- `ffmpeg`, `ffprobe`, `node_sqlite3.node`, `libnusqlite3.dylib`: hardened runtime bez uprawnień.
+- `ffmpeg`, `ffprobe`, biblioteki w `ffmpeg/lib`, `node_sqlite3.node`, `libnusqlite3.dylib`: hardened runtime bez uprawnień. Biblioteki ffmpeg są podpisane tym samym zespołem co binarki, więc przechodzą walidację bibliotek bez `disable-library-validation`.
+
+### Node w paczce
+
+`scripts/build-node.sh` kompiluje Node.js (wersja z `scripts/node-version.sh`) z niezmienionych źródeł z nodejs.org z mniejszym zestawem składników: dane ICU tylko dla angielskiego i polskiego (`--with-intl=small-icu --with-icu-locales=en,pl`), bez inspektora (`--inspect`) i bez npm, corepack, amaro i `node:sqlite`, a potem `strip -x`. Wynik: ok. 62 MB zamiast 122 MB oficjalnej binarki.
+
+Co zostaje, bo serwer tego używa (sprawdzone w kodzie upstreamu i testem porównawczym z oficjalną binarką): `Intl.Collator` z opcjami `numeric` i `sensitivity` (sortowanie w pamięci, porównanie wersji przy migracjach), `normalize` (NFC nazw plików, usuwanie diakrytyków przy dopasowaniu metadanych), strefa czasowa systemu, OpenSSL (JWT, OIDC, TLS dla podcastów i dostawców metadanych), WebAssembly (`node-unrar-js`, libarchive dla komiksów), `worker_threads`, zlib i N-API (moduł `sqlite3`). Polski jest w danych ICU, bo aplikacja przekazuje serwerowi `LANG` użytkownika, a serwer sortuje według domyślnego języka procesu. Pełny `strip` (zamiast `strip -x`) usuwa symbole N-API i moduł `sqlite3` przestaje się ładować.
+
+Czysta kompilacja trwa ok. 30 minut (10 rdzeni) i wymaga Pythona 3.9–3.14 (wystarczy systemowy `/usr/bin/python3`). Wynik trafia do pamięci podręcznej wspólnej dla wszystkich kopii repozytorium, `~/Library/Caches/AudiobookSwift-build/node-<wersja>-<skrót opcji>` (inne miejsce: zmienna `ABS_BUILD_CACHE`), a stamtąd do `build/node-runtime`. Kolejne wydania i nowe worktree tylko kopiują plik; kompilacja wraca po zmianie wersji Node, opcji albo kompilatora. `scripts/build-node.sh --clean` wymusza ją od razu.
 
 ### ffmpeg
 
-`scripts/build-ffmpeg.sh` kompiluje ffmpeg 9.0.2 statycznie z niezmienionych źródeł, z libwebp 1.6.0, AudioToolbox, SecureTransport i zlib; bez `--enable-gpl`, więc na LGPL 2.1+. Upstream oczekuje ffmpeg 5.1 (`BinaryManager.js`), ale przez API serwera sprawdzone na tym buildzie: skan i metadane (ffprobe), miniatury okładek WebP/JPEG, strumień HLS z kopiowaniem i z kodowaniem do AAC, osadzanie metadanych, scalanie do M4B (AAC). Nie działa opcja „OPUS” w narzędziu M4B: upstream wywołuje eksperymentalny koder `opus` bez `-strict -2`, co kończy się błędem na każdym ffmpeg.
+`scripts/build-ffmpeg.sh` kompiluje ffmpeg 9.0.2 z niezmienionych źródeł, z libwebp 1.6.0 i zlib; bez `--enable-gpl`, więc na LGPL 2.1+. Build ma tylko składniki, których używa serwer (`--disable-everything` i lista w skrypcie, opisana w komentarzu), w bibliotekach wspólnych dla ffmpeg i ffprobe (`bin/` i `lib/`; binarki szukają bibliotek w `@executable_path/../lib`). Razem ok. 9 MB zamiast 45 MB dwóch pełnych statycznych binarek; ten sam zestaw składników statycznie zajmowałby 18 MB. Czas budowania ok. 1 minuty.
+
+Lista wynika z wywołań w upstreamie: strumień HLS (demuxer concat, segmenty MPEG-TS, kopia albo koder `aac`), okładki (wyciąganie z pliku, zmiana rozmiaru do WebP/JPEG/PNG), osadzanie metadanych i rozdziałów (`ffmetadata`, muxer dla każdego obsługiwanego rozszerzenia), scalanie do M4B (kodery `aac` i `opus` z opcji w kliencie), podcasty (wejście przez potok, nie przez sieć — protokoły http/https są wyłączone), ffprobe. Dekodery obejmują formaty z `SupportedAudioTypes` (MP3, AAC/ALAC w MP4, FLAC, Opus, Vorbis, WMA, PCM, AC-3/E-AC-3, AMR, MP2) oraz obrazy i najczęstsze strumienie wideo, z których upstream bierze okładkę plików `.mp4/.webm/.mpg`. AudioToolbox i SecureTransport nie są już potrzebne.
+
+**Test różnicowy** (przy zmianie listy składników albo wersji ffmpeg): `scripts/ffmpeg-diff/make-corpus.sh` tworzy pliki we wszystkich obsługiwanych formatach (wymaga ffmpeg z Homebrew), a `scripts/ffmpeg-diff/ffdiff.sh` uruchamia na nich wywołania takie jak w upstreamie. Wyniki pełnego buildu (np. dotychczasowego, zbudowanego bez `--disable-everything`) i odchudzonego porównuje się `diff`-em plików `results.txt`; muszą być identyczne. Dla 9.0.2 identyczne są wszystkie 264 testy (kody wyjścia i wyjście ffprobe).
+
+Upstream oczekuje ffmpeg 5.1 (`BinaryManager.js`), ale przez API serwera sprawdzone na tym buildzie: skan i metadane (ffprobe), miniatury okładek WebP/JPEG, strumień HLS z kopiowaniem i z kodowaniem do AAC, osadzanie metadanych, scalanie do M4B (AAC). Nie działa opcja „OPUS” w narzędziu M4B: upstream wywołuje eksperymentalny koder `opus` bez `-strict -2`, co kończy się błędem na każdym ffmpeg.
 
 ## Licencja
 
 AudiobookSwift jest wolnym oprogramowaniem na licencji **GPL-3.0-or-later** (plik `LICENSE`). To nie jest porada prawna, tylko przyjęte rozwiązanie: aplikacja jest rozprowadzana w jednej paczce z serwerem audiobookshelf (GPL-3.0), a jej skrypt `parent-watch.js` działa w procesie serwera.
 
-Wydana paczka zawiera niezmienione komponenty innych autorów: audiobookshelf (GPL-3.0) z pakietami npm, Node.js (MIT i licencje dołączonych bibliotek), FFmpeg (LGPL-2.1+), libwebp (BSD-3-Clause), nunicode-sqlite (MIT). Lista jest w `AudiobookSwift/AudiobookSwift/Resources/THIRD-PARTY-NOTICES.txt` i w oknie „O programie”; pełne teksty licencji, adresy źródeł, sumy kontrolne i opcje budowania ffmpeg trafiają do `Contents/Resources/Licenses` w paczce.
+Wydana paczka zawiera niezmienione komponenty innych autorów (Node.js i FFmpeg zbudowane z niezmienionych źródeł z mniejszym zestawem składników): audiobookshelf (GPL-3.0) z pakietami npm, Node.js (MIT i licencje dołączonych bibliotek), FFmpeg (LGPL-2.1+), libwebp (BSD-3-Clause), nunicode-sqlite (MIT). Lista jest w `AudiobookSwift/AudiobookSwift/Resources/THIRD-PARTY-NOTICES.txt` i w oknie „O programie”; pełne teksty licencji, adresy źródeł, sumy kontrolne i opcje budowania Node i ffmpeg trafiają do `Contents/Resources/Licenses` w paczce.
 
 Rozprowadzanie binarek na GPL/LGPL wymaga udostępnienia odpowiadającego im kodu źródłowego. Dlatego **przed publikacją wydania** to repozytorium (z przypiętym submodule i skryptami budowania) musi być publicznie dostępne, a jego adres wpisany w klucz `ABSSourceURL` w `AudiobookSwift/Info.plist` — pokazuje go „O programie”, a `scripts/release.sh` ostrzega, gdy jest pusty.
 

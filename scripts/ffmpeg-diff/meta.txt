@@ -1,0 +1,15 @@
+;FFMETADATA1
+title=Żółta łódź — część pierwsza
+artist=Zażółć Gęślą
+album=Ćma nad Łodzią
+date=2021
+[CHAPTER]
+TIMEBASE=1/1000
+START=0
+END=10000
+title=Rozdział 1 — Świt
+[CHAPTER]
+TIMEBASE=1/1000
+START=10000
+END=20000
+title=Rozdział 2 — Źródło
