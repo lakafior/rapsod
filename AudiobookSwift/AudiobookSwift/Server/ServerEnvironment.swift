@@ -2,15 +2,20 @@ import Foundation
 
 /// Jedyne miejsce, które wie, skąd biorą się Node, ffmpeg, kod serwera i jego dane.
 ///
-/// W etapie 1 Node i serwer pochodzą z katalogu `build/` repozytorium (tworzy go
+/// Na razie Node i serwer pochodzą z katalogu `build/` repozytorium (tworzy go
 /// `scripts/build-server.sh`), a ffmpeg/ffprobe z Homebrew. W etapie 6 wszystko to
 /// zostanie zastąpione zasobami wbudowanymi w paczkę aplikacji — zmiana tylko tutaj.
 struct ServerEnvironment: Sendable {
     // MARK: Konfiguracja sieci
 
-    /// Tylko pętla zwrotna: niezainicjalizowany serwer pozwala każdemu utworzyć konto root.
+    /// Adres pętli zwrotnej. Aplikacja zawsze łączy się z serwerem tędy; serwer słucha
+    /// wyłącznie tutaj, dopóki użytkownik nie włączy parowania (`listensOnLAN`).
     static let host = "127.0.0.1"
-    static let port = 13378
+    /// Domyślnie 13378; do testów obok działającej kopii: argument `-ABSPort 13400`.
+    static let port: Int = {
+        let override = UserDefaults.standard.integer(forKey: "ABSPort")
+        return (1...65535).contains(override) ? override : 13378
+    }()
     /// Musi zgadzać się z `ROUTER_BASE_PATH` w `scripts/build-server.sh`
     /// (klient web ma tę ścieżkę wkompilowaną).
     static let routerBasePath = "/audiobookshelf"
@@ -31,6 +36,17 @@ struct ServerEnvironment: Sendable {
     let dataRoot: URL
     var configDirectory: URL { dataRoot.appending(path: "config", directoryHint: .isDirectory) }
     var metadataDirectory: URL { dataRoot.appending(path: "metadata", directoryHint: .isDirectory) }
+    /// Ustawienia parowania (identyfikator serwera, przełącznik, adres zewnętrzny).
+    /// Leżą w folderze danych, więc testowy folder danych ma własną tożsamość.
+    var pairingSettingsURL: URL { Self.pairingSettingsURL(dataRoot: dataRoot) }
+    static func pairingSettingsURL(dataRoot: URL) -> URL { dataRoot.appending(path: "pairing.json") }
+
+    // MARK: Sieć lokalna
+
+    /// Czy serwer ma słuchać na wszystkich interfejsach (parowanie włączone).
+    /// Włączane dopiero, gdy istnieje konto root: niezainicjalizowany serwer pozwala
+    /// każdemu w sieci utworzyć roota. Ruch w LAN idzie zwykłym HTTP.
+    let listensOnLAN: Bool
 
     // MARK: Adresy
 
@@ -45,7 +61,13 @@ struct ServerEnvironment: Sendable {
     static let rootUsername = "root"
     /// Usługa pozycji w pęku kluczy z danymi logowania roota. Konto (`account`)
     /// to ścieżka folderu danych, więc testowy folder danych nie nadpisze prawdziwego.
-    static let keychainService = "com.audiobookswift.server-root"
+    static let keychainService = "net.smigi.abswift.server-root"
+    /// Usługa sprzed etapu 3 (klasyczny pęk kluczy, podpis ad hoc) — tylko do migracji.
+    static let legacyKeychainService = "com.audiobookswift.server-root"
+    /// Konto zwykłego użytkownika: wspólne dla web UI na Macu i klienta iOS.
+    static let userKeychainService = "net.smigi.abswift.server-user"
+    /// Klucz API wydany klientowi iOS (identyfikator klucza i token).
+    static let pairingKeychainService = "net.smigi.abswift.pairing-token"
     var keychainAccount: String { dataRoot.path }
 
     // MARK: Wersja
@@ -109,7 +131,8 @@ struct ServerEnvironment: Sendable {
             ffmpeg: ffmpeg,
             ffprobe: ffprobe,
             nusqlite3: fileManager.fileExists(atPath: nusqlite3.path) ? nusqlite3 : nil,
-            dataRoot: dataRoot
+            dataRoot: dataRoot,
+            listensOnLAN: PairingSettings.load(from: pairingSettingsURL(dataRoot: dataRoot)).isEnabled
         )
     }
 
@@ -146,7 +169,6 @@ struct ServerEnvironment: Sendable {
     var processEnvironment: [String: String] {
         var environment: [String: String] = [
             "NODE_ENV": "production",
-            "HOST": Self.host,
             "PORT": String(Self.port),
             "ROUTER_BASE_PATH": Self.routerBasePath,
             "CONFIG_PATH": configDirectory.path,
@@ -161,6 +183,10 @@ struct ServerEnvironment: Sendable {
         ]
         if let nusqlite3 {
             environment["NUSQLITE3_PATH"] = nusqlite3.path
+        }
+        // Bez `HOST` upstream słucha na wszystkich interfejsach (IPv4 i IPv6).
+        if !listensOnLAN {
+            environment["HOST"] = Self.host
         }
         let inherited = ProcessInfo.processInfo.environment
         for key in ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "TZ"] {

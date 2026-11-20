@@ -6,20 +6,20 @@ struct AudiobookSwiftApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem)
+            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode)
         } label: {
             MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account)
         }
 
         Window("Audiobookshelf", id: WebUIWindow.windowID) {
-            WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account)
+            WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, mode: appDelegate.webMode)
         }
         .defaultSize(width: 1200, height: 800)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
         Window("AudiobookSwift — status", id: StatusWindow.windowID) {
-            StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem)
+            StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, pairing: appDelegate.pairing)
         }
         .defaultSize(width: 720, height: 900)
         .defaultLaunchBehavior(.suppressed)
@@ -70,16 +70,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let supervisor = ServerSupervisor()
     let account = ServerAccount()
     let loginItem = LoginItem()
+    let webMode = WebUIMode()
+    private(set) lazy var pairing = PairingController(supervisor: supervisor, account: account)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if PairingSelfCheck.isRequested {
+            Task { exit(await PairingSelfCheck.run()) }
+            return
+        }
         supervisor.onStateChange = { [weak self] state in
             guard let self else { return }
             if state == .running, let environment = supervisor.environment {
-                Task { await self.account.connect(environment: environment) }
+                Task {
+                    await self.account.connect(environment: environment)
+                    self.pairing.serverDidConnect()
+                }
             } else if state != .running {
                 account.disconnect()
+                pairing.serverDidStop()
             }
         }
+        pairing.activate()
         supervisor.start()
     }
 

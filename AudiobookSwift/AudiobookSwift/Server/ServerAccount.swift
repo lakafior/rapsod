@@ -4,12 +4,15 @@ import OSLog
 
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "AudiobookSwift", category: "Account")
 
-/// Konto aplikacji na serwerze: zakłada roota na czystym serwerze, loguje się
-/// i zarządza bibliotekami przez `AudiobookshelfClient`.
+/// Konta aplikacji na serwerze.
 ///
-/// Root jest zakładany automatycznie z losowym hasłem w pęku kluczy (decyzja z etapu 2),
-/// żeby wybór folderu działał bez formularzy, okno web UI logowało się samo, a etap 3
-/// mógł wydać token klientowi iOS.
+/// **Root** jest zakładany automatycznie z losowym hasłem w pęku kluczy (decyzja z etapu 2)
+/// i służy wyłącznie do obsługi serwera: biblioteki, zakładanie użytkownika, klucze API
+/// oraz tryb „Zarządzanie serwerem” w oknie web UI.
+///
+/// **Użytkownik** to zwykłe konto do słuchania, wymagane i wspólne dla web UI na Macu
+/// i klienta iOS (decyzja z etapu 3) — dzięki temu postęp słuchania jest jeden.
+/// Klient iOS dostaje klucz API tego konta, nigdy roota.
 @MainActor
 @Observable
 final class ServerAccount {
@@ -29,6 +32,23 @@ final class ServerAccount {
         case failed(String)
     }
 
+    enum UserState: Equatable {
+        /// Jeszcze nie sprawdzono (serwer niepołączony).
+        case unknown
+        /// Nie ma konta użytkownika — trzeba je utworzyć.
+        case missing
+        case ready(username: String)
+        /// Dane w pęku kluczy nie pasują do serwera.
+        case invalid(String)
+    }
+
+    enum WebSessionKind: Sendable {
+        /// Zwykłe konto użytkownika.
+        case listening
+        /// Konto root, tylko na czas zarządzania serwerem.
+        case management
+    }
+
     struct ScanProgress: Equatable {
         let folder: URL
         var phase: ScanPhase
@@ -37,6 +57,7 @@ final class ServerAccount {
     private(set) var state: State = .disconnected
     private(set) var libraries: [AudiobookshelfClient.Library] = []
     private(set) var username: String?
+    private(set) var userState: UserState = .unknown
     private(set) var scan: ScanProgress?
 
     var isScanning: Bool {
@@ -47,8 +68,12 @@ final class ServerAccount {
     }
 
     @ObservationIgnored private var client = AudiobookshelfClient(baseURL: ServerEnvironment.baseURL)
-    @ObservationIgnored private var store: CredentialStore?
+    @ObservationIgnored private var store: CredentialStore<AudiobookshelfClient.Credentials>?
     @ObservationIgnored private var credentials: AudiobookshelfClient.Credentials?
+    @ObservationIgnored private var userStore: CredentialStore<AudiobookshelfClient.Credentials>?
+    @ObservationIgnored private var userCredentials: AudiobookshelfClient.Credentials?
+    @ObservationIgnored private var userID: String?
+    @ObservationIgnored private var pairingStore: CredentialStore<AudiobookshelfClient.APIKey>?
     @ObservationIgnored private var accessToken: String?
     /// Rośnie przy każdym połączeniu/rozłączeniu, żeby spóźnione odpowiedzi nie nadpisały stanu.
     @ObservationIgnored private var generation = 0
@@ -60,9 +85,25 @@ final class ServerAccount {
         generation += 1
         let generation = generation
         client = AudiobookshelfClient(baseURL: ServerEnvironment.baseURL)
-        store = CredentialStore(service: ServerEnvironment.keychainService, account: environment.keychainAccount)
+        store = CredentialStore(
+            service: ServerEnvironment.keychainService,
+            account: environment.keychainAccount,
+            label: "AudiobookSwift — konto root audiobookshelf",
+            legacyService: ServerEnvironment.legacyKeychainService
+        )
+        userStore = CredentialStore(
+            service: ServerEnvironment.userKeychainService,
+            account: environment.keychainAccount,
+            label: "AudiobookSwift — konto użytkownika audiobookshelf"
+        )
+        pairingStore = CredentialStore(
+            service: ServerEnvironment.pairingKeychainService,
+            account: environment.keychainAccount,
+            label: "AudiobookSwift — klucz API klienta iOS"
+        )
         accessToken = nil
         state = .connecting
+        userState = .unknown
 
         do {
             let credentials = try await ensureRootAccount()
@@ -73,6 +114,7 @@ final class ServerAccount {
             accessToken = login.accessToken
             username = login.username
             state = .ready
+            await connectUser(generation: generation)
             try await refreshLibraries()
         } catch AudiobookshelfClient.APIError.unauthorized {
             guard generation == self.generation else { return }
@@ -92,7 +134,10 @@ final class ServerAccount {
         generation += 1
         accessToken = nil
         credentials = nil
+        userCredentials = nil
+        userID = nil
         state = .disconnected
+        userState = .unknown
     }
 
     /// Dane logowania podane ręcznie (gdy w pęku kluczy brakuje hasła albo jest nieaktualne).
@@ -105,6 +150,7 @@ final class ServerAccount {
         accessToken = login.accessToken
         self.username = login.username
         state = .ready
+        await connectUser(generation: generation)
         try await refreshLibraries()
     }
 
@@ -130,11 +176,11 @@ final class ServerAccount {
         // inaczej awaria w połowie zostawiłaby roota z hasłem, którego nikt nie zna.
         let credentials = AudiobookshelfClient.Credentials(
             username: ServerEnvironment.rootUsername,
-            password: CredentialStore.generatePassword()
+            password: PasswordGenerator.generate()
         )
         try store.save(credentials)
         guard try store.load() == credentials else {
-            throw CredentialStore.KeychainError(status: errSecDecode)
+            throw KeychainError(status: errSecDecode)
         }
         logger.notice("Zakładam konto root na czystym serwerze")
         try await client.initialize(root: credentials)
@@ -155,11 +201,121 @@ final class ServerAccount {
         }
     }
 
+    // MARK: - Konto użytkownika
+
+    /// Sprawdza konto użytkownika zapisane w pęku kluczy.
+    private func connectUser(generation: Int) async {
+        do {
+            guard let stored = try userStore?.load() else {
+                userState = .missing
+                return
+            }
+            let login = try await client.login(stored)
+            guard generation == self.generation else { return }
+            userCredentials = stored
+            userID = login.userID
+            userState = .ready(username: login.username)
+        } catch AudiobookshelfClient.APIError.unauthorized {
+            guard generation == self.generation else { return }
+            userState = .invalid("Hasło konta użytkownika zapisane w pęku kluczy nie pasuje. Podaj nazwę i aktualne hasło.")
+        } catch {
+            guard generation == self.generation else { return }
+            logger.error("Konto użytkownika: \(error.localizedDescription, privacy: .public)")
+            userState = .invalid(error.localizedDescription)
+        }
+    }
+
+    enum UserSetupError: LocalizedError {
+        case usernameTaken
+        case reserved
+
+        var errorDescription: String? {
+            switch self {
+            case .usernameTaken: "Ta nazwa jest już zajęta na serwerze. Jeśli to Twoje konto, podaj jego hasło."
+            case .reserved: "Konto root służy do zarządzania serwerem — wybierz inną nazwę."
+            }
+        }
+    }
+
+    /// Ustawia konto użytkownika: z hasłem najpierw próbuje zalogować się na istniejące
+    /// konto, a gdy go nie ma — zakłada nowe. Puste hasło oznacza losowe (trafia do pęku kluczy).
+    func setUpUser(username: String, password: String) async throws {
+        guard state == .ready, let userStore else { throw AudiobookshelfClient.APIError.unauthorized }
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard username.lowercased() != ServerEnvironment.rootUsername else { throw UserSetupError.reserved }
+
+        var credentials = AudiobookshelfClient.Credentials(username: username, password: password)
+        var login: AudiobookshelfClient.Login?
+        if !password.isEmpty {
+            login = try? await client.login(credentials)
+        } else {
+            credentials.password = PasswordGenerator.generate()
+        }
+        if login == nil {
+            do {
+                _ = try await authorized { try await $0.createUser(credentials, token: $1) }
+            } catch AudiobookshelfClient.APIError.http(status: 400, _) {
+                throw UserSetupError.usernameTaken
+            }
+            logger.notice("Założono konto użytkownika")
+            login = try await client.login(credentials)
+        }
+        guard let login, login.username.lowercased() != ServerEnvironment.rootUsername else { throw UserSetupError.reserved }
+        try userStore.save(credentials)
+        userCredentials = credentials
+        userID = login.userID
+        userState = .ready(username: login.username)
+    }
+
+    // MARK: - Klucz API klienta iOS
+
+    enum PairingKeyError: LocalizedError {
+        case noUser
+
+        var errorDescription: String? { "Najpierw utwórz konto użytkownika." }
+    }
+
+    /// Klucz API konta użytkownika dla klienta iOS. Klucz z pęku kluczy jest sprawdzany
+    /// na serwerze (ktoś mógł go usunąć w web UI); gdy nie działa, powstaje nowy.
+    func pairingKey() async throws -> AudiobookshelfClient.APIKey {
+        guard let pairingStore, let userID else { throw PairingKeyError.noUser }
+        if let stored = try pairingStore.load() {
+            do {
+                if try await client.me(token: stored.token).id == userID { return stored }
+            } catch AudiobookshelfClient.APIError.unauthorized {
+                // Klucz usunięty albo wyłączony — wydajemy nowy.
+            }
+            try? await authorized { try await $0.deleteAPIKey(id: stored.id, token: $1) }
+        }
+        let key = try await authorized {
+            try await $0.createAPIKey(name: "AudiobookSwift — klient iOS", userID: userID, token: $1)
+        }
+        try pairingStore.save(key)
+        logger.notice("Wydano klucz API dla klienta iOS")
+        return key
+    }
+
+    /// Unieważnia klucz API klienta iOS: usuwa go z serwera i z pęku kluczy.
+    func revokePairingKey() async throws {
+        guard let pairingStore, let stored = try pairingStore.load() else { return }
+        do {
+            try await authorized { try await $0.deleteAPIKey(id: stored.id, token: $1) }
+        } catch AudiobookshelfClient.APIError.http(status: 404, _) {
+            // Klucza już nie ma na serwerze.
+        }
+        try pairingStore.delete()
+        logger.notice("Unieważniono klucz API klienta iOS")
+    }
+
     // MARK: - Web UI
 
     /// Osobna sesja dla okna web UI. Refresh tokeny są rotowane przy odświeżaniu,
     /// więc web UI nie może dzielić sesji z aplikacją.
-    func webSession() async throws -> AudiobookshelfClient.Login {
+    func webSession(_ kind: WebSessionKind) async throws -> AudiobookshelfClient.Login {
+        let credentials = switch kind {
+        case .listening: userCredentials
+        case .management: self.credentials
+        }
         guard state == .ready, let credentials else { throw AudiobookshelfClient.APIError.unauthorized }
         return try await client.login(credentials, returnRefreshToken: true)
     }

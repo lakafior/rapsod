@@ -14,6 +14,9 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Audioboo
 struct WebUIView: NSViewRepresentable {
     let url: URL
     var login: AudiobookshelfClient.Login?
+    /// Sesja tylko w pamięci (tryb zarządzania): token roota nie trafia do trwałego
+    /// magazynu WebKit i nie nadpisuje sesji zwykłego użytkownika.
+    var isEphemeral = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -21,6 +24,9 @@ struct WebUIView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        if isEphemeral {
+            configuration.websiteDataStore = .nonPersistent()
+        }
         if let login {
             configuration.userContentController.addUserScript(Self.tokenScript(accessToken: login.accessToken))
         }

@@ -7,6 +7,7 @@ struct StatusWindow: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
     let loginItem: LoginItem
+    let pairing: PairingController
 
     var body: some View {
         VSplitView {
@@ -14,6 +15,12 @@ struct StatusWindow: View {
                 serverSection
                 Section("Biblioteki") {
                     LibrarySection(supervisor: supervisor, account: account)
+                }
+                Section("Konto użytkownika") {
+                    UserAccountSection(account: account)
+                }
+                Section("Parowanie z iPhone’em") {
+                    PairingSection(pairing: pairing, account: account)
                 }
                 loginItemSection
             }
@@ -43,7 +50,7 @@ struct StatusWindow: View {
                 FailureView(message: message, log: supervisor.recentLog)
             }
             LabeledContent("Wersja audiobookshelf", value: supervisor.environment?.serverVersion ?? "—")
-            LabeledContent("Adres") {
+            LabeledContent("Adres na tym Macu") {
                 if let url = supervisor.webURL {
                     Link(url.absoluteString, destination: url)
                 } else {
@@ -64,7 +71,7 @@ struct StatusWindow: View {
                 }
             }
             if account.state == .ready, let username = account.username {
-                LabeledContent("Konto aplikacji", value: "\(username) (hasło w pęku kluczy)")
+                LabeledContent("Konto do zarządzania", value: "\(username) (hasło w pęku kluczy)")
             }
             HStack {
                 Spacer()

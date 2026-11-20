@@ -4,6 +4,7 @@ struct ServerMenu: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
     let loginItem: LoginItem
+    let webMode: WebUIMode
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -12,9 +13,16 @@ struct ServerMenu: View {
         Divider()
 
         Button("Otwórz") {
+            webMode.isManagement = false
             openWindow.bringToFront(id: WebUIWindow.windowID)
         }
         .keyboardShortcut("o")
+
+        Button("Zarządzanie serwerem…") {
+            webMode.isManagement = true
+            openWindow.bringToFront(id: WebUIWindow.windowID)
+        }
+        .disabled(account.state != .ready)
 
         Button("Dodaj folder z audiobookami…") {
             Task {
