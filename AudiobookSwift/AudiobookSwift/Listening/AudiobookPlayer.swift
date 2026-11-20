@@ -255,7 +255,6 @@ final class AudiobookPlayer {
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
 
-    /// Przewija do miejsca na osi czasu książki; między plikami ładuje właściwy plik.
     /// Nowe rozdziały bieżącej książki (edycja w oknie biblioteki); ścieżki i pozycja bez zmian.
     func replaceChapters(_ chapters: [Chapter]) {
         guard book != nil else { return }
@@ -264,6 +263,7 @@ final class AudiobookPlayer {
         if id != currentChapterID { currentChapterID = id }
     }
 
+    /// Przewija do miejsca na osi czasu książki; między plikami ładuje właściwy plik.
     func seek(to time: Double) {
         guard let book else { return }
         let target = min(max(0, time), max(0, book.duration - 0.5))
