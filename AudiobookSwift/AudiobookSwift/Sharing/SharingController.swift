@@ -95,9 +95,10 @@ final class SharingController {
 
     private func refreshAddresses() {
         let hosts = (LocalNetwork.localHostName.map { [$0] } ?? []) + LocalNetwork.ipv4Addresses()
-        localURLs = hosts.compactMap {
-            URL(string: "http://\($0):\(ServerEnvironment.port)\(ServerEnvironment.routerBasePath)")
-        }
+        // Bez ścieżki bazowej: upstream sam dopisuje `ROUTER_BASE_PATH` do żądań, które jej
+        // nie mają (`server/Server.js`), więc krótszy adres działa w każdym kliencie —
+        // także takim, który obcina ścieżkę z adresu serwera.
+        localURLs = hosts.compactMap { URL(string: "http://\($0):\(ServerEnvironment.port)") }
     }
 
     private func saveSettings() {

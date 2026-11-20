@@ -4,11 +4,6 @@ import SystemConfiguration
 
 /// Nazwy i adresy tego Maca w sieci lokalnej.
 enum LocalNetwork {
-    /// Nazwa komputera z Ustawień systemowych (np. „Mac mini — Marek”).
-    static var computerName: String {
-        (SCDynamicStoreCopyComputerName(nil, nil) as String?) ?? ProcessInfo.processInfo.hostName
-    }
-
     /// Nazwa mDNS z końcówką `.local` albo `nil`, gdy system jej nie ma.
     static var localHostName: String? {
         (SCDynamicStoreCopyLocalHostName(nil) as String?).map { "\($0).local" }
