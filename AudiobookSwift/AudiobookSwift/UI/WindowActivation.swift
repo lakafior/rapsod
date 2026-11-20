@@ -38,14 +38,21 @@ struct ReleasedWhenClosed<Content: View>: View {
 
 /// Systemowe okno wyboru folderu biblioteki.
 @MainActor
-func chooseLibraryFolder() async -> URL? {
+func chooseLibraryFolder(for kind: ServerAccount.LibraryKind = .audiobooks) async -> URL? {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = false
-    panel.canCreateDirectories = false
     panel.prompt = "Wybierz"
-    panel.message = "Wybierz folder z audiobookami. Każdy audiobook najlepiej w osobnym podfolderze (np. Autor/Tytuł)."
+    switch kind {
+    case .audiobooks:
+        panel.canCreateDirectories = false
+        panel.message = "Wybierz folder z audiobookami. Każdy audiobook najlepiej w osobnym podfolderze (np. Autor/Tytuł)."
+    case .podcasts:
+        // Folder podcastów bywa nowy i pusty: serwer pobiera do niego odcinki.
+        panel.canCreateDirectories = true
+        panel.message = "Wybierz folder na podcasty. Może być pusty — serwer będzie pobierał do niego odcinki, każdy podcast do osobnego podfolderu."
+    }
     NSApp.activate()
     let response = await panel.begin()
     return response == .OK ? panel.url : nil

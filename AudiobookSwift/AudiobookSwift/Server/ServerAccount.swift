@@ -49,8 +49,39 @@ final class ServerAccount {
         case management
     }
 
+    /// Rodzaj biblioteki tworzonej z folderu. Upstream nie pozwala zmienić typu
+    /// istniejącej biblioteki, więc wybór zapada przy dodawaniu.
+    enum LibraryKind: Equatable {
+        case audiobooks
+        case podcasts
+
+        var mediaType: String {
+            switch self {
+            case .audiobooks: "book"
+            case .podcasts: "podcast"
+            }
+        }
+
+        /// Domyślne źródło metadanych; `nil` zostawia domyślne upstreamu (`google`).
+        var provider: String? {
+            switch self {
+            case .audiobooks: nil
+            case .podcasts: "itunes"
+            }
+        }
+
+        /// Ikona biblioteki w web UI; `nil` zostawia domyślną upstreamu.
+        var icon: String? {
+            switch self {
+            case .audiobooks: nil
+            case .podcasts: "podcast"
+            }
+        }
+    }
+
     struct ScanProgress: Equatable {
         let folder: URL
+        var kind: LibraryKind = .audiobooks
         var phase: ScanPhase
     }
 
@@ -308,10 +339,10 @@ final class ServerAccount {
     }
 
     /// Tworzy bibliotekę z folderu i czeka na koniec pierwszego skanu.
-    func addLibrary(folder: URL) async {
+    func addLibrary(folder: URL, kind: LibraryKind = .audiobooks) async {
         guard state == .ready, !isScanning else { return }
         let folder = folder.standardizedFileURL
-        scan = ScanProgress(folder: folder, phase: .creating)
+        scan = ScanProgress(folder: folder, kind: kind, phase: .creating)
 
         do {
             if let existing = libraryOverlapping(folder) {
@@ -324,7 +355,14 @@ final class ServerAccount {
 
             let name = FileManager.default.displayName(atPath: folder.path)
             let library = try await authorized {
-                try await $0.createLibrary(name: name, folderPath: folder.path, token: $1)
+                try await $0.createLibrary(
+                    name: name,
+                    folderPath: folder.path,
+                    mediaType: kind.mediaType,
+                    provider: kind.provider,
+                    icon: kind.icon,
+                    token: $1
+                )
             }
             try await refreshLibraries()
 

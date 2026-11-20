@@ -25,16 +25,6 @@ struct ServerMenu: View {
         }
         .disabled(account.state != .ready)
 
-        Button("Dodaj folder z audiobookami…") {
-            Task {
-                guard let folder = await chooseLibraryFolder() else { return }
-                // Postęp skanu widać na podstronie „Biblioteki”.
-                openWindow.openSettings(.libraries, navigation: settings)
-                await account.addLibrary(folder: folder)
-            }
-        }
-        .disabled(account.state != .ready || account.isScanning)
-
         Button("\(SettingsWindow.title)…") {
             openWindow.openSettings(navigation: settings)
         }

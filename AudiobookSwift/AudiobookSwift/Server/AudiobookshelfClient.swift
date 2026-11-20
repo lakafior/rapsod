@@ -162,14 +162,25 @@ struct AudiobookshelfClient: Sendable {
     }
 
     /// Tworzy bibliotekę z jednym folderem. Serwer jej nie skanuje — zob. `scanLibrary`.
-    func createLibrary(name: String, folderPath: String, mediaType: String = "book", token: String) async throws -> Library {
+    /// `provider` i `icon` są opcjonalne: bez nich upstream przyjmuje `google` i `database`
+    /// (dobre dla książek; biblioteka podcastów potrzebuje `itunes`).
+    func createLibrary(
+        name: String,
+        folderPath: String,
+        mediaType: String = "book",
+        provider: String? = nil,
+        icon: String? = nil,
+        token: String
+    ) async throws -> Library {
         struct Folder: Encodable { let fullPath: String }
         struct Body: Encodable {
             let name: String
             let folders: [Folder]
             let mediaType: String
+            let provider: String?
+            let icon: String?
         }
-        let body = Body(name: name, folders: [Folder(fullPath: folderPath)], mediaType: mediaType)
+        let body = Body(name: name, folders: [Folder(fullPath: folderPath)], mediaType: mediaType, provider: provider, icon: icon)
         return try decode(Library.self, from: await send("POST", "api/libraries", body: body, token: token))
     }
 

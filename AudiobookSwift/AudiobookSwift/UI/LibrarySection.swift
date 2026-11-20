@@ -40,7 +40,8 @@ struct LibrarySection: View {
         ForEach(account.libraries) { library in
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(library.name)
+                    Label(library.name, systemImage: library.mediaType == "podcast" ? "antenna.radiowaves.left.and.right" : "books.vertical")
+                        .help(library.mediaType == "podcast" ? "Biblioteka podcastów" : "Biblioteka audiobooków")
                     ForEach(library.folders, id: \.self) { folder in
                         Text(folder.fullPath)
                             .font(.caption)
@@ -69,11 +70,9 @@ struct LibrarySection: View {
                 openWindow.bringToFront(id: WebUIWindow.windowID)
             }
         }
-        Button("Dodaj folder z audiobookami…") {
-            Task {
-                guard let folder = await chooseLibraryFolder() else { return }
-                await account.addLibrary(folder: folder)
-            }
+        HStack {
+            Button("Dodaj folder z audiobookami…") { add(.audiobooks) }
+            Button("Dodaj folder z podcastami…") { add(.podcasts) }
         }
         .disabled(account.isScanning)
         .confirmationDialog(
@@ -88,6 +87,13 @@ struct LibrarySection: View {
             Button("Anuluj", role: .cancel) {}
         } message: { _ in
             Text("Biblioteka zniknie z serwera razem z postępem słuchania, kolekcjami i metadanymi jej pozycji. Pliki w folderze zostaną na dysku nietknięte.")
+        }
+    }
+
+    private func add(_ kind: ServerAccount.LibraryKind) {
+        Task {
+            guard let folder = await chooseLibraryFolder(for: kind) else { return }
+            await account.addLibrary(folder: folder, kind: kind)
         }
     }
 
@@ -121,6 +127,13 @@ struct ScanProgressRow: View {
         case .scanning:
             ProgressView("Skanowanie folderu „\(scan.folder.lastPathComponent)”…")
                 .controlSize(.small)
+        case .finished(let items) where items == 0 && scan.kind == .podcasts:
+            HStack {
+                Label("Biblioteka podcastów utworzona. Folder jest pusty — podcasty dodasz w bibliotece, wyszukując je lub podając adres RSS.", systemImage: "checkmark.circle")
+                    .foregroundStyle(.green)
+                Spacer()
+                Button("Otwórz bibliotekę", action: openLibrary)
+            }
         case .finished(let items) where items == 0:
             Label(
                 "Biblioteka utworzona, ale skan nie znalazł audiobooków. Sprawdź, czy pliki audio są w podfolderach i czy aplikacja ma dostęp do folderu (Ustawienia systemowe → Prywatność i ochrona).",
