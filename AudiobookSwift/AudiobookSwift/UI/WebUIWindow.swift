@@ -15,10 +15,13 @@ final class WebUIMode {
 /// „Zarządzanie serwerem” przełącza na konto root w sesji trzymanej tylko w pamięci.
 struct WebUIWindow: View {
     static let windowID = "web-ui"
+    static let title = "Biblioteka"
+    static let managementTitle = "Zarządzanie serwerem"
 
     let supervisor: ServerSupervisor
     let account: ServerAccount
     let mode: WebUIMode
+    let settings: SettingsNavigation
 
     /// Sesja przygotowana dla konkretnego trybu; `login == nil` oznacza ręczne logowanie.
     private struct WebSession {
@@ -79,11 +82,13 @@ struct WebUIWindow: View {
                     Text(message)
                 } actions: {
                     Button("Uruchom ponownie") { supervisor.start() }
-                    Button("Status i logi…") { openWindow.bringToFront(id: StatusWindow.windowID) }
+                    Button("Ustawienia i log…") { openWindow.openSettings(.general, navigation: settings) }
                 }
             }
         }
         .frame(minWidth: 800, maxWidth: .infinity, minHeight: 500, maxHeight: .infinity)
+        // Dwa tryby jednego okna rozróżnia tytuł (Dock, Mission Control, menu Okno).
+        .navigationTitle(mode.isManagement ? Self.managementTitle : Self.title)
         .task(id: SessionKey(account: account.state, user: account.userState, isManagement: mode.isManagement)) {
             await prepareSession()
         }

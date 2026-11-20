@@ -35,7 +35,7 @@ LubimyCzytać, Audioteka, Storytel i Audible jako jedno opcjonalne źródło w o
 ### Bardziej natywna aplikacja
 
 - Angielska wersja językowa (dziś interfejs jest tylko po polsku).
-- Okno Ustawień pod ⌘, z zakładkami zamiast jednego okna statusu.
+- ~~Okno Ustawień pod ⌘, zamiast jednego okna statusu~~ — zrobione: „Ustawienia aplikacji” z podstronami i ikona w Docku, gdy otwarte jest jakiekolwiek okno.
 - Integracja z systemem: powiadomienie po zakończeniu skanu, akcje dla Skrótów, upuszczenie folderu na ikonę w pasku menu.
 - Automatyczne aktualizacje (Sparkle).
 - Natywna biblioteka i odtwarzacz w SwiftUI — osobna, duża decyzja.

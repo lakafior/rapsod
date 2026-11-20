@@ -39,7 +39,7 @@ private struct UserAccountForm: View {
     }
 }
 
-/// Wiersze sekcji „Konto użytkownika” w oknie statusu.
+/// Wiersze sekcji „Konto użytkownika” w ustawieniach aplikacji (podstrona „Konta”).
 struct UserAccountSection: View {
     let account: ServerAccount
 
@@ -47,7 +47,7 @@ struct UserAccountSection: View {
         switch account.userState {
         case .ready(let username):
             LabeledContent("Konto do słuchania", value: "\(username) (hasło w pęku kluczy)")
-            Text("To konto loguje okno „Otwórz” na Macu i aplikację na telefonie, więc postęp słuchania jest wspólny. Konto root służy tylko do zarządzania serwerem.")
+            Text("To konto loguje okno biblioteki na Macu i aplikację na telefonie, więc postęp słuchania jest wspólny. Konto root służy tylko do zarządzania serwerem.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         case .missing:

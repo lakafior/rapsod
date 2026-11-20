@@ -6,24 +6,27 @@ struct AudiobookSwiftApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode)
+            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
         } label: {
-            MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account)
+            MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation)
+        }
+        .commands {
+            AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
         }
 
-        Window("Audiobookshelf", id: WebUIWindow.windowID) {
-            WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, mode: appDelegate.webMode)
+        Window(WebUIWindow.title, id: WebUIWindow.windowID) {
+            WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, mode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
         }
         .defaultSize(width: 1200, height: 800)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
-        Window("AudiobookSwift — status", id: StatusWindow.windowID) {
+        Window(SettingsWindow.title, id: SettingsWindow.windowID) {
             ReleasedWhenClosed {
-                StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, sharing: appDelegate.sharing, metadataSources: appDelegate.metadataSources)
+                SettingsWindow(models: appDelegate.models, navigation: appDelegate.settingsNavigation)
             }
         }
-        .defaultSize(width: 720, height: 900)
+        .defaultSize(width: 860, height: 700)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
@@ -42,6 +45,8 @@ struct AudiobookSwiftApp: App {
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+        // Ekran powitalny otwiera się sam; w menu Okno byłby zbędny.
+        .commandsRemoved()
 
         Window("O programie AudiobookSwift", id: AboutWindow.windowID) {
             AboutWindow(supervisor: appDelegate.supervisor)
@@ -49,15 +54,18 @@ struct AudiobookSwiftApp: App {
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+        // Otwierane z menu aplikacji („O programie”).
+        .commandsRemoved()
     }
 }
 
 /// Ikona na pasku menu. Jest jedynym widokiem, który żyje przez cały czas działania
 /// aplikacji, więc to ona otwiera ekran powitalny, gdy serwer nie ma żadnej biblioteki,
-/// i okno statusu, gdy serwer nie wstanie.
+/// i ustawienia, gdy serwer nie wstanie.
 private struct MenuBarLabel: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
+    let settings: SettingsNavigation
     @Environment(\.openWindow) private var openWindow
     @State private var welcomeShown = false
 
@@ -77,7 +85,7 @@ private struct MenuBarLabel: View {
             .onChange(of: supervisor.state) {
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
                 if case .failed = supervisor.state {
-                    openWindow.bringToFront(id: StatusWindow.windowID)
+                    openWindow.openSettings(.general, navigation: settings)
                 }
             }
     }
@@ -89,8 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let account = ServerAccount()
     let loginItem = LoginItem()
     let webMode = WebUIMode()
+    let settingsNavigation = SettingsNavigation()
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
+    private(set) lazy var models = AppModels(supervisor: supervisor, account: account, loginItem: loginItem, sharing: sharing, metadataSources: metadataSources)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         supervisor.onStateChange = { [weak self] state in
@@ -101,12 +111,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 account.disconnect()
             }
         }
+        DockIcon.shared.activate()
         sharing.activate()
         metadataSources.activate()
         supervisor.start()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        DockIcon.reopen(hasVisibleWindows: hasVisibleWindows)
+        return false
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // ⌘Q i „Zakończ” w Docku tylko zamykają okna — serwer działa dalej.
+        guard AppQuit.shouldTerminate else {
+            DockIcon.closeAllWindows()
+            return .terminateCancel
+        }
         guard supervisor.hasProcess || sharing.hasRunningExternalAccess || metadataSources.hasProcess else { return .terminateNow }
         Task {
             // Najpierw tunel, żeby nie przekazywał ruchu do zamykanego serwera.

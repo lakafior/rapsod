@@ -31,7 +31,7 @@ struct MetadataSourcesWindow: View {
                 ContentUnavailableView(
                     "Źródła metadanych są wyłączone",
                     systemImage: "text.book.closed",
-                    description: Text("Włącz je w oknie „Status i logi”.")
+                    description: Text("Włącz je w Ustawieniach aplikacji, na stronie „Źródła metadanych”.")
                 )
             } else {
                 switch content {

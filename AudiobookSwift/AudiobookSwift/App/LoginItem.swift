@@ -9,7 +9,7 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Audioboo
 ///
 /// Stan nie jest przechowywany po naszej stronie: użytkownik może go zmienić w Ustawieniach
 /// systemowych (Ogólne → Rzeczy otwierane podczas logowania), więc odczytujemy go z systemu
-/// przy każdym otwarciu menu i pokazaniu okna statusu.
+/// przy każdym otwarciu menu i pokazaniu ustawień aplikacji.
 @MainActor
 @Observable
 final class LoginItem {

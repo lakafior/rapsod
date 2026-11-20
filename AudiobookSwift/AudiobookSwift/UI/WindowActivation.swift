@@ -1,10 +1,13 @@
 import SwiftUI
 
 extension OpenWindowAction {
-    /// Otwiera okno i wysuwa je na wierzch. Aplikacja bez ikony w Docku nie staje się
+    /// Otwiera okno i wysuwa je na wierzch. Aplikacja bez okien nie ma ikony w Docku i nie staje się
     /// aktywna sama z siebie, a `activate()` jest tylko prośbą — okno wysuwamy niezależnie.
     @MainActor
     func bringToFront(id: String) {
+        // Ikona w Docku jest potrzebna, zanim aplikacja poprosi o aktywację: tylko w tej
+        // chwili (zaraz po kliknięciu w menu) system ją przyzna. Dalej pilnuje `DockIcon`.
+        DockIcon.shared.windowWillOpen()
         callAsFunction(id: id)
         NSApp.activate()
         Task {

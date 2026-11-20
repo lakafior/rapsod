@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Biblioteki na serwerze i dodawanie folderu — wspólne dla okna powitalnego i okna statusu.
+/// Biblioteki na serwerze i dodawanie folderu — wspólne dla okna powitalnego i podstrony „Biblioteki”.
 struct LibrarySection: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount

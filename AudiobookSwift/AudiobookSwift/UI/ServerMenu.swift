@@ -5,6 +5,7 @@ struct ServerMenu: View {
     let account: ServerAccount
     let loginItem: LoginItem
     let webMode: WebUIMode
+    let settings: SettingsNavigation
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -12,7 +13,7 @@ struct ServerMenu: View {
 
         Divider()
 
-        Button("Otwórz") {
+        Button("Otwórz bibliotekę") {
             webMode.isManagement = false
             openWindow.bringToFront(id: WebUIWindow.windowID)
         }
@@ -27,17 +28,17 @@ struct ServerMenu: View {
         Button("Dodaj folder z audiobookami…") {
             Task {
                 guard let folder = await chooseLibraryFolder() else { return }
-                // Postęp skanu widać w oknie statusu.
-                openWindow.bringToFront(id: StatusWindow.windowID)
+                // Postęp skanu widać na podstronie „Biblioteki”.
+                openWindow.openSettings(.libraries, navigation: settings)
                 await account.addLibrary(folder: folder)
             }
         }
         .disabled(account.state != .ready || account.isScanning)
 
-        Button("Status i logi…") {
-            openWindow.bringToFront(id: StatusWindow.windowID)
+        Button("\(SettingsWindow.title)…") {
+            openWindow.openSettings(navigation: settings)
         }
-        .keyboardShortcut("l")
+        .keyboardShortcut(",")
 
         Divider()
 
@@ -74,8 +75,9 @@ struct ServerMenu: View {
             openWindow.bringToFront(id: AboutWindow.windowID)
         }
 
+        // Jedyne miejsce (poza menu aplikacji) pełnego zakończenia razem z serwerem.
         Button("Zakończ") {
-            NSApp.terminate(nil)
+            AppQuit.quit()
         }
         .keyboardShortcut("q")
     }
@@ -88,7 +90,7 @@ extension ServerState {
         case .starting: "Uruchamianie serwera…"
         case .running: "Serwer działa"
         case .stopping: "Zatrzymywanie serwera…"
-        case .failed: "Błąd serwera — szczegóły w „Status i logi”"
+        case .failed: "Błąd serwera — szczegóły w ustawieniach"
         }
     }
 

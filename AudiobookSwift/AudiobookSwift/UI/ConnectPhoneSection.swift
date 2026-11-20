@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wiersze sekcji „Połącz telefon” w oknie statusu: wszystko, co trzeba przepisać
+/// Wiersze sekcji „Połącz telefon” (podstrona „Udostępnianie” ustawień): wszystko, co trzeba przepisać
 /// do dowolnego klienta audiobookshelf (adres, nazwa użytkownika, hasło).
 struct ConnectPhoneSection: View {
     let sharing: SharingController
