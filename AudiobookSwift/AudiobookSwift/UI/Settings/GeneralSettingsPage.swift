@@ -1,41 +1,17 @@
 import SwiftUI
 
-/// Stan serwera, biblioteki, start przy logowaniu i podgląd logu na żywo.
-struct StatusWindow: View {
-    static let windowID = "status"
+/// Ogólne: stan i sterowanie serwerem, wersja, adres, folder danych, start przy logowaniu.
+struct GeneralSettingsPage: View {
+    let models: AppModels
 
-    let supervisor: ServerSupervisor
-    let account: ServerAccount
-    let loginItem: LoginItem
-    let sharing: SharingController
+    private var supervisor: ServerSupervisor { models.supervisor }
+    private var loginItem: LoginItem { models.loginItem }
 
     var body: some View {
-        VSplitView {
-            Form {
-                serverSection
-                Section("Biblioteki") {
-                    LibrarySection(supervisor: supervisor, account: account)
-                }
-                Section("Konto użytkownika") {
-                    UserAccountSection(account: account)
-                }
-                Section("Połącz telefon") {
-                    ConnectPhoneSection(sharing: sharing, supervisor: supervisor, account: account)
-                }
-                loginItemSection
-            }
-            .formStyle(.grouped)
-            .frame(minHeight: 260, idealHeight: 560)
-
-            LogView(lines: supervisor.recentLog, dataRoot: dataRoot)
-                .frame(minHeight: 180)
+        SettingsForm {
+            serverSection
+            loginItemSection
         }
-        .frame(minWidth: 620, minHeight: 560)
-        .onAppear { loginItem.refresh() }
-    }
-
-    private var dataRoot: URL? {
-        supervisor.environment?.dataRoot ?? (try? ServerEnvironment.resolveDataRoot())
     }
 
     // MARK: Serwer
@@ -59,19 +35,16 @@ struct StatusWindow: View {
             }
             LabeledContent("Folder danych") {
                 HStack {
-                    Text(dataRoot?.path ?? "—")
+                    Text(supervisor.dataRoot?.path ?? "—")
                         .textSelection(.enabled)
                         .truncationMode(.middle)
                         .lineLimit(1)
-                    if let dataRoot {
+                    if let dataRoot = supervisor.dataRoot {
                         Button("Pokaż w Finderze") {
                             NSWorkspace.shared.activateFileViewerSelecting([dataRoot])
                         }
                     }
                 }
-            }
-            if account.state == .ready, let username = account.username {
-                LabeledContent("Konto do zarządzania", value: "\(username) (hasło w pęku kluczy)")
             }
             HStack {
                 Spacer()
@@ -88,7 +61,7 @@ struct StatusWindow: View {
     // MARK: Start przy logowaniu
 
     private var loginItemSection: some View {
-        Section("Ogólne") {
+        Section("Aplikacja") {
             Toggle("Uruchamiaj przy logowaniu", isOn: Binding(
                 get: { loginItem.isEnabled },
                 set: { loginItem.setEnabled($0) }
@@ -105,6 +78,13 @@ struct StatusWindow: View {
                 Text(error).foregroundStyle(.red)
             }
         }
+    }
+}
+
+extension ServerSupervisor {
+    /// Folder danych serwera — także wtedy, gdy serwer jeszcze nie wystartował.
+    var dataRoot: URL? {
+        environment?.dataRoot ?? (try? ServerEnvironment.resolveDataRoot())
     }
 }
 
@@ -133,61 +113,6 @@ private struct FailureView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
     }
-}
-
-/// Podgląd `ServerSupervisor.recentLog` z kopiowaniem.
-private struct LogView: View {
-    let lines: [String]
-    let dataRoot: URL?
-    @State private var followTail = true
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Log serwera")
-                    .font(.headline)
-                Spacer()
-                Toggle("Przewijaj automatycznie", isOn: $followTail)
-                    .toggleStyle(.checkbox)
-                Button("Kopiuj log") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
-                }
-                .disabled(lines.isEmpty)
-                if let dataRoot {
-                    Button("Otwórz folder danych") {
-                        NSWorkspace.shared.open(dataRoot)
-                    }
-                }
-            }
-            .padding(8)
-
-            Divider()
-
-            ScrollViewReader { proxy in
-                ScrollView([.vertical, .horizontal]) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(lines.isEmpty ? "Brak wpisów." : lines.joined(separator: "\n"))
-                            .font(.caption.monospaced())
-                            .foregroundStyle(lines.isEmpty ? .secondary : .primary)
-                            .textSelection(.enabled)
-                            .fixedSize()
-                        Color.clear.frame(height: 1).id(Self.bottomID)
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(Color(nsColor: .textBackgroundColor))
-                .onChange(of: lines.last, initial: true) {
-                    if followTail {
-                        proxy.scrollTo(Self.bottomID, anchor: .bottomLeading)
-                    }
-                }
-            }
-        }
-    }
-
-    private static let bottomID = "bottom"
 }
 
 extension ServerState {
