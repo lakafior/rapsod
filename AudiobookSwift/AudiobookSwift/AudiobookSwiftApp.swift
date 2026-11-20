@@ -19,7 +19,9 @@ struct AudiobookSwiftApp: App {
         .restorationBehavior(.disabled)
 
         Window("AudiobookSwift — status", id: StatusWindow.windowID) {
-            StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, sharing: appDelegate.sharing)
+            ReleasedWhenClosed {
+                StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, sharing: appDelegate.sharing)
+            }
         }
         .defaultSize(width: 720, height: 900)
         .defaultLaunchBehavior(.suppressed)

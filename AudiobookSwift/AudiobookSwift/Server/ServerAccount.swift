@@ -112,9 +112,12 @@ final class ServerAccount {
             self.credentials = credentials
             accessToken = login.accessToken
             username = login.username
+            // Biblioteki przed `.ready`: inaczej przez chwilę wygląda, że serwer nie ma
+            // żadnej, i przy każdym starcie otwiera się ekran powitalny.
+            try await refreshLibraries()
+            guard generation == self.generation else { return }
             state = .ready
             await connectUser(generation: generation)
-            try await refreshLibraries()
         } catch AudiobookshelfClient.APIError.unauthorized {
             guard generation == self.generation else { return }
             state = .needsPassword("Hasło konta root zapisane w pęku kluczy nie pasuje — podaj aktualne.")

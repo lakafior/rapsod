@@ -90,8 +90,14 @@ struct WebUIWindow: View {
         .onChange(of: supervisor.state) {
             if supervisor.state != .running { session = nil }
         }
-        // Zamknięcie okna kończy tryb zarządzania.
-        .onDisappear { mode.isManagement = false }
+        .onDisappear {
+            // Scena `Window` po zamknięciu tylko chowa okno i trzyma jego widoki. Bez sesji
+            // `WKWebView` znika z hierarchii, a z nim procesy WebKit (WebContent ok. 130 MB);
+            // po ponownym otwarciu `task(id:)` loguje od nowa.
+            session = nil
+            // Zamknięcie okna kończy tryb zarządzania.
+            mode.isManagement = false
+        }
     }
 
     private var managementBar: some View {

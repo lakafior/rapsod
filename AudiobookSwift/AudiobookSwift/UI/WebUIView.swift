@@ -4,8 +4,8 @@ import WebKit
 
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "AudiobookSwift", category: "WebUI")
 
-/// `WKWebView` z web UI serwera. Sesja (token w localStorage) żyje w domyślnym
-/// magazynie danych WebKit, więc przetrwa zamknięcie okna i restart aplikacji.
+/// `WKWebView` z web UI serwera. Sesja (token w localStorage) żyje w trwałym magazynie
+/// danych WebKit, więc przetrwa zamknięcie okna i restart aplikacji.
 ///
 /// Z `login` web UI loguje się samo: klient web trzyma access token w
 /// `localStorage['token']`, a refresh token w ciasteczku `refresh_token`
@@ -24,9 +24,7 @@ struct WebUIView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        if isEphemeral {
-            configuration.websiteDataStore = .nonPersistent()
-        }
+        configuration.websiteDataStore = isEphemeral ? .nonPersistent() : Self.persistentStore()
         if let login {
             configuration.userContentController.addUserScript(Self.tokenScript(accessToken: login.accessToken))
         }
@@ -53,6 +51,16 @@ struct WebUIView: NSViewRepresentable {
         }
         return webView
     }
+
+    /// Trwały magazyn z własnym identyfikatorem zamiast `WKWebsiteDataStore.default()`.
+    /// Domyślny magazyn to singleton WebKit, który raz użyty trzyma proces
+    /// `com.apple.WebKit.Networking` do końca życia aplikacji. Ten po zamknięciu okna
+    /// znika razem z widokiem i z nim kończy się proces.
+    private static func persistentStore() -> WKWebsiteDataStore {
+        WKWebsiteDataStore(forIdentifier: persistentStoreID)
+    }
+
+    private static let persistentStoreID = UUID(uuidString: "78D7D672-BD04-4EFF-8932-9BCD749E3D05")!
 
     /// Ustawia token przed uruchomieniem skryptów strony; tylko przy pierwszym załadowaniu
     /// dokumentu, żeby nie nadpisywać tokenu odświeżonego później przez samo web UI.

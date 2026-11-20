@@ -15,6 +15,24 @@ extension OpenWindowAction {
     }
 }
 
+/// Treść okna istnieje tylko wtedy, gdy okno jest otwarte. Scena `Window` po zamknięciu
+/// tylko chowa okno i trzyma jego widoki (z obserwacją modelu włącznie), więc puste
+/// zamknięte okno zwalnia to, co zajmowały.
+struct ReleasedWhenClosed<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var isOpen = true
+
+    var body: some View {
+        ZStack {
+            if isOpen {
+                content()
+            }
+        }
+        .onAppear { isOpen = true }
+        .onDisappear { isOpen = false }
+    }
+}
+
 /// Systemowe okno wyboru folderu biblioteki.
 @MainActor
 func chooseLibraryFolder() async -> URL? {
