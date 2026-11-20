@@ -30,17 +30,13 @@ LubimyCzytać, Audioteka, Storytel i Audible jako jedno opcjonalne źródło w o
 - **Konfiguracja i wyszukiwarka:** strony agregatora pokazywane w oknie aplikacji.
 - **Do sprawdzenia przed publikacją:** źródła pobierają dane ze stron serwisów, więc trzeba przejrzeć ich regulaminy pod kątem dystrybucji w publicznej aplikacji.
 
-## Przed następnym wydaniem
-
-- **Podbić `vendor/aio-abs-providers`.** Submodule jest przypięty do `1f1a880`, a w agregatorze są nowsze zmiany (od `1ae6500`: niemiecki sklep Audioteki, tytuł oryginalny, tylko prawdziwe numery ISBN, większe okładki z Audible). Kroki: przesunąć przypięcie na aktualny `origin/main` agregatora, `scripts/build-providers.sh`, sprawdzić wyszukiwanie w aplikacji i zbudować wydanie.
-
 ## Planowane
 
 ### Natywne słuchanie i zarządzanie zamiast web UI
 
 Cel: słuchanie i codzienne zarządzanie w natywnych oknach, bez WebKit (web UI zajmuje ok. 158 MB, gdy jest otwarte). Kilka sesji pracy, nie osobny duży projekt.
 
-- **9a. Odtwarzacz.** Przeniesiony z projektu Dove (`AudiobookPlayer.swift`: kolejka plików, rozdziały, przewijanie, timer usypiania, „Teraz odtwarzane” i klawisze multimedialne) wraz z widokiem odtwarzacza. Do tego lista „Słuchaj dalej” i prosta lista książek. Pliki odtwarzane prosto z dysku, bo serwer działa na tym samym Macu; postęp synchronizowany z serwerem, żeby telefon widział to samo.
+- **9a. Odtwarzacz — zrobione.** Przeniesiony z projektu Dove (`AudiobookPlayer.swift`: kolejka plików, rozdziały, przewijanie, timer usypiania, „Teraz odtwarzane” i klawisze multimedialne) wraz z widokiem odtwarzacza. Do tego lista „Słuchaj dalej” i prosta lista książek. Pliki odtwarzane prosto z dysku, bo serwer działa na tym samym Macu; postęp synchronizowany z serwerem, żeby telefon widział to samo.
 - **9b. Przeglądarka biblioteki.** Okładki, serie, autorzy, wyszukiwanie, okno szczegółów książki z dopasowaniem metadanych (tu działają wbudowane źródła metadanych), edycją szczegółów i okładki.
 - **9c. Domknięcie ustawień.** Kopie zapasowe, ponowny skan biblioteki, wielu użytkowników z uprawnieniami. Reszta stron zarządzania web UI (klucze API, powiadomienia, e-mail, RSS, OIDC, statystyki) według potrzeby.
 - **Potem:** web UI zostaje jako wyjście awaryjne dla rzadkich funkcji (edycja rozdziałów, narzędzia M4B, zarządzanie podcastami) albo znika, gdy i one zostaną przeniesione.
