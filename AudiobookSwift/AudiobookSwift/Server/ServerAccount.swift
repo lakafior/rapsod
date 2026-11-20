@@ -202,6 +202,12 @@ final class ServerAccount {
         }
     }
 
+    /// Zapytanie z tokenem administratora dla modułów spoza tego pliku
+    /// (wpis źródeł metadanych w `MetadataSources/`).
+    func withAdminToken<T: Sendable>(_ operation: (AudiobookshelfClient, String) async throws -> T) async throws -> T {
+        try await authorized(operation)
+    }
+
     // MARK: - Konto użytkownika
 
     /// Sprawdza konto użytkownika zapisane w pęku kluczy.

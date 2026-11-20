@@ -20,10 +20,19 @@ struct AudiobookSwiftApp: App {
 
         Window("AudiobookSwift — status", id: StatusWindow.windowID) {
             ReleasedWhenClosed {
-                StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, sharing: appDelegate.sharing)
+                StatusWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, sharing: appDelegate.sharing, metadataSources: appDelegate.metadataSources)
             }
         }
         .defaultSize(width: 720, height: 900)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
+        Window("Źródła metadanych", id: MetadataSourcesWindow.windowID) {
+            ReleasedWhenClosed {
+                MetadataSourcesWindow(sources: appDelegate.metadataSources)
+            }
+        }
+        .defaultSize(width: 1000, height: 800)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
@@ -81,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let loginItem = LoginItem()
     let webMode = WebUIMode()
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
+    private(set) lazy var metadataSources = MetadataSourcesController(account: account)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         supervisor.onStateChange = { [weak self] state in
@@ -92,14 +102,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         sharing.activate()
+        metadataSources.activate()
         supervisor.start()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard supervisor.hasProcess || sharing.hasRunningExternalAccess else { return .terminateNow }
+        guard supervisor.hasProcess || sharing.hasRunningExternalAccess || metadataSources.hasProcess else { return .terminateNow }
         Task {
             // Najpierw tunel, żeby nie przekazywał ruchu do zamykanego serwera.
             await sharing.shutdown()
+            await metadataSources.shutdown()
             await supervisor.stop()
             sender.reply(toApplicationShouldTerminate: true)
         }

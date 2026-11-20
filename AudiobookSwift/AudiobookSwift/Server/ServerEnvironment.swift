@@ -254,3 +254,88 @@ struct ServerEnvironment: Sendable {
         return environment
     }
 }
+
+// MARK: - Źródła metadanych (etap 7)
+//
+// Osobny blok: ścieżki i stałe opcjonalnego agregatora źródeł metadanych
+// (moduł `MetadataSources/`). Nie bierze udziału w `resolve()` — brak zbudowanego
+// agregatora jest stanem tej funkcji, a nie błędem startu serwera.
+extension ServerEnvironment {
+    /// Stały port pętli zwrotnej, pod którym aplikacja przyjmuje zapytania audiobookshelf
+    /// do źródeł metadanych (sam agregator dostaje przy każdym starcie wolny port).
+    /// Domyślnie port serwera + 1 (13379); do testów: `-ABSMetadataPort 13401`.
+    static let metadataSourcesPort: Int = {
+        let override = UserDefaults.standard.integer(forKey: "ABSMetadataPort")
+        if (1...65535).contains(override) { return override }
+        return port < 65535 ? port + 1 : port - 1
+    }()
+
+    /// Adres wpisywany w audiobookshelf jako dostawca (bez końcowego ukośnika:
+    /// upstream dokleja do niego `/search?...`).
+    static var metadataSourcesURL: URL { URL(string: "http://\(host):\(metadataSourcesPort)")! }
+
+    /// Po ilu sekundach bez połączeń agregator jest wyłączany (domyślnie 5 minut);
+    /// do testów: `-ABSMetadataIdle 15`.
+    static let metadataSourcesIdleTimeout: Duration = {
+        let override = UserDefaults.standard.integer(forKey: "ABSMetadataIdle")
+        return .seconds(override > 0 ? override : 300)
+    }()
+
+    /// Klucz API agregatora (konto w pęku kluczy: ścieżka folderu danych).
+    static let metadataSourcesKeychainService = "net.smigi.abswift.metadata-sources"
+
+    /// Folder źródeł metadanych w folderze danych — osobny dla każdego `-ABSDataRoot`.
+    static func metadataSourcesDirectory(dataRoot: URL) -> URL {
+        dataRoot.appending(path: "metadata-sources", directoryHint: .isDirectory)
+    }
+    /// Ustawienia aplikacji (przełącznik, identyfikator wpisu w audiobookshelf). Bez sekretów.
+    static func metadataSourcesSettingsURL(dataRoot: URL) -> URL {
+        metadataSourcesDirectory(dataRoot: dataRoot).appending(path: "settings.json")
+    }
+    /// Konfiguracja samego agregatora (`CONFIG_PATH`): tworzy ją i zmienia on sam.
+    static func metadataSourcesConfigURL(dataRoot: URL) -> URL {
+        metadataSourcesDirectory(dataRoot: dataRoot).appending(path: "config.json")
+    }
+
+    /// Skąd uruchamiać agregator.
+    struct MetadataSourcesRuntime: Sendable {
+        let node: URL
+        let entryPoint: URL
+        /// Co zrobić, gdy czegoś brakuje.
+        let hint: String
+
+        /// `nil`, gdy wszystko jest na miejscu; inaczej czytelny powód.
+        func problem(fileManager: FileManager = .default) -> String? {
+            if !fileManager.isExecutableFile(atPath: node.path) {
+                return "Nie znaleziono Node.js (\(node.path)). \(hint)"
+            }
+            if !fileManager.fileExists(atPath: entryPoint.path) {
+                return "Nie znaleziono źródeł metadanych (\(entryPoint.path)). \(hint)"
+            }
+            return nil
+        }
+    }
+
+    /// Wydanie: `Contents/Resources/Server/node` i `Contents/Resources/Server/aio-abs-providers`
+    /// (obok `abs-server`). Tryb deweloperski: `build/node` i `build/aio-abs-providers`
+    /// (`scripts/build-providers.sh`). `nil` tylko wtedy, gdy nie ma ani paczki, ani repozytorium.
+    static func metadataSourcesRuntime(bundle: Bundle = .main, fileManager: FileManager = .default) -> MetadataSourcesRuntime? {
+        let entry = "aio-abs-providers/src/backbone/server.js"
+        if let bundled = bundledServerDirectory(bundle: bundle, fileManager: fileManager) {
+            return MetadataSourcesRuntime(
+                node: bundled.appending(path: "node"),
+                entryPoint: bundled.appending(path: entry),
+                hint: "Ta kopia aplikacji ich nie zawiera."
+            )
+        }
+        if let rootPath = bundle.object(forInfoDictionaryKey: "ABSDevelopmentRoot") as? String, !rootPath.isEmpty {
+            let buildRoot = URL(filePath: rootPath, directoryHint: .isDirectory).standardizedFileURL
+            return MetadataSourcesRuntime(
+                node: buildRoot.appending(path: "node/bin/node"),
+                entryPoint: buildRoot.appending(path: entry),
+                hint: "Uruchom scripts/build-providers.sh."
+            )
+        }
+        return nil
+    }
+}

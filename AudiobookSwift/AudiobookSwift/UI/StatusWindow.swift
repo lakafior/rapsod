@@ -8,6 +8,7 @@ struct StatusWindow: View {
     let account: ServerAccount
     let loginItem: LoginItem
     let sharing: SharingController
+    let metadataSources: MetadataSourcesController
 
     var body: some View {
         VSplitView {
@@ -21,6 +22,9 @@ struct StatusWindow: View {
                 }
                 Section("Połącz telefon") {
                     ConnectPhoneSection(sharing: sharing, supervisor: supervisor, account: account)
+                }
+                Section("Źródła metadanych") {
+                    MetadataSourcesSection(sources: metadataSources)
                 }
                 loginItemSection
             }
