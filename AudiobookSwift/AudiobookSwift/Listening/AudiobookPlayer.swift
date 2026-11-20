@@ -83,7 +83,14 @@ final class AudiobookPlayer {
     private(set) var book: Book?
     /// Pozycja na osi czasu całej książki (sekundy). Zmienia się dwa razy na sekundę —
     /// czytają ją tylko małe widoki z czasem, nie całe okno ani menu.
-    private(set) var currentTime: Double = 0
+    private(set) var currentTime: Double = 0 {
+        didSet {
+            let id = Self.chapter(in: chapters, at: currentTime)?.id
+            if id != currentChapterID { currentChapterID = id }
+        }
+    }
+    /// Zmienia się tylko przy zmianie rozdziału — tę wartość czytają większe widoki.
+    private(set) var currentChapterID: Int?
     private(set) var trackIndex = 0
     private(set) var isPlaying = false
     private(set) var isLoading = false
@@ -153,7 +160,7 @@ final class AudiobookPlayer {
     var chapters: [Chapter] { book?.chapters ?? [] }
 
     var currentChapter: Chapter? {
-        Self.chapter(in: chapters, at: currentTime)
+        chapters.first { $0.id == currentChapterID }
     }
 
     static func chapter(in chapters: [Chapter], at time: Double) -> Chapter? {
@@ -252,7 +259,11 @@ final class AudiobookPlayer {
         let target = min(max(0, time), max(0, book.duration - 0.5))
         isDirty = true
         let index = Self.trackIndex(in: book.tracks, at: target)
-        if index == trackIndex, let item = player.currentItem, itemTracks[ObjectIdentifier(item)] == index, item.status == .readyToPlay {
+        // Strumień z serwera (zwłaszcza transkodowany HLS) przewijamy, budując element od nowa:
+        // przewinięcie trwającego strumienia HLS w aplikacji potrafiło nigdy się nie zakończyć,
+        // a start od zadanej pozycji działa zawsze.
+        let isRemote = if case .remote = book.tracks[index].source { true } else { false }
+        if !isRemote, index == trackIndex, let item = player.currentItem, itemTracks[ObjectIdentifier(item)] == index, item.status == .readyToPlay {
             currentTime = target
             let local = localTime(target, in: book.tracks[index])
             Task {

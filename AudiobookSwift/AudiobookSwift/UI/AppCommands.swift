@@ -34,10 +34,13 @@ struct AppCommands: Commands {
 
         CommandGroup(replacing: .newItem) {
             Button("Otwórz bibliotekę") {
+                openWindow.bringToFront(id: LibraryWindow.windowID)
+            }
+            .keyboardShortcut("o")
+            Button("\(WebUIWindow.title)…") {
                 webMode.isManagement = false
                 openWindow.bringToFront(id: WebUIWindow.windowID)
             }
-            .keyboardShortcut("o")
             Button("Zarządzanie serwerem…") {
                 webMode.isManagement = true
                 openWindow.bringToFront(id: WebUIWindow.windowID)

@@ -6,13 +6,22 @@ struct AudiobookSwiftApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
+            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, player: appDelegate.listening.player)
         } label: {
             MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation)
         }
         .commands {
             AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
         }
+
+        Window(LibraryWindow.title, id: LibraryWindow.windowID) {
+            ReleasedWhenClosed {
+                LibraryWindow(listening: appDelegate.listening, supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation)
+            }
+        }
+        .defaultSize(width: 1100, height: 720)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
 
         Window(WebUIWindow.title, id: WebUIWindow.windowID) {
             WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, mode: appDelegate.webMode, settings: appDelegate.settingsNavigation)

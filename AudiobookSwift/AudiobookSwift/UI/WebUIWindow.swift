@@ -15,7 +15,7 @@ final class WebUIMode {
 /// „Zarządzanie serwerem” przełącza na konto root w sesji trzymanej tylko w pamięci.
 struct WebUIWindow: View {
     static let windowID = "web-ui"
-    static let title = "Biblioteka"
+    static let title = "Web UI audiobookshelf"
     static let managementTitle = "Zarządzanie serwerem"
 
     let supervisor: ServerSupervisor

@@ -51,6 +51,8 @@ final class ListeningController {
     /// Ostatnia pozycja uzgodniona z serwerem (wysłana albo przejęta) dla bieżącej książki.
     @ObservationIgnored private var lastAgreed: Double?
     @ObservationIgnored let covers = CoverCache()
+    /// Plik okładki bieżącej książki (z sesji odtwarzania).
+    @ObservationIgnored private(set) var nowPlayingCoverPath: String?
 
     init(supervisor: ServerSupervisor, account: ServerAccount) {
         self.supervisor = supervisor
@@ -247,11 +249,21 @@ final class ListeningController {
             player.start(book, at: adoptedLocal ? start : max(0, start - (start > 10 ? 3 : 0)))
             if adoptedLocal { player.isDirty = true }
             startSyncLoop()
+            nowPlayingCoverPath = playback.coverPath
             loadArtwork(itemID: itemID, path: playback.coverPath)
         } catch {
             logger.error("Start odtwarzania: \(error.localizedDescription, privacy: .public)")
             loadError = error.localizedDescription
         }
+    }
+
+    /// Zatrzymuje odtwarzanie i zamyka książkę (pozycja zostaje na serwerze).
+    func stopPlayback() async {
+        guard player.book != nil else { return }
+        player.pause()
+        await closeSession()
+        player.stop()
+        nowPlayingCoverPath = nil
     }
 
     /// Oznacza bieżącą książkę jako ukończoną (także przycisk w oknie).
@@ -261,6 +273,8 @@ final class ListeningController {
         player.isDirty = false
         await finish(book)
         player.stop()
+        endSyncLoop()
+        nowPlayingCoverPath = nil
     }
 
     private enum PlaybackError: LocalizedError {
@@ -456,6 +470,9 @@ final class ListeningController {
         }
         session = nil
         lastAgreed = nil
+        // Książka zostaje załadowana od początku: ponowne „Odtwarzaj” słucha jej od nowa,
+        // a postęp idzie na serwer bez sesji (`saveProgress`).
+        if player.book?.key == book.key { startSyncLoop() }
         await refresh()
     }
 
