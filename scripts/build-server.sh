@@ -4,9 +4,9 @@
 # źródła są eksportowane przez `git archive`, a node_modules, dist-server
 # i client/dist powstają wyłącznie w katalogu wyjściowym.
 #
-# Pobiera też przypięty Node.js do `build/node` — upstream celuje w Node 24,
-# a na Node 25+ serwer nie startuje (usunięty `SlowBuffer`). Ten sam Node
-# buduje serwer i jest używany przez aplikację do jego uruchamiania.
+# Pobiera też przypięty oficjalny Node.js do `build/node` (scripts/node-version.sh).
+# Ten Node buduje serwer (npm) i uruchamia go w trybie deweloperskim; do paczki
+# trafia odchudzony Node z scripts/build-node.sh w tej samej wersji.
 #
 # Użycie: scripts/build-server.sh [--clean]
 # Powtórz po każdym podbiciu taga submodule.
@@ -17,11 +17,11 @@ SRC="$ROOT/vendor/audiobookshelf"
 OUT="$ROOT/build/abs-server"
 NODE_DIR="$ROOT/build/node"
 
-# Przypięty Node.js (sumy z https://nodejs.org/dist/v<wersja>/SHASUMS256.txt).
-NODE_VERSION="24.22.3"
+# Przypięty Node.js: wersja i sumy w scripts/node-version.sh.
+source "$ROOT/scripts/node-version.sh"
 case "$(uname -m)" in
-  arm64)  NODE_ARCH="arm64"; NODE_SHA256="1d64136c8a43d648d1b3bad10797a4c995b1ca032d2bde8799de43b37f058fe5" ;;
-  x86_64) NODE_ARCH="x64";   NODE_SHA256="4daeec962855c1a6e66cda398a25037319dc1bbd4a0939188b3547afbbfb6490" ;;
+  arm64)  NODE_ARCH="arm64"; NODE_SHA256="$NODE_SHA256_DARWIN_ARM64" ;;
+  x86_64) NODE_ARCH="x64";   NODE_SHA256="$NODE_SHA256_DARWIN_X64" ;;
   *) echo "Nieobsługiwana architektura: $(uname -m)" >&2; exit 1 ;;
 esac
 

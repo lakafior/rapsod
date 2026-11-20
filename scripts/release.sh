@@ -2,7 +2,7 @@
 # Buduje wydanie: samodzielną, podpisaną (Developer ID, hardened runtime)
 # i notaryzowaną aplikację w pliku DMG. Wszystko powstaje w `build/release`.
 #
-# Kroki: serwer i ffmpeg (skrypty obok) → zawartość `Contents/Resources/Server`
+# Kroki: serwer, Node i ffmpeg (skrypty obok) → zawartość `Contents/Resources/Server`
 # → podpis każdej binarki → archiwum i eksport z Xcode → wstawienie serwera
 # i licencji do paczki → podpis aplikacji → notaryzacja i bilet dla aplikacji
 # → DMG → podpis, notaryzacja i bilet dla DMG → weryfikacja.
@@ -48,8 +48,10 @@ fi
 
 # --- Serwer i ffmpeg ------------------------------------------------------
 
-step "Serwer audiobookshelf i Node"
+step "Serwer audiobookshelf"
 "$ROOT/scripts/build-server.sh"
+step "Node do paczki (pierwszy raz ok. 30 minut, potem z pamięci podręcznej)"
+"$ROOT/scripts/build-node.sh"
 step "ffmpeg i ffprobe"
 "$ROOT/scripts/build-ffmpeg.sh"
 
@@ -61,8 +63,11 @@ PAYLOAD="$REL/Server"
 ABS="$PAYLOAD/abs-server"
 mkdir -p "$ABS/client"
 
-cp "$ROOT/build/node/bin/node" "$PAYLOAD/node"
-cp "$ROOT/build/ffmpeg/bin/ffmpeg" "$ROOT/build/ffmpeg/bin/ffprobe" "$PAYLOAD/"
+cp "$ROOT/build/node-runtime/node" "$PAYLOAD/node"
+# ffmpeg i ffprobe z bibliotekami wspólnymi; binarki szukają ich w `../lib`.
+mkdir -p "$PAYLOAD/ffmpeg"
+ditto "$ROOT/build/ffmpeg/bin" "$PAYLOAD/ffmpeg/bin"
+ditto "$ROOT/build/ffmpeg/lib" "$PAYLOAD/ffmpeg/lib"
 
 # Tylko to, czego serwer używa w czasie działania: skompilowany kod, zbudowany
 # klient web, zależności produkcyjne i rozszerzenie SQLite. Źródła, testy,
@@ -76,8 +81,15 @@ rsync -a \
   --exclude '/@types' --exclude '/node-gyp' \
   --exclude '/sqlite3/deps' --exclude '/sqlite3/src' --exclude '/sqlite3/binding.gyp' \
   --exclude '*.map' --exclude '*.ts' --exclude '*.tsbuildinfo' \
+  --exclude '/moment/src' --exclude '/moment/dist' --exclude '/moment/min' \
+  --exclude '/moment-timezone/builds' --exclude '/lodash/fp' --exclude '/validator/es' \
+  --exclude '/jose/dist/browser' --exclude '/node-unrar-js/esm' \
   "$SERVER_SRC/node_modules/" "$ABS/node_modules/"
-for leftover in dist-server/test node_modules/.bin node_modules/node-gyp node_modules/@types node_modules/sqlite3/deps; do
+# Wyżej, od `/moment/src`: alternatywne kopie tych samych pakietów (źródła ES,
+# zminifikowane paczki dla przeglądarki, wariant lodash/fp). Serwer jest w CommonJS
+# i ładuje tylko pliki z pola `main` (`moment.js`, `index.js`, `lodash.js`,
+# `dist/node/cjs`, `dist/index.js`); nic nie odwołuje się do pominiętych katalogów.
+for leftover in dist-server/test node_modules/.bin node_modules/node-gyp node_modules/@types node_modules/sqlite3/deps node_modules/moment/min; do
   [[ ! -e "$ABS/$leftover" ]] || die "Odchudzanie nie usunęło $leftover."
 done
 # Licencje bibliotek wkopiowanych do upstreamu (`server/libs`): tsc przenosi do
@@ -124,8 +136,14 @@ d.loadExtension('$ABS/libnusqlite3.dylib', (e) => {
     d.close()
   })
 })")
-"$PAYLOAD/ffmpeg" -version | head -1 | sed 's/^/  /'
-"$PAYLOAD/ffprobe" -version > /dev/null
+# Każda zależność produkcyjna musi się załadować z odchudzonego node_modules.
+(cd "$ABS" && env -i PATH=/usr/bin:/bin "$PAYLOAD/node" -e "
+const deps = Object.keys(require('./package.json').dependencies)
+for (const d of deps) require(d)
+require('moment-timezone').tz('2026-01-01 12:00', 'Europe/Warsaw').format()
+console.log('  zależności produkcyjne (' + deps.length + '): ok')")
+env -i "$PAYLOAD/ffmpeg/bin/ffmpeg" -version | head -1 | sed 's/^/  /'
+env -i "$PAYLOAD/ffmpeg/bin/ffprobe" -version > /dev/null
 
 # --- Aplikacja --------------------------------------------------------------
 
@@ -160,14 +178,15 @@ mkdir -p "$LICENSES"
 cp "$ROOT/LICENSE" "$LICENSES/LICENSE.txt"
 cp "$ROOT/AudiobookSwift/AudiobookSwift/Resources/THIRD-PARTY-NOTICES.txt" "$LICENSES/"
 cp "$SERVER_SRC/LICENSE" "$LICENSES/audiobookshelf-LICENSE.txt"
-cp "$ROOT/build/node/LICENSE" "$LICENSES/Node.js-LICENSE.txt"
+cp "$ROOT/build/node-runtime/LICENSE" "$LICENSES/Node.js-LICENSE.txt"
+cp "$ROOT/build/node-runtime/SOURCE.txt" "$LICENSES/Node.js-SOURCE.txt"
 cp "$ROOT/build/ffmpeg/licenses/"* "$LICENSES/"
 cp "$ROOT/packaging/licenses/nunicode-LICENSE.txt" "$LICENSES/nunicode-sqlite-LICENSE.txt"
 cat > "$LICENSES/VERSIONS.txt" <<EOF
 AudiobookSwift $VERSION ($BUILD_NUMBER), commit $(git -C "$ROOT" rev-parse HEAD)
 audiobookshelf $(git -C "$ROOT/vendor/audiobookshelf" describe --tags --always), commit $(git -C "$ROOT/vendor/audiobookshelf" rev-parse HEAD)
-Node.js $("$PAYLOAD/node" --version) (https://nodejs.org/dist/)
-$("$PAYLOAD/ffmpeg" -version | head -1)
+Node.js $("$PAYLOAD/node" --version) (własny build ze źródeł z https://nodejs.org/dist/, zob. Node.js-SOURCE.txt)
+$("$PAYLOAD/ffmpeg/bin/ffmpeg" -version | head -1)
 libnusqlite3 $(cat "$SERVER_SRC/libnusqlite3.dylib.ver") (nunicode 1.11, https://github.com/mikiher/nunicode-sqlite)
 EOF
 

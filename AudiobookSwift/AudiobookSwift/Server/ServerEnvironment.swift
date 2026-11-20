@@ -140,8 +140,9 @@ struct ServerEnvironment: Sendable {
         if let bundled = bundledServerDirectory(bundle: bundle, fileManager: fileManager) {
             node = bundled.appending(path: "node")
             serverRoot = bundled.appending(path: "abs-server", directoryHint: .isDirectory)
-            ffmpeg = bundled.appending(path: "ffmpeg")
-            ffprobe = bundled.appending(path: "ffprobe")
+            // Biblioteki wspólne obu binarek leżą obok, w `ffmpeg/lib`.
+            ffmpeg = bundled.appending(path: "ffmpeg/bin/ffmpeg")
+            ffprobe = bundled.appending(path: "ffmpeg/bin/ffprobe")
             buildHint = "Paczka aplikacji jest uszkodzona — pobierz ją ponownie."
             ffmpegHint = buildHint
         } else if let rootPath = bundle.object(forInfoDictionaryKey: "ABSDevelopmentRoot") as? String, !rootPath.isEmpty {
@@ -234,6 +235,9 @@ struct ServerEnvironment: Sendable {
             // Bez tego upstream akceptuje wyłącznie ffmpeg 5.1 i pobiera własne binarki
             // (x86_64) do katalogu serwera albo config.
             "SKIP_BINARIES_CHECK": "1",
+            // Mniejsza młoda generacja sterty V8. Zmierzone na bibliotece 1200 pozycji:
+            // spoczynek 99 → 63 MB, po skanie 314 → 238 MB; skan ok. 5% dłuższy.
+            "NODE_OPTIONS": "--max-semi-space-size=1",
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
         ]
         if let nusqlite3 {

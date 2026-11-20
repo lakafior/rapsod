@@ -14,8 +14,8 @@ Po 1.0.0: ikona aplikacji, usuwanie biblioteki z okna statusu.
 
 ## W toku: zasoby i rozmiar
 
-- **6a. Pamięć.** Pomiar zużycia, zwalnianie web UI po zamknięciu okna, tanie poprawki w aplikacji.
-- **6b. Agent w tle.** Nadzór serwera w lekkim procesie, aplikacja z menu i oknami tylko na żądanie. Decyzja po liczbach z 6a.
+- **6a. Pamięć — zrobione.** Web UI i okno statusu zwalniane po zamknięciu: aplikacja w spoczynku 18–50 MB (wcześniej 26–56 MB), procesy WebKit po zamknięciu web UI 0 MB (wcześniej 158 MB). Największą pozycją zostaje serwer Node (64–97 MB).
+- **6b. Agent w tle — odrzucone.** Przeniesienie nadzoru serwera do lekkiego procesu oszczędziłoby tylko 10–40 MB: tyle zostaje po aplikacji w spoczynku po 6a (18–50 MB), a samodzielny proces nadzorcy też zajmuje pamięć. Zysk niewart drugiego procesu, komunikacji między procesami i podwójnego podpisywania.
 - **6c. Rozmiar paczki.** Własny build Node (bez pełnych danych językowych i debuggera), ffmpeg tylko z kodekami audio i wspólnymi bibliotekami.
 
 ## Planowane

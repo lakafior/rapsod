@@ -18,16 +18,19 @@ audiobookshelf — serwer i klient web
 
 Node.js — środowisko uruchomieniowe serwera
   Licencja: MIT oraz licencje dołączonych bibliotek (V8, OpenSSL, ICU i inne)
-  Źródła: https://nodejs.org/dist/ (wersja w pliku Licenses/VERSIONS.txt)
+  Źródła: https://nodejs.org/dist/ (wersja w pliku Licenses/VERSIONS.txt);
+  zbudowany z niezmienionych źródeł z mniejszym zestawem składników — adres,
+  suma kontrolna i opcje: Licenses/Node.js-SOURCE.txt; przepis:
+  scripts/build-node.sh w repozytorium aplikacji
   Pełny tekst: Licenses/Node.js-LICENSE.txt
 
-FFmpeg — ffmpeg i ffprobe
+FFmpeg — ffmpeg i ffprobe z bibliotekami (Server/ffmpeg/lib)
   Licencja: LGPL-2.1-or-later (build bez --enable-gpl i --enable-nonfree)
   Źródła, sumy kontrolne i opcje budowania: Licenses/FFmpeg-SOURCE.txt;
   przepis: scripts/build-ffmpeg.sh w repozytorium aplikacji
   Pełny tekst: Licenses/FFmpeg-COPYING.LGPLv2.1.txt
 
-libwebp — koder WebP wlinkowany statycznie w ffmpeg
+libwebp — koder WebP wlinkowany statycznie w bibliotekę libavcodec
   Licencja: BSD-3-Clause
   Źródła: https://chromium.googlesource.com/webm/libwebp
   Pełny tekst: Licenses/libwebp-COPYING.txt
