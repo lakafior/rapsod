@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ServerMenu: View {
     let supervisor: ServerSupervisor
+    let account: ServerAccount
+    let loginItem: LoginItem
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -10,17 +12,24 @@ struct ServerMenu: View {
         Divider()
 
         Button("Otwórz") {
-            openWindow(id: WebUIWindow.windowID)
-            // Aplikacja bez ikony w Docku nie staje się aktywna sama z siebie,
-            // a `activate()` jest tylko prośbą — okno wysuwamy na wierzch niezależnie.
-            NSApp.activate()
-            Task {
-                let window = NSApp.windows.first { $0.identifier?.rawValue == WebUIWindow.windowID }
-                window?.orderFrontRegardless()
-                window?.makeKey()
-            }
+            openWindow.bringToFront(id: WebUIWindow.windowID)
         }
         .keyboardShortcut("o")
+
+        Button("Dodaj folder z audiobookami…") {
+            Task {
+                guard let folder = await chooseLibraryFolder() else { return }
+                // Postęp skanu widać w oknie statusu.
+                openWindow.bringToFront(id: StatusWindow.windowID)
+                await account.addLibrary(folder: folder)
+            }
+        }
+        .disabled(account.state != .ready || account.isScanning)
+
+        Button("Status i logi…") {
+            openWindow.bringToFront(id: StatusWindow.windowID)
+        }
+        .keyboardShortcut("l")
 
         Divider()
 
@@ -41,6 +50,18 @@ struct ServerMenu: View {
 
         Divider()
 
+        Toggle("Uruchamiaj przy logowaniu", isOn: Binding(
+            get: { loginItem.isEnabled },
+            set: { loginItem.setEnabled($0) }
+        ))
+        if loginItem.requiresApproval {
+            Button("Wymaga zgody — otwórz Ustawienia systemowe…") {
+                loginItem.openSystemSettings()
+            }
+        }
+
+        Divider()
+
         Button("Zakończ") {
             NSApp.terminate(nil)
         }
@@ -55,7 +76,7 @@ extension ServerState {
         case .starting: "Uruchamianie serwera…"
         case .running: "Serwer działa"
         case .stopping: "Zatrzymywanie serwera…"
-        case .failed(let message): "Błąd: \(message)"
+        case .failed: "Błąd serwera — szczegóły w „Status i logi”"
         }
     }
 

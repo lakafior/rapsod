@@ -11,5 +11,15 @@
 	</dict>
 	<key>ABSDevelopmentRoot</key>
 	<string>$(SRCROOT)/../build</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu na dysku zewnętrznym.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu na dysku sieciowym.</string>
 </dict>
 </plist>

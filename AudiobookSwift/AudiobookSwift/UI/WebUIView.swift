@@ -6,24 +6,69 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Audioboo
 
 /// `WKWebView` z web UI serwera. Sesja (token w localStorage) żyje w domyślnym
 /// magazynie danych WebKit, więc przetrwa zamknięcie okna i restart aplikacji.
+///
+/// Z `login` web UI loguje się samo: klient web trzyma access token w
+/// `localStorage['token']`, a refresh token w ciasteczku `refresh_token`
+/// (`client/store/user.js`, `server/auth/TokenManager.js` upstreamu). Ustawiamy oba,
+/// zanim strona się załaduje.
 struct WebUIView: NSViewRepresentable {
     let url: URL
+    var login: AudiobookshelfClient.Login?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let configuration = WKWebViewConfiguration()
+        if let login {
+            configuration.userContentController.addUserScript(Self.tokenScript(accessToken: login.accessToken))
+        }
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
         #if DEBUG
         webView.isInspectable = true
         #endif
         webView.allowsBackForwardNavigationGestures = true
-        logger.notice("Ładuję \(url.absoluteString, privacy: .public)")
-        webView.load(URLRequest(url: url))
+        let request = URLRequest(url: url)
+        if let refreshToken = login?.refreshToken, let cookie = Self.refreshCookie(refreshToken, for: url) {
+            Task {
+                await configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
+                logger.notice("Ładuję \(url.absoluteString, privacy: .public) z automatycznym logowaniem")
+                webView.load(request)
+            }
+        } else {
+            logger.notice("Ładuję \(url.absoluteString, privacy: .public)")
+            webView.load(request)
+        }
         return webView
+    }
+
+    /// Ustawia token przed uruchomieniem skryptów strony; tylko przy pierwszym załadowaniu
+    /// dokumentu, żeby nie nadpisywać tokenu odświeżonego później przez samo web UI.
+    private static func tokenScript(accessToken: String) -> WKUserScript {
+        let literal = (try? String(decoding: JSONEncoder().encode(accessToken), as: UTF8.self)) ?? "\"\""
+        let source = """
+        if (!sessionStorage.getItem('audiobookswift-login')) {
+          localStorage.setItem('token', \(literal));
+          sessionStorage.setItem('audiobookswift-login', '1');
+        }
+        """
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
+    private static func refreshCookie(_ token: String, for url: URL) -> HTTPCookie? {
+        guard let host = url.host() else { return nil }
+        return HTTPCookie(properties: [
+            .name: "refresh_token",
+            .value: token,
+            .domain: host,
+            .path: "/",
+            .expires: Date.now.addingTimeInterval(30 * 24 * 60 * 60),
+            HTTPCookiePropertyKey("HttpOnly"): "TRUE",
+            .sameSitePolicy: HTTPCookieStringPolicy.sameSiteLax.rawValue,
+        ])
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {}

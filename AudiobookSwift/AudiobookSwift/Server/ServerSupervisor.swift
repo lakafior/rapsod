@@ -13,9 +13,16 @@ enum ServerState: Equatable {
 @MainActor
 @Observable
 final class ServerSupervisor {
-    private(set) var state: ServerState = .stopped
+    private(set) var state: ServerState = .stopped {
+        didSet {
+            if state != oldValue { onStateChange?(state) }
+        }
+    }
+    /// Środowisko ostatniego startu (`nil`, jeśli nie udało się go ustalić).
+    private(set) var environment: ServerEnvironment?
     /// Adres web UI ostatnio uruchomionego serwera.
     private(set) var webURL: URL?
+    @ObservationIgnored var onStateChange: ((ServerState) -> Void)?
     /// Ostatnie linie stdout/stderr serwera (ograniczony bufor).
     private(set) var recentLog: [String] = []
 
@@ -46,9 +53,11 @@ final class ServerSupervisor {
             environment = try ServerEnvironment.resolve()
             try environment.prepareDirectories()
         } catch {
+            self.environment = nil
             state = .failed(error.localizedDescription)
             return
         }
+        self.environment = environment
 
         generation += 1
         let generation = generation
@@ -188,8 +197,7 @@ final class ServerSupervisor {
         } else if stopRequested {
             state = .stopped
         } else {
-            let detail = reason == .uncaughtSignal ? "sygnał \(status)" : "kod \(status)"
-            state = .failed("Serwer zakończył się nieoczekiwanie (\(detail)).")
+            state = .failed(Self.diagnose(log: recentLog, status: status, reason: reason))
         }
 
         let waiters = exitWaiters
@@ -197,6 +205,23 @@ final class ServerSupervisor {
         for waiter in waiters {
             waiter.resume()
         }
+    }
+
+    /// Zamienia typowe przyczyny awarii z logu Node na zrozumiały komunikat.
+    private static func diagnose(log: [String], status: Int32, reason: Process.TerminationReason) -> String {
+        let text = log.suffix(80).joined(separator: "\n")
+        if text.contains("EADDRINUSE") {
+            return "Port \(ServerEnvironment.port) jest zajęty przez inny program (EADDRINUSE). "
+                + "Zamknij program, który go używa (np. inną kopię audiobookshelf), i uruchom serwer ponownie."
+        }
+        if text.contains("EACCES") || text.contains("EPERM") {
+            return "Serwer nie ma dostępu do pliku lub folderu (EACCES/EPERM) — szczegóły w logu."
+        }
+        if text.contains("SQLITE_CORRUPT") || text.contains("SQLITE_CANTOPEN") {
+            return "Nie udało się otworzyć bazy danych serwera — szczegóły w logu."
+        }
+        let detail = reason == .uncaughtSignal ? "sygnał \(status)" : "kod \(status)"
+        return "Serwer zakończył się nieoczekiwanie (\(detail))."
     }
 
     private func appendOutput(_ chunk: Data, generation: Int) {

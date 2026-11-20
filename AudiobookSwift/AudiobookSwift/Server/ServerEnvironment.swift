@@ -34,8 +34,28 @@ struct ServerEnvironment: Sendable {
 
     // MARK: Adresy
 
+    /// Baza dla klienta API (`/status`, `/login`, `/api/...`).
+    static var baseURL: URL { URL(string: "http://\(host):\(port)\(routerBasePath)")! }
     var webURL: URL { URL(string: "http://\(Self.host):\(Self.port)\(Self.routerBasePath)/")! }
     var healthURL: URL { URL(string: "http://\(Self.host):\(Self.port)\(Self.routerBasePath)/healthcheck")! }
+
+    // MARK: Konto root
+
+    /// Nazwa konta root zakładanego przez aplikację na czystym serwerze.
+    static let rootUsername = "root"
+    /// Usługa pozycji w pęku kluczy z danymi logowania roota. Konto (`account`)
+    /// to ścieżka folderu danych, więc testowy folder danych nie nadpisze prawdziwego.
+    static let keychainService = "com.audiobookswift.server-root"
+    var keychainAccount: String { dataRoot.path }
+
+    // MARK: Wersja
+
+    /// Wersja audiobookshelf z `package.json` zbudowanego serwera.
+    var serverVersion: String? {
+        guard let data = try? Data(contentsOf: serverRoot.appending(path: "package.json")),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return object["version"] as? String
+    }
 
     enum ResolveError: LocalizedError {
         case missingDevelopmentRoot
@@ -79,9 +99,7 @@ struct ServerEnvironment: Sendable {
             throw ResolveError.missing(what: "parent-watch.js", path: "zasoby aplikacji", hint: "Przebuduj aplikację.")
         }
 
-        let dataRoot = try fileManager
-            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appending(path: "AudiobookSwift", directoryHint: .isDirectory)
+        let dataRoot = try resolveDataRoot(fileManager: fileManager)
 
         return ServerEnvironment(
             node: node,
@@ -93,6 +111,18 @@ struct ServerEnvironment: Sendable {
             nusqlite3: fileManager.fileExists(atPath: nusqlite3.path) ? nusqlite3 : nil,
             dataRoot: dataRoot
         )
+    }
+
+    /// Folder danych serwera. Domyślnie `~/Library/Application Support/AudiobookSwift`;
+    /// do testów na czystym folderze można go podmienić argumentem uruchomienia
+    /// `-ABSDataRoot /ścieżka` (np. `open AudiobookSwift.app --args -ABSDataRoot /tmp/abs`).
+    static func resolveDataRoot(fileManager: FileManager = .default) throws -> URL {
+        if let override = UserDefaults.standard.string(forKey: "ABSDataRoot"), !override.isEmpty {
+            return URL(filePath: (override as NSString).expandingTildeInPath, directoryHint: .isDirectory).standardizedFileURL
+        }
+        return try fileManager
+            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appending(path: "AudiobookSwift", directoryHint: .isDirectory)
     }
 
     func prepareDirectories(fileManager: FileManager = .default) throws {
