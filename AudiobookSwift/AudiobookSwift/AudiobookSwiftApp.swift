@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsNavigation = SettingsNavigation()
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
+    private(set) lazy var listening = ListeningController(supervisor: supervisor, account: account)
     private(set) lazy var models = AppModels(supervisor: supervisor, account: account, loginItem: loginItem, sharing: sharing, metadataSources: metadataSources)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -114,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DockIcon.shared.activate()
         sharing.activate()
         metadataSources.activate()
+        listening.activate()
         supervisor.start()
     }
 
@@ -130,7 +132,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard supervisor.hasProcess || sharing.hasRunningExternalAccess || metadataSources.hasProcess else { return .terminateNow }
         Task {
-            // Najpierw tunel, żeby nie przekazywał ruchu do zamykanego serwera.
+            // Najpierw pozycja słuchania — potrzebuje działającego serwera.
+            await listening.shutdown()
+            // Potem tunel, żeby nie przekazywał ruchu do zamykanego serwera.
             await sharing.shutdown()
             await metadataSources.shutdown()
             await supervisor.stop()
