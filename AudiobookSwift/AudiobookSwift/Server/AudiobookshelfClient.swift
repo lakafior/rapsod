@@ -161,6 +161,12 @@ struct AudiobookshelfClient: Sendable {
         return try decode(Library.self, from: await send("POST", "api/libraries", body: body, token: token))
     }
 
+    /// Usuwa bibliotekę z serwera: jej pozycje, postęp słuchania, kolekcje i metadane
+    /// w bazie (`LibraryController.delete` upstreamu). Plików audio na dysku nie rusza.
+    func deleteLibrary(id: String, token: String) async throws {
+        _ = try await send("DELETE", "api/libraries/\(id)", token: token)
+    }
+
     /// Zleca skanowanie; serwer odpowiada od razu, a skan trwa jako zadanie `library-scan`.
     func scanLibrary(id: String, token: String) async throws {
         _ = try await send("POST", "api/libraries/\(id)/scan", token: token)

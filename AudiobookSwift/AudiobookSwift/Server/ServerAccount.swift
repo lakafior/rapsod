@@ -330,6 +330,17 @@ final class ServerAccount {
         }
     }
 
+    /// Usuwa bibliotekę z serwera. Pliki w jej folderach zostają na dysku.
+    func removeLibrary(_ library: AudiobookshelfClient.Library) async throws {
+        guard state == .ready, !isScanning else { return }
+        try await authorized { try await $0.deleteLibrary(id: library.id, token: $1) }
+        // Wynik ostatniego skanu dotyczył być może tej biblioteki — nie zostawiaj go na ekranie.
+        if let scan, library.folders.contains(where: { $0.fullPath == scan.folder.path }) {
+            self.scan = nil
+        }
+        try await refreshLibraries()
+    }
+
     private enum LibraryError: LocalizedError {
         case overlaps(String)
 

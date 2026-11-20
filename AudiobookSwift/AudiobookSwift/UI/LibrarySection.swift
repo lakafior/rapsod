@@ -5,6 +5,9 @@ struct LibrarySection: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
     @Environment(\.openWindow) private var openWindow
+    @State private var libraryToRemove: AudiobookshelfClient.Library?
+    @State private var removing = false
+    @State private var removalError: String?
 
     var body: some View {
         switch account.state {
@@ -35,15 +38,31 @@ struct LibrarySection: View {
                 .foregroundStyle(.secondary)
         }
         ForEach(account.libraries) { library in
-            VStack(alignment: .leading, spacing: 2) {
-                Text(library.name)
-                ForEach(library.folders, id: \.self) { folder in
-                    Text(folder.fullPath)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(library.name)
+                    ForEach(library.folders, id: \.self) { folder in
+                        Text(folder.fullPath)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
+                Spacer()
+                Button("Usuń bibliotekę „\(library.name)”", systemImage: "trash", role: .destructive) {
+                    removalError = nil
+                    libraryToRemove = library
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help("Usuń bibliotekę z serwera (pliki zostają na dysku)")
+                .disabled(account.isScanning || removing)
             }
+        }
+        if let removalError {
+            Label(removalError, systemImage: "xmark.octagon")
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
         if let scan = account.scan {
             ScanProgressRow(scan: scan) {
@@ -57,6 +76,31 @@ struct LibrarySection: View {
             }
         }
         .disabled(account.isScanning)
+        .confirmationDialog(
+            "Usunąć bibliotekę „\(libraryToRemove?.name ?? "")”?",
+            isPresented: Binding(
+                get: { libraryToRemove != nil },
+                set: { if !$0 { libraryToRemove = nil } }
+            ),
+            presenting: libraryToRemove
+        ) { library in
+            Button("Usuń bibliotekę", role: .destructive) { remove(library) }
+            Button("Anuluj", role: .cancel) {}
+        } message: { _ in
+            Text("Biblioteka zniknie z serwera razem z postępem słuchania, kolekcjami i metadanymi jej pozycji. Pliki w folderze zostaną na dysku nietknięte.")
+        }
+    }
+
+    private func remove(_ library: AudiobookshelfClient.Library) {
+        removing = true
+        Task {
+            defer { removing = false }
+            do {
+                try await account.removeLibrary(library)
+            } catch {
+                removalError = "Nie udało się usunąć biblioteki „\(library.name)”: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func reconnect() {
