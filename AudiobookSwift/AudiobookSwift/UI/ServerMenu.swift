@@ -11,7 +11,14 @@ struct ServerMenu: View {
 
         Button("Otwórz") {
             openWindow(id: WebUIWindow.windowID)
+            // Aplikacja bez ikony w Docku nie staje się aktywna sama z siebie,
+            // a `activate()` jest tylko prośbą — okno wysuwamy na wierzch niezależnie.
             NSApp.activate()
+            Task {
+                let window = NSApp.windows.first { $0.identifier?.rawValue == WebUIWindow.windowID }
+                window?.orderFrontRegardless()
+                window?.makeKey()
+            }
         }
         .keyboardShortcut("o")
 

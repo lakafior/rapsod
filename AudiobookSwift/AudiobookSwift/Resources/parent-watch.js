@@ -4,7 +4,12 @@
 // PR_SET_PDEATHSIG, więc to jedyny sposób bez odpytywania.
 const HARD_EXIT_MS = 5000
 
+let shuttingDown = false
+
 function shutdown() {
+  // Drugi SIGINT upstream traktuje jak żądanie natychmiastowego wyjścia.
+  if (shuttingDown) return
+  shuttingDown = true
   // Upstream obsługuje tylko SIGINT (zamyka bazę i wychodzi).
   process.kill(process.pid, 'SIGINT')
   setTimeout(() => process.exit(0), HARD_EXIT_MS).unref()
