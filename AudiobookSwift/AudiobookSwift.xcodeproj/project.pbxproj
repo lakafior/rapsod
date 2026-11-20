@@ -19,6 +19,10 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXFileReference section */
+		A1B2C3D4E5F60718293A4B5C /* AudiobookSwift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudiobookSwift.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		2FF20AFC14ECC04B23992BA1 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -34,7 +38,16 @@
 			isa = PBXGroup;
 			children = (
 				B9724627AA64D6377F2CD3CC /* AudiobookSwift */,
+				A1B2C3D4E5F60718293A4B5D /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60718293A4B5D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A4B5C /* AudiobookSwift.app */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -58,6 +71,8 @@
 			name = AudiobookSwift;
 			packageProductDependencies = (
 			);
+			productName = AudiobookSwift;
+			productReference = A1B2C3D4E5F60718293A4B5C /* AudiobookSwift.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -73,6 +88,7 @@
 			buildConfigurationList = 8300A673BD541414CAB42228 /* Build configuration list for PBXProject "AudiobookSwift" */;
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
+			productRefGroup = A1B2C3D4E5F60718293A4B5D /* Products */;
 			hasScannedForEncodings = 0;
 			mainGroup = FD1542594312B820B21EC19E;
 			minimizedProjectReferenceProxies = 0;
