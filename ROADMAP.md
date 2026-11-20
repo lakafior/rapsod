@@ -32,13 +32,22 @@ LubimyCzytać, Audioteka, Storytel i Audible jako jedno opcjonalne źródło w o
 
 ## Planowane
 
+### Natywne słuchanie i zarządzanie zamiast web UI
+
+Cel: słuchanie i codzienne zarządzanie w natywnych oknach, bez WebKit (web UI zajmuje ok. 158 MB, gdy jest otwarte). Kilka sesji pracy, nie osobny duży projekt.
+
+- **9a. Odtwarzacz.** Przeniesiony z projektu Dove (`AudiobookPlayer.swift`: kolejka plików, rozdziały, przewijanie, timer usypiania, „Teraz odtwarzane” i klawisze multimedialne) wraz z widokiem odtwarzacza. Do tego lista „Słuchaj dalej” i prosta lista książek. Pliki odtwarzane prosto z dysku, bo serwer działa na tym samym Macu; postęp synchronizowany z serwerem, żeby telefon widział to samo.
+- **9b. Przeglądarka biblioteki.** Okładki, serie, autorzy, wyszukiwanie, okno szczegółów książki z dopasowaniem metadanych (tu działają wbudowane źródła metadanych), edycją szczegółów i okładki.
+- **9c. Domknięcie ustawień.** Kopie zapasowe, ponowny skan biblioteki, wielu użytkowników z uprawnieniami. Reszta stron zarządzania web UI (klucze API, powiadomienia, e-mail, RSS, OIDC, statystyki) według potrzeby.
+- **Potem:** web UI zostaje jako wyjście awaryjne dla rzadkich funkcji (edycja rozdziałów, narzędzia M4B, zarządzanie podcastami) albo znika, gdy i one zostaną przeniesione.
+- **Wzorce:** odtwarzacz i widoki z Dove (własny projekt, MPL-2.0); wywołania API i modele audiobookshelf w [AudioBooth](https://github.com/AudioBooth/AudioBooth) (MPL-2.0, klient iOS) jako punkt odniesienia.
+
 ### Bardziej natywna aplikacja
 
 - Angielska wersja językowa (dziś interfejs jest tylko po polsku).
 - ~~Okno Ustawień pod ⌘, zamiast jednego okna statusu~~ — zrobione: „Ustawienia aplikacji” z podstronami i ikona w Docku, gdy otwarte jest jakiekolwiek okno.
 - Integracja z systemem: powiadomienie po zakończeniu skanu, akcje dla Skrótów, upuszczenie folderu na ikonę w pasku menu.
 - Automatyczne aktualizacje (Sparkle).
-- Natywna biblioteka i odtwarzacz w SwiftUI — osobna, duża decyzja.
 
 ## Poza zakresem
 
