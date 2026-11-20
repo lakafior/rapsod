@@ -29,10 +29,15 @@ final class ListeningController {
     let player = AudiobookPlayer()
     private(set) var availability: Availability = .unavailable
     private(set) var libraries: [AudiobookshelfClient.Library] = []
-    private(set) var continueListening: [AudiobookshelfClient.LibraryItem] = []
-    private(set) var itemsByLibrary: [String: [AudiobookshelfClient.LibraryItem]] = [:]
     /// Postęp według `itemID` albo `itemID/episodeID`.
     private(set) var progress: [String: AudiobookshelfClient.MediaProgress] = [:]
+    /// Zakładki według `itemID`, posortowane po czasie.
+    private(set) var bookmarks: [String: [AudiobookshelfClient.Bookmark]] = [:]
+    /// Rośnie, gdy serwer zgłosi zmianę pozycji w bibliotece (skan, nowa książka) — widoki
+    /// okna przeładowują wtedy listy.
+    private(set) var libraryRevision: [String: Int] = [:]
+    /// Kolejka playlisty: po ukończeniu bieżącej pozycji gra następna.
+    private(set) var queue: [QueueEntry] = []
     private(set) var isRefreshing = false
     var loadError: String?
     /// Pozycja, która właśnie się ładuje (wybrana z listy).
@@ -51,6 +56,10 @@ final class ListeningController {
     /// Ostatnia pozycja uzgodniona z serwerem (wysłana albo przejęta) dla bieżącej książki.
     @ObservationIgnored private var lastAgreed: Double?
     @ObservationIgnored let covers = CoverCache()
+    @ObservationIgnored private var events: ListeningEvents?
+    @ObservationIgnored private var playingFromQueue = false
+    @ObservationIgnored private var changedLibraries: Set<String> = []
+    @ObservationIgnored private var revisionFlush: Task<Void, Never>?
     /// Plik okładki bieżącej książki (z sesji odtwarzania).
     @ObservationIgnored private(set) var nowPlayingCoverPath: String?
 
@@ -121,10 +130,12 @@ final class ListeningController {
         lastAgreed = nil
         auth?.reset()
         auth = nil
+        events?.stop()
+        events = nil
         libraries = []
-        continueListening = []
-        itemsByLibrary = [:]
         progress = [:]
+        bookmarks = [:]
+        queue = []
     }
 
     /// Pełne zakończenie aplikacji: pozycja trafia na serwer, zanim ten zostanie zatrzymany.
@@ -137,9 +148,76 @@ final class ListeningController {
     }
 
     /// Okno zamknięte — odtwarzanie trwa, ale pozycja idzie na serwer od razu.
+    /// Zdarzenia serwera są potrzebne tylko oknu, więc połączenie się kończy.
     func windowClosed() {
-        covers.purge(keeping: player.book?.itemID)
+        events?.stop()
+        events = nil
+        covers.purge()
         if player.isDirty { Task { await sync() } }
+        // Okno z siatką okładek zostawia po sobie pofragmentowaną stertę: zwolnione bloki trzymają
+        // strony „brudne” do czasu presji pamięci. Po rozebraniu widoków oddajemy je systemowi od razu.
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            malloc_zone_pressure_relief(nil, 0)
+        }
+    }
+
+    /// Okno otwarte albo znów aktywne: świeże dane i zdarzenia serwera na żywo
+    /// (postęp z telefonu, nowe pozycje po skanie).
+    func windowActivated() async {
+        guard let auth else { return }
+        if events == nil {
+            let events = ListeningEvents(baseURL: auth.baseURL, token: { [weak self] expired in
+                guard let auth = self?.auth else { throw AudiobookshelfClient.APIError.unauthorized }
+                if let expired { return try await auth.renew(expired: expired) }
+                return try await auth.token()
+            }, handler: { [weak self] event in self?.handle(event) })
+            self.events = events
+            events.start()
+        }
+        await refresh()
+    }
+
+    private func handle(_ event: ListeningEvents.Event) {
+        switch event {
+        case .progress(let value):
+            guard let itemID = value.libraryItemId else { return }
+            let key = Self.key(itemID, value.episodeId)
+            // Nie nadpisujemy pozycji, którą właśnie wytwarza ten odtwarzacz (zdarzenie bywa spóźnione).
+            if player.book?.key == key, player.isDirty { return }
+            progress[key] = value
+        case .user(let me):
+            apply(me)
+        case .itemsChanged(let libraryIDs):
+            changedLibraries.formUnion(libraryIDs)
+            // Skan dodaje pozycje seriami zdarzeń — listy przeładowują się raz na sekundę, nie przy każdym.
+            if revisionFlush == nil {
+                revisionFlush = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let self else { return }
+                    for id in changedLibraries { libraryRevision[id, default: 0] += 1 }
+                    changedLibraries = []
+                    revisionFlush = nil
+                }
+            }
+        case .reconnected:
+            // Zdarzenia z przerwy przepadły: świeży postęp i przeładowanie list.
+            for library in libraries { libraryRevision[library.id, default: 0] += 1 }
+            Task { await refresh() }
+        }
+    }
+
+    private func apply(_ me: AudiobookshelfClient.MeState) {
+        var all = Dictionary(me.mediaProgress.elements.compactMap { p in p.libraryItemId.map { (Self.key($0, p.episodeId), p) } }, uniquingKeysWith: { $1 })
+        if let book = player.book, player.isDirty, let local = progress[book.key] { all[book.key] = local }
+        progress = all
+        bookmarks = Dictionary(grouping: me.bookmarks?.elements ?? [], by: \.libraryItemId).mapValues { $0.sorted { $0.time < $1.time } }
+    }
+
+    /// Wywołanie API tokenem konta do słuchania (dla widoków okna).
+    func api<T: Sendable>(_ operation: (AudiobookshelfClient, String) async throws -> T) async throws -> T {
+        guard let auth else { throw AudiobookshelfClient.APIError.unauthorized }
+        return try await auth.perform(operation)
     }
 
     // MARK: - Listy
@@ -150,9 +228,7 @@ final class ListeningController {
         defer { isRefreshing = false }
         do {
             libraries = try await auth.perform { try await $0.userLibraries(token: $1) }
-            continueListening = try await auth.perform { try await $0.itemsInProgress(token: $1) }
-            let all = try await auth.perform { try await $0.allProgress(token: $1) }
-            progress = Dictionary(all.compactMap { p in p.libraryItemId.map { (Self.key($0, p.episodeId), p) } }, uniquingKeysWith: { $1 })
+            apply(try await auth.perform { try await $0.me(token: $1) })
             loadError = nil
         } catch {
             logger.error("Odświeżanie list: \(error.localizedDescription, privacy: .public)")
@@ -160,24 +236,19 @@ final class ListeningController {
         }
     }
 
-    func loadItems(libraryID: String) async {
-        guard let auth else { return }
-        do {
-            itemsByLibrary[libraryID] = try await auth.perform { try await $0.libraryItems(libraryID: libraryID, token: $1) }
-        } catch {
-            loadError = error.localizedDescription
-        }
-    }
-
-    func episodes(of item: AudiobookshelfClient.LibraryItem) async throws -> [AudiobookshelfClient.PodcastEpisode] {
-        guard let auth else { throw AudiobookshelfClient.APIError.unauthorized }
-        return try await auth.perform { try await $0.podcastEpisodes(itemID: item.id, token: $1) }
-    }
-
     func cover(for itemID: String, path: String?, size: CGFloat) async -> NSImage? {
         await covers.image(itemID: itemID, path: path, pixels: Int(size * 2)) { [weak self] width in
             guard let auth = self?.auth else { return nil }
             return try? await auth.perform { try await $0.cover(itemID: itemID, width: width, token: $1) }
+        }
+    }
+
+    /// Zdjęcie autora (pliki autorów leżą w folderze metadanych serwera, więc przez HTTP).
+    func authorImage(id: String, path: String?, size: CGFloat) async -> NSImage? {
+        guard path != nil else { return nil }
+        return await covers.image(itemID: "author-" + id, path: nil, pixels: Int(size * 2)) { [weak self] width in
+            guard let auth = self?.auth else { return nil }
+            return try? await auth.perform { try await $0.authorImage(id: id, width: width, token: $1) }
         }
     }
 
@@ -189,13 +260,20 @@ final class ListeningController {
 
     /// Zaczyna słuchać pozycji (albo odcinka) od miejsca zapisanego na serwerze.
     /// Gdy to już bieżąca książka — tylko wznawia albo zatrzymuje.
-    func play(itemID: String, episodeID: String? = nil) async {
+    func play(itemID: String, episodeID: String? = nil, at position: Double? = nil) async {
         let key = Self.key(itemID, episodeID)
         if player.book?.key == key {
-            player.togglePlayPause()
+            if let position {
+                player.seek(to: position)
+                if !player.isPlaying { player.togglePlayPause() }
+            } else {
+                player.togglePlayPause()
+            }
             return
         }
         guard let auth, startingKey == nil else { return }
+        // Wybór innej pozycji z listy kończy kolejkę playlisty.
+        if !playingFromQueue { queue = [] }
         startingKey = key
         defer { startingKey = nil }
         loadError = nil
@@ -245,10 +323,16 @@ final class ListeningController {
                 chapters: Self.chapters(playback, tracks: tracks)
             )
             session = (playback.id, key)
-            lastAgreed = adoptedLocal ? nil : start
-            // Kilka sekund wstecz: wejście w połowie zdania trudno śledzić.
-            player.start(book, at: adoptedLocal ? start : max(0, start - (start > 10 ? 3 : 0)))
-            if adoptedLocal { player.isDirty = true }
+            lastAgreed = adoptedLocal || position != nil ? nil : start
+            if let position {
+                // Wybrane miejsce (zakładka, rozdział ze strony książki).
+                player.start(book, at: position)
+                player.isDirty = true
+            } else {
+                // Kilka sekund wstecz: wejście w połowie zdania trudno śledzić.
+                player.start(book, at: adoptedLocal ? start : max(0, start - (start > 10 ? 3 : 0)))
+                if adoptedLocal { player.isDirty = true }
+            }
             startSyncLoop()
             nowPlayingCoverPath = playback.coverPath
             loadArtwork(itemID: itemID, path: playback.coverPath)
@@ -343,7 +427,10 @@ final class ListeningController {
             if player.isDirty { Task { await sync() } }
         case .finished:
             guard let book = player.book else { return }
-            Task { await finish(book) }
+            Task {
+                await finish(book)
+                await playNextInQueue(after: book.key)
+            }
         case .remoteFailed:
             player.reloadRemote()
         }
@@ -521,11 +608,156 @@ final class ListeningController {
     }
 
     private func updateLocalProgress(_ book: AudiobookPlayer.Book, time: Double) {
-        guard let old = progress[book.key] else { return }
+        let old = progress[book.key]
         progress[book.key] = .init(
-            libraryItemId: old.libraryItemId, episodeId: old.episodeId, duration: book.duration,
+            id: old?.id, libraryItemId: book.itemID, episodeId: book.episodeID, duration: book.duration,
             progress: book.duration > 0 ? time / book.duration : 0, currentTime: time, isFinished: false,
-            hideFromContinueListening: old.hideFromContinueListening, lastUpdate: Date.now.timeIntervalSince1970 * 1000
+            hideFromContinueListening: old?.hideFromContinueListening, lastUpdate: Date.now.timeIntervalSince1970 * 1000,
+            startedAt: old?.startedAt ?? Date.now.timeIntervalSince1970 * 1000, finishedAt: nil
         )
+    }
+    // MARK: - Postęp, zakładki i kolejka (strony okna „Biblioteka”, etap 9b)
+
+    struct QueueEntry: Hashable, Sendable {
+        let itemID: String
+        let episodeID: String?
+        let title: String
+    }
+
+    /// Świeży postęp i zakładki (po akcjach okna; zdarzenia serwera też je przynoszą).
+    func refreshMe() async {
+        do {
+            apply(try await api { try await $0.me(token: $1) })
+        } catch {
+            logger.error("Odświeżenie postępu: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Oznacza pozycję (albo odcinek) jako ukończoną lub nieukończoną.
+    func setFinished(itemID: String, episodeID: String? = nil, _ finished: Bool) async {
+        let key = Self.key(itemID, episodeID)
+        if finished, player.book?.key == key {
+            // Bieżąca książka: sesja zamykana bez pozycji, inaczej synchronizacja cofnęłaby „ukończone”.
+            await markFinished()
+            return
+        }
+        do {
+            try await api { try await $0.setFinished(itemID: itemID, episodeID: episodeID, finished: finished, token: $1) }
+            if finished { pending?.set(nil, for: key) }
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    /// Ukończone/nieukończone dla wielu pozycji (seria, wszystkie odcinki podcastu).
+    func setFinished(_ entries: [AudiobookshelfClient.BatchProgress]) async {
+        guard !entries.isEmpty else { return }
+        if let book = player.book, entries.contains(where: { $0.isFinished && Self.key($0.libraryItemId, $0.episodeId) == book.key }) {
+            await markFinished()
+        }
+        do {
+            try await api { try await $0.setFinished(entries, token: $1) }
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    /// Usuwa postęp pozycji (web UI: „Wyzeruj postęp”). Gdy właśnie gra — odtwarzanie kończy się
+    /// bez zapisu pozycji, bo następna synchronizacja założyłaby postęp od nowa.
+    func resetProgress(itemID: String, episodeID: String? = nil) async {
+        let key = Self.key(itemID, episodeID)
+        if player.book?.key == key {
+            player.pause()
+            if let syncInFlight { await syncInFlight.value }
+            endSyncLoop()
+            player.isDirty = false
+            _ = player.takeListenedTime()
+            if let session, session.key == key {
+                try? await api { try await $0.closeSession(id: session.id, nil, token: $1) }
+            }
+            session = nil
+            lastAgreed = nil
+            player.stop()
+            nowPlayingCoverPath = nil
+        }
+        pending?.set(nil, for: key)
+        do {
+            var id = progress[key]?.id
+            if id == nil {
+                id = try await api { try await $0.progress(itemID: itemID, episodeID: episodeID, token: $1) }?.id
+            }
+            if let id {
+                try await api { try await $0.deleteProgress(id: id, token: $1) }
+            }
+            progress[key] = nil
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    /// Chowa pozycję z „Słuchaj dalej” bez zmiany postępu.
+    func removeFromContinueListening(itemID: String, episodeID: String? = nil) async {
+        guard let id = progress[Self.key(itemID, episodeID)]?.id else { return }
+        do {
+            try await api { try await $0.removeFromContinueListening(progressID: id, token: $1) }
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    /// Zakładka w bieżącym miejscu odtwarzanej książki.
+    func addBookmarkAtCurrentPosition() async {
+        guard let book = player.book, book.episodeID == nil else { return }
+        let time = (player.currentTime * 10).rounded() / 10
+        let title = player.currentChapter.map { "\($0.title) — \(ChapterScrubber.time(time - $0.start))" } ?? ChapterScrubber.time(time)
+        do {
+            try await api { try await $0.createBookmark(itemID: book.itemID, time: time, title: title, token: $1) }
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    func renameBookmark(_ bookmark: AudiobookshelfClient.Bookmark, to title: String) async {
+        do {
+            try await api { try await $0.updateBookmark(itemID: bookmark.libraryItemId, time: bookmark.time, title: title, token: $1) }
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    func deleteBookmark(_ bookmark: AudiobookshelfClient.Bookmark) async {
+        do {
+            try await api { try await $0.deleteBookmark(itemID: bookmark.libraryItemId, time: bookmark.time, token: $1) }
+        } catch {
+            loadError = error.localizedDescription
+        }
+        await refreshMe()
+    }
+
+    /// Gra pozycje po kolei (playlista): pierwsza od razu, kolejne po ukończeniu poprzedniej.
+    func playQueue(_ entries: [QueueEntry]) async {
+        guard let first = entries.first else { return }
+        playingFromQueue = true
+        defer { playingFromQueue = false }
+        queue = Array(entries.dropFirst())
+        await play(itemID: first.itemID, episodeID: first.episodeID)
+    }
+
+    func clearQueue() {
+        queue = []
+    }
+
+    private func playNextInQueue(after key: String) async {
+        guard player.book?.key == key, !queue.isEmpty else { return }
+        let next = queue.removeFirst()
+        playingFromQueue = true
+        defer { playingFromQueue = false }
+        await play(itemID: next.itemID, episodeID: next.episodeID)
     }
 }

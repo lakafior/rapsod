@@ -42,6 +42,10 @@ struct PlayerPanel: View {
                     Spacer()
                     SleepMenu(player: player)
                     Spacer()
+                    if book.episodeID == nil {
+                        BookmarksMenu(listening: listening, itemID: book.itemID)
+                        Spacer()
+                    }
                     Menu {
                         Button("Oznacz jako ukończone", systemImage: "checkmark.circle") {
                             Task { await listening.markFinished() }
@@ -58,12 +62,50 @@ struct PlayerPanel: View {
                 }
                 .controlSize(.small)
 
+                if let next = listening.queue.first {
+                    HStack {
+                        Label("Następne: \(next.title)" + (listening.queue.count > 1 ? " (+\(listening.queue.count - 1))" : ""), systemImage: "text.line.first.and.arrowtriangle.forward")
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Wyczyść kolejkę", systemImage: "xmark.circle.fill") { listening.clearQueue() }
+                            .labelStyle(.iconOnly).buttonStyle(.borderless)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 ChapterList(player: player)
             }
             .padding()
         } else {
             ContentUnavailableView("Nic nie gra", systemImage: "headphones", description: Text("Wybierz książkę z listy."))
         }
+    }
+}
+
+/// Zakładki bieżącej książki: dodanie w bieżącym miejscu i przejście do zapisanych.
+struct BookmarksMenu: View {
+    let listening: ListeningController
+    let itemID: String
+
+    var body: some View {
+        let bookmarks = listening.bookmarks[itemID] ?? []
+        Menu {
+            Button("Dodaj zakładkę", systemImage: "bookmark") { Task { await listening.addBookmarkAtCurrentPosition() } }
+            if !bookmarks.isEmpty {
+                Divider()
+                ForEach(bookmarks) { bookmark in
+                    Button("\(ChapterScrubber.time(bookmark.time))  \(bookmark.title)") { listening.player.seek(to: bookmark.time) }
+                }
+            }
+        } label: {
+            Label(bookmarks.isEmpty ? "Zakładki" : "Zakładki (\(bookmarks.count))", systemImage: bookmarks.isEmpty ? "bookmark" : "bookmark.fill")
+                .labelStyle(.iconOnly)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(bookmarks.isEmpty ? "Zakładki" : "Zakładki: \(bookmarks.count)")
+        .accessibilityIdentifier("player.bookmarks")
     }
 }
 

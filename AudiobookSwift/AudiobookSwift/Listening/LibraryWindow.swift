@@ -1,9 +1,12 @@
 import SwiftUI
 
-/// Natywne okno „Biblioteka”: „Słuchaj dalej”, lista książek wybranej biblioteki i odtwarzacz.
+/// Natywne okno „Biblioteka” — widok słuchacza zamiast web UI: pasek boczny z biblioteką
+/// i sekcjami, w środku siatki okładek i strony (książka, seria, autor, podcast) z nawigacją
+/// wstecz, na dole pasek odtwarzania, po prawej panel odtwarzacza.
 ///
-/// Treść istnieje tylko przy otwartym oknie (`ReleasedWhenClosed`); odtwarzacz żyje
-/// w `ListeningController`, więc słuchanie trwa po zamknięciu okna.
+/// Treść istnieje tylko przy otwartym oknie (`ReleasedWhenClosed`), a stan przeglądania
+/// (`LibraryBrowser`) razem z nią; odtwarzacz żyje w `ListeningController`, więc słuchanie
+/// trwa po zamknięciu okna.
 struct LibraryWindow: View {
     static let windowID = "library"
     static let title = "Biblioteka"
@@ -13,14 +16,19 @@ struct LibraryWindow: View {
     let account: ServerAccount
     let settings: SettingsNavigation
 
-    enum Selection: Hashable {
-        case continueListening
-        case library(String)
-    }
-
-    @State private var selection: Selection? = .continueListening
+    @State private var browser: LibraryBrowser
     @State private var showsPlayer = true
+    @State private var newPlaylistName = ""
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.controlActiveState) private var activeState
+
+    init(listening: ListeningController, supervisor: ServerSupervisor, account: ServerAccount, settings: SettingsNavigation) {
+        self.listening = listening
+        self.supervisor = supervisor
+        self.account = account
+        self.settings = settings
+        _browser = State(initialValue: LibraryBrowser(listening: listening))
+    }
 
     private var needsUser: Bool {
         guard supervisor.state == .running, account.state == .ready else { return false }
@@ -40,62 +48,101 @@ struct LibraryWindow: View {
                 unavailable
             }
         }
-        .frame(minWidth: 760, minHeight: 460)
+        .frame(minWidth: 980, minHeight: 560)
         .navigationTitle(Self.title)
         .onDisappear { listening.windowClosed() }
     }
 
     private var content: some View {
         NavigationSplitView {
-            List(selection: $selection) {
-                Label("Słuchaj dalej", systemImage: "play.circle").tag(Selection.continueListening)
-                Section("Biblioteki") {
-                    ForEach(listening.libraries) { library in
-                        Label(library.name, systemImage: library.mediaType == "podcast" ? "mic" : "books.vertical")
-                            .tag(Selection.library(library.id))
-                    }
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 200)
+            LibrarySidebar(browser: browser)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         } detail: {
-            NavigationStack {
-                switch selection {
-                case .library(let id):
-                    if let library = listening.libraries.first(where: { $0.id == id }) {
-                        ItemList(listening: listening, items: listening.itemsByLibrary[id], title: library.name)
-                            .task(id: id) { await listening.loadItems(libraryID: id) }
+            // Strony otwierane z list zastępują całą kolumnę szczegółów, więc pasek odtwarzania
+            // dostaje i korzeń, i każda strona (na samym stosie znikał po przejściu dalej).
+            NavigationStack(path: $browser.path) {
+                withPlayerBar(root)
+                    .navigationDestination(for: LibraryBrowser.Route.self) { route in
+                        withPlayerBar(destination(route))
                     }
-                case .continueListening, nil:
-                    ItemList(listening: listening, items: listening.continueListening, title: "Słuchaj dalej", isContinue: true)
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
             }
         }
+        .searchable(text: $browser.searchText, placement: .toolbar, prompt: browser.isPodcastLibrary ? "Szukaj podcastów i odcinków" : "Szukaj książek, autorów, serii")
         .inspector(isPresented: $showsPlayer) {
             PlayerPanel(listening: listening)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 440)
         }
         .toolbar {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 Button(showsPlayer ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz", systemImage: "sidebar.trailing") { showsPlayer.toggle() }
             }
-            ToolbarItem {
-                Button("Odśwież", systemImage: "arrow.clockwise") {
-                    Task {
-                        await listening.refresh()
-                        if case .library(let id) = selection { await listening.loadItems(libraryID: id) }
-                    }
-                }
-                .disabled(listening.isRefreshing)
-            }
         }
-        .task { await listening.refresh() }
+        .task {
+            await listening.windowActivated()
+            browser.ensureLibrary()
+        }
+        .onChange(of: activeState) {
+            // Powrót do okna: świeży postęp, nawet gdyby zdarzenia serwera coś zgubiły.
+            if activeState == .key { Task { await listening.refreshMe() } }
+        }
+        .onChange(of: listening.libraries) { browser.ensureLibrary() }
+        .task(id: browser.libraryID) { await browser.loadPlaylists() }
+        // `presenting:` przekazuje pozycję do akcji — zamknięcie alertu zeruje `newPlaylistEntry` wcześniej.
+        .alert("Nowa playlista", isPresented: Binding(get: { browser.newPlaylistEntry != nil }, set: { if !$0 { browser.newPlaylistEntry = nil } }),
+               presenting: browser.newPlaylistEntry) { entry in
+            TextField("Nazwa", text: $newPlaylistName)
+            Button("Utwórz") {
+                let name = newPlaylistName
+                Task { await browser.createPlaylist(name: name, with: entry) }
+                newPlaylistName = ""
+            }
+            Button("Anuluj", role: .cancel) { newPlaylistName = "" }
+        }
         .alert("Nie udało się", isPresented: Binding(get: { listening.loadError != nil }, set: { if !$0 { listening.loadError = nil } })) {
             Button("OK") { listening.loadError = nil }
         } message: {
             Text(listening.loadError ?? "")
+        }
+    }
+
+    @ViewBuilder private var root: some View {
+        if let libraryID = browser.libraryID, browser.library != nil {
+            if !browser.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                SearchView(browser: browser, libraryID: libraryID, text: browser.searchText)
+            } else {
+                switch browser.section {
+                case .home: HomeView(browser: browser, libraryID: libraryID)
+                case .items: ItemsSection(browser: browser, libraryID: libraryID)
+                case .series: SeriesSection(browser: browser, libraryID: libraryID)
+                case .authors: AuthorsSection(browser: browser, libraryID: libraryID)
+                case .narrators: NarratorsSection(browser: browser, libraryID: libraryID)
+                case .collections: CollectionsSection(browser: browser, libraryID: libraryID)
+                case .playlists: PlaylistsSection(browser: browser, libraryID: libraryID)
+                case .latestEpisodes: LatestEpisodesView(browser: browser, libraryID: libraryID)
+                case .stats: StatsView(listening: listening)
+                }
+            }
+        } else if listening.libraries.isEmpty, !listening.isRefreshing {
+            ContentUnavailableView("Brak bibliotek", systemImage: "books.vertical", description: Text("Dodaj folder z audiobookami w ustawieniach aplikacji."))
+        } else {
+            ProgressView()
+        }
+    }
+
+    private func withPlayerBar(_ content: some View) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
+        }
+    }
+
+    @ViewBuilder private func destination(_ route: LibraryBrowser.Route) -> some View {
+        switch route {
+        case .item(let id): ItemPage(browser: browser, itemID: id)
+        case .series(let id, let name): SeriesPage(browser: browser, seriesID: id, name: name)
+        case .author(let id, let name): AuthorPage(browser: browser, authorID: id, name: name)
+        case .filtered(let filter): FilteredItems(browser: browser, filter: filter)
+        case .collection(let id): CollectionPage(browser: browser, collectionID: id)
+        case .playlist(let id): PlaylistPage(browser: browser, playlistID: id)
         }
     }
 
@@ -126,159 +173,73 @@ struct LibraryWindow: View {
     }
 }
 
-/// Lista pozycji: okładka, tytuł, autor, postęp. Dwuklik (albo Return) odtwarza;
-/// podcast otwiera listę odcinków.
-private struct ItemList: View {
-    let listening: ListeningController
-    let items: [AudiobookshelfClient.LibraryItem]?
-    let title: String
-    var isContinue = false
-    @State private var selection: String?
-    @State private var podcast: AudiobookshelfClient.LibraryItem?
+/// Pasek boczny: wybór biblioteki i sekcje (inne dla książek i podcastów).
+private struct LibrarySidebar: View {
+    @Bindable var browser: LibraryBrowser
 
     var body: some View {
-        Group {
-            if let items {
-                if items.isEmpty {
-                    ContentUnavailableView(
-                        isContinue ? "Nic nie jest w trakcie słuchania" : "Pusta biblioteka",
-                        systemImage: isContinue ? "play.circle" : "books.vertical",
-                        description: Text(isContinue ? "Rozpoczęte książki pojawią się tutaj." : "")
-                    )
+        let podcast = browser.isPodcastLibrary
+        List(selection: Binding(get: { browser.section }, set: { if let section = $0 { browser.section = section } })) {
+            Section(browser.library?.name ?? "Biblioteka") {
+                row("Start", "house", .home)
+                if podcast {
+                    row("Podcasty", "mic", .items)
+                    row("Najnowsze odcinki", "clock", .latestEpisodes)
                 } else {
-                    List(items, selection: $selection) { item in
-                        ItemRow(listening: listening, item: item)
-                            .tag(item.id)
-                    }
-                    .contextMenu(forSelectionType: String.self) { ids in
-                        if let item = items.first(where: { ids.contains($0.id) }) {
-                            Button(item.isPodcast && item.recentEpisode == nil ? "Pokaż odcinki" : "Odtwarzaj") { open(item) }
-                        }
-                    } primaryAction: { ids in
-                        if let item = items.first(where: { ids.contains($0.id) }) { open(item) }
+                    row("Książki", "books.vertical", .items)
+                    row("Serie", "square.stack", .series)
+                    row("Autorzy", "person.2", .authors)
+                    row("Lektorzy", "waveform", .narrators)
+                    row("Kolekcje", "rectangle.stack", .collections)
+                }
+                row("Playlisty", "music.note.list", .playlists)
+            }
+            Section("Twoje słuchanie") {
+                row("Statystyki", "chart.bar", .stats)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if browser.listening.libraries.count > 1 {
+                Picker("Biblioteka", selection: $browser.libraryID) {
+                    ForEach(browser.listening.libraries) { library in
+                        Label(library.name, systemImage: library.mediaType == "podcast" ? "mic" : "books.vertical")
+                            .tag(Optional(library.id))
                     }
                 }
-            } else {
-                ProgressView()
+                .labelsHidden()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .accessibilityIdentifier("libraryPicker")
             }
-        }
-        .navigationTitle(title)
-        .navigationDestination(item: $podcast) { item in
-            EpisodeList(listening: listening, podcast: item)
-        }
-    }
-
-    private func open(_ item: AudiobookshelfClient.LibraryItem) {
-        if item.isPodcast {
-            if let episode = item.recentEpisode {
-                Task { await listening.play(itemID: item.id, episodeID: episode.id) }
-            } else {
-                podcast = item
-            }
-        } else {
-            Task { await listening.play(itemID: item.id) }
         }
     }
 }
 
-private struct ItemRow: View {
-    let listening: ListeningController
-    let item: AudiobookshelfClient.LibraryItem
-    @State private var cover: NSImage?
-
-    var body: some View {
-        let key = ListeningController.key(item.id, item.recentEpisode?.id)
-        let progress = listening.progress[key]
-        HStack(spacing: 10) {
-            CoverView(image: cover, symbol: item.isPodcast ? "mic" : "book.closed")
-                .frame(width: 44, height: 44)
-                .task(id: item.id) { cover = await listening.cover(for: item.id, path: item.media.coverPath, size: 44) }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.recentEpisode?.title ?? item.title).lineLimit(1)
-                Text(item.recentEpisode != nil ? item.title : (item.author ?? "")).font(.callout).foregroundStyle(.secondary).lineLimit(1)
-                if item.isPodcast, item.recentEpisode == nil, let count = item.media.numEpisodes {
-                    Text("Odcinki: \(count)").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    ProgressLine(progress: progress, duration: item.media.duration)
-                }
-            }
-            Spacer()
-            if listening.startingKey == key {
-                ProgressView().controlSize(.small)
-            } else if listening.player.book?.key == key {
-                Image(systemName: listening.player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill").foregroundStyle(.tint)
-            }
-        }
-        .padding(.vertical, 2)
-        .accessibilityIdentifier("item.\(item.id)")
+extension LibrarySidebar {
+    /// Wiersz sekcji; kliknięcie już wybranej sekcji wraca do jej korzenia (jak w Muzyce i Finderze) —
+    /// zaznaczenie się wtedy nie zmienia, więc robi to gest, nie `selection`.
+    func row(_ title: String, _ symbol: String, _ section: LibraryBrowser.Section) -> some View {
+        Label(title, systemImage: symbol)
+            .tag(section)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded {
+                if browser.section == section { browser.path = [] }
+            })
     }
 }
 
-/// Pasek postępu z opisem („42%”, „Ukończone”).
-private struct ProgressLine: View {
-    let progress: AudiobookshelfClient.MediaProgress?
-    let duration: Double?
+/// Lista pozycji z filtrem z innej strony (lektor, gatunek, tag, wydawca…).
+struct FilteredItems: View {
+    @Bindable var browser: LibraryBrowser
+    let filter: LibraryBrowser.ItemFilter
 
     var body: some View {
-        HStack(spacing: 6) {
-            if let progress, progress.isFinished {
-                Label("Ukończone", systemImage: "checkmark.circle.fill").labelStyle(.titleAndIcon)
-            } else if let progress, let value = progress.progress, value > 0 {
-                ProgressView(value: min(1, value)).frame(maxWidth: 120)
-                Text(value.formatted(.percent.precision(.fractionLength(0)))).fixedSize()
-            } else if let duration, duration > 0 {
-                Text(ChapterScrubber.time(duration))
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-}
-
-/// Odcinki podcastu, najnowsze pierwsze; dwuklik odtwarza.
-private struct EpisodeList: View {
-    let listening: ListeningController
-    let podcast: AudiobookshelfClient.LibraryItem
-    @State private var episodes: [AudiobookshelfClient.PodcastEpisode]?
-    @State private var error: String?
-    @State private var selection: String?
-
-    var body: some View {
-        Group {
-            if let episodes {
-                List(episodes, selection: $selection) { episode in
-                    let key = ListeningController.key(podcast.id, episode.id)
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(episode.title ?? "Odcinek").lineLimit(2)
-                            ProgressLine(progress: listening.progress[key], duration: episode.length)
-                        }
-                        Spacer()
-                        if listening.player.book?.key == key {
-                            Image(systemName: listening.player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill").foregroundStyle(.tint)
-                        }
-                    }
-                    .tag(episode.id)
+        if let libraryID = browser.libraryID {
+            ItemGrid(browser: browser, libraryID: libraryID, filter: filter, sort: browser.itemSort, emptyTitle: "Brak pozycji")
+                .navigationTitle(filter.title)
+                .toolbar {
+                    ToolbarItem { SortMenu(sort: $browser.itemSort, options: SortMenu.bookOptions) }
                 }
-                .contextMenu(forSelectionType: String.self) { ids in
-                    Button("Odtwarzaj") { play(ids) }
-                } primaryAction: { ids in
-                    play(ids)
-                }
-            } else if let error {
-                ContentUnavailableView("Nie udało się wczytać odcinków", systemImage: "exclamationmark.triangle", description: Text(error))
-            } else {
-                ProgressView()
-            }
         }
-        .navigationTitle(podcast.title)
-        .task {
-            do { episodes = try await listening.episodes(of: podcast) } catch { self.error = error.localizedDescription }
-        }
-    }
-
-    private func play(_ ids: Set<String>) {
-        guard let id = ids.first else { return }
-        Task { await listening.play(itemID: podcast.id, episodeID: id) }
     }
 }
