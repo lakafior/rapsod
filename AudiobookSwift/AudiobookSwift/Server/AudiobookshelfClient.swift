@@ -65,6 +65,16 @@ struct AudiobookshelfClient: Sendable {
         let error: String?
     }
 
+    /// Własny dostawca metadanych (`server/models/CustomMetadataProvider.js`):
+    /// upstream odpytuje `GET <url>/search` z nagłówkiem `Authorization: <authHeaderValue>`.
+    struct CustomMetadataProvider: Decodable, Sendable, Identifiable, Equatable {
+        let id: String
+        let name: String
+        let url: String
+        let mediaType: String
+        let authHeaderValue: String?
+    }
+
     enum APIError: LocalizedError {
         case unauthorized
         case rateLimited
@@ -182,6 +192,33 @@ struct AudiobookshelfClient: Sendable {
         let path = "api/libraries/\(libraryID)/items"
         let response = try decode(Response.self, from: await send("GET", path, query: [URLQueryItem(name: "limit", value: "1")], token: token))
         return response.total
+    }
+
+    // MARK: Własni dostawcy metadanych (wymagają tokenu administratora)
+
+    // `server/controllers/CustomMetadataProviderController.js`. Upstream nie ma edycji wpisu.
+
+    func customMetadataProviders(token: String) async throws -> [CustomMetadataProvider] {
+        struct Response: Decodable { let providers: [CustomMetadataProvider] }
+        return try decode(Response.self, from: await send("GET", "api/custom-metadata-providers", token: token)).providers
+    }
+
+    func createCustomMetadataProvider(name: String, url: String, mediaType: String, authHeaderValue: String?, token: String) async throws -> CustomMetadataProvider {
+        struct Body: Encodable {
+            let name: String
+            let url: String
+            let mediaType: String
+            let authHeaderValue: String?
+        }
+        struct Response: Decodable { let provider: CustomMetadataProvider }
+        let body = Body(name: name, url: url, mediaType: mediaType, authHeaderValue: authHeaderValue)
+        return try decode(Response.self, from: await send("POST", "api/custom-metadata-providers", body: body, token: token)).provider
+    }
+
+    /// Usuwa wpis. Biblioteki, które miały go jako domyślnego dostawcę, upstream
+    /// przestawia na `google`.
+    func deleteCustomMetadataProvider(id: String, token: String) async throws {
+        _ = try await send("DELETE", "api/custom-metadata-providers/\(id)", token: token)
     }
 
     // MARK: - HTTP
