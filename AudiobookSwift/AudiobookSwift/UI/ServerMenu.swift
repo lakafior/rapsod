@@ -21,16 +21,19 @@ struct ServerMenu: View {
         }
         .keyboardShortcut("o")
 
-        Button("\(WebUIWindow.title)…") {
-            webMode.isManagement = false
-            openWindow.bringToFront(id: WebUIWindow.windowID)
-        }
-
+        // Przeglądanie i słuchanie są w oknie „Biblioteka”; web UI słuchacza zostaje jako wyjście
+        // awaryjne pod Option (i w menu aplikacji), zarządzanie na koncie root — bez zmian.
         Button("Zarządzanie serwerem…") {
             webMode.isManagement = true
             openWindow.bringToFront(id: WebUIWindow.windowID)
         }
         .disabled(account.state != .ready)
+        .modifierKeyAlternate(.option) {
+            Button("\(WebUIWindow.title)…") {
+                webMode.isManagement = false
+                openWindow.bringToFront(id: WebUIWindow.windowID)
+            }
+        }
 
         Button("\(SettingsWindow.title)…") {
             openWindow.openSettings(navigation: settings)
