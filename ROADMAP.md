@@ -18,20 +18,19 @@ Po 1.0.0: ikona aplikacji, usuwanie biblioteki z okna statusu.
 - **6b. Agent w tle — odrzucone.** Przeniesienie nadzoru serwera do lekkiego procesu oszczędziłoby tylko 10–40 MB: tyle zostaje po aplikacji w spoczynku po 6a (18–50 MB), a samodzielny proces nadzorcy też zajmuje pamięć. Zysk niewart drugiego procesu, komunikacji między procesami i podwójnego podpisywania.
 - **6c. Rozmiar paczki — zrobione (do sprawdzenia na podpisanym, notaryzowanym wydaniu).** Własny build Node (small-icu en+pl, bez inspektora i dołączonych narzędzi): 122 → 62 MB. ffmpeg i ffprobe tylko z potrzebnymi składnikami, we wspólnych bibliotekach: 45 → 9 MB. `abs-server` bez zbędnych kopii pakietów: 51 → 43 MB. Zawartość `Server` 210 → 111 MB, aplikacja ok. 215 → 115 MB, DMG ok. 75 → 40 MB (szacunek z obrazu samego `Server`). Do tego `NODE_OPTIONS=--max-semi-space-size=1`: Node w spoczynku 99 → 63 MB, po skanie 1200 pozycji 314 → 238 MB, skan ok. 5% dłuższy.
 
+## Źródła metadanych
+
+### Wbudowane źródła metadanych — zrobione
+
+LubimyCzytać, Audioteka, Storytel i Audible jako jedno opcjonalne źródło w oknie dopasowywania książki, bez osobnego kontenera i ręcznej konfiguracji serwera.
+
+- **Kod:** agregator [aio-abs-providers](https://github.com/lakafior/aio-abs-providers) (GPL-3.0) jako drugi submodule przypięty do commita. Aktualizacja źródeł to przesunięcie przypięcia i nowe wydanie aplikacji.
+- **Uruchamianie na żądanie:** aplikacja nasłuchuje na stałym porcie pętli zwrotnej i budzi agregator przy pierwszym zapytaniu (start ok. 0,3 s), a po 5 minutach bezczynności go wyłącza. W spoczynku nie zajmuje pamięci.
+- **Rejestracja:** aplikacja sama dodaje i usuwa wpis dostawcy w audiobookshelf oraz ustawia go raz jako domyślne źródło bibliotek z książkami.
+- **Konfiguracja i wyszukiwarka:** strony agregatora pokazywane w oknie aplikacji.
+- **Do sprawdzenia przed publikacją:** źródła pobierają dane ze stron serwisów, więc trzeba przejrzeć ich regulaminy pod kątem dystrybucji w publicznej aplikacji.
+
 ## Planowane
-
-### Wbudowane źródła metadanych
-
-Polskie źródła metadanych dostępne bez osobnego kontenera i ręcznej konfiguracji: LubimyCzytać, Audioteka, Storytel (oraz Audible z tego samego agregatora).
-
-- **Źródło kodu:** [aio-abs-providers](https://github.com/lakafior/aio-abs-providers) (GPL-3.0) — jeden serwer Node łączący wszystkie źródła, z rankingiem i scalaniem wyników. Zastępuje osobne `lubimyczytac-abs`, `audioteka-abs` i `abs-storytel-provider`. Dołączany jako drugi submodule przypięty do commita, tak jak upstream.
-- **Rejestracja w serwerze:** aplikacja dodaje dostawcę przez `POST /api/custom-metadata-providers` z adresem na pętli zwrotnej i usuwa go po wyłączeniu funkcji. Upstream odpytuje wtedy `GET <adres>/search`.
-- **Opcjonalne:** domyślnie wyłączone, z przełącznikiem i ustawieniami w aplikacji (które źródła, język, scalanie wyników) zamiast strony `/admin` agregatora.
-- **Do rozstrzygnięcia: jak go uruchamiać.**
-  - osobny proces Node — najprostsze i odizolowane, ale ok. 50 MB pamięci przez cały czas;
-  - wewnątrz procesu serwera (`node --require`, jak `parent-watch.js`) — bez dodatkowego procesu, ale błąd w dostawcy może wyłączyć serwer;
-  - na żądanie — aplikacja nasłuchuje na porcie dostawcy i uruchamia go przy pierwszym zapytaniu, a wyłącza po bezczynności. Zerowy koszt w spoczynku, najwięcej pracy.
-- **Do sprawdzenia przed wydaniem:** źródła pobierają dane ze stron serwisów, więc trzeba przejrzeć ich regulaminy pod kątem dystrybucji w publicznej aplikacji i zadbać o limity zapytań.
 
 ### Bardziej natywna aplikacja
 

@@ -16,7 +16,16 @@ audiobookshelf — serwer i klient web
   Licencje bibliotek klienta web są w komentarzach plików
   Server/abs-server/client/dist/.
 
-Node.js — środowisko uruchomieniowe serwera
+aio-abs-providers — źródła metadanych (LubimyCzytać, Audioteka, Storytel, Audible)
+  Licencja: GPL-3.0
+  Źródła: https://github.com/lakafior/aio-abs-providers (commit w pliku
+  Licenses/VERSIONS.txt)
+  Zawiera pakiety npm innych autorów (MIT, ISC, BSD-2-Clause, BSD-3-Clause);
+  ich licencje leżą w paczce obok kodu:
+    Server/aio-abs-providers/node_modules/<pakiet>/
+  Pełny tekst: Licenses/aio-abs-providers-LICENSE.txt
+
+Node.js — środowisko uruchomieniowe serwera i źródeł metadanych
   Licencja: MIT oraz licencje dołączonych bibliotek (V8, OpenSSL, ICU i inne)
   Źródła: https://nodejs.org/dist/ (wersja w pliku Licenses/VERSIONS.txt);
   zbudowany z niezmienionych źródeł z mniejszym zestawem składników — adres,

@@ -2,7 +2,7 @@
 # Buduje wydanie: samodzielną, podpisaną (Developer ID, hardened runtime)
 # i notaryzowaną aplikację w pliku DMG. Wszystko powstaje w `build/release`.
 #
-# Kroki: serwer, Node i ffmpeg (skrypty obok) → zawartość `Contents/Resources/Server`
+# Kroki: serwer, źródła metadanych, Node i ffmpeg (skrypty obok) → zawartość `Contents/Resources/Server`
 # → podpis każdej binarki → archiwum i eksport z Xcode → wstawienie serwera
 # i licencji do paczki → podpis aplikacji → notaryzacja i bilet dla aplikacji
 # → DMG → podpis, notaryzacja i bilet dla DMG → weryfikacja.
@@ -50,6 +50,8 @@ fi
 
 step "Serwer audiobookshelf"
 "$ROOT/scripts/build-server.sh"
+step "Źródła metadanych (aio-abs-providers)"
+"$ROOT/scripts/build-providers.sh"
 step "Node do paczki (pierwszy raz ok. 30 minut, potem z pamięci podręcznej)"
 "$ROOT/scripts/build-node.sh"
 step "ffmpeg i ffprobe"
@@ -100,6 +102,28 @@ done
       cp "$SERVER_SRC/$file" "$ABS/dist-server/$file"
     done
 
+# Źródła metadanych (aio-abs-providers): kod, zależności produkcyjne i licencja.
+# Testy, dokumentacja i pliki Dockera agregatora zostają w repozytorium. Z zależności
+# odpadają mapy źródeł, typy TypeScript i opisy pakietów; pliki licencji zostają.
+PROVIDERS_SRC="$ROOT/build/aio-abs-providers"
+PROVIDERS="$PAYLOAD/aio-abs-providers"
+mkdir -p "$PROVIDERS"
+cp "$PROVIDERS_SRC/package.json" "$PROVIDERS_SRC/LICENSE" "$PROVIDERS/"
+rsync -a "$PROVIDERS_SRC/src/" "$PROVIDERS/src/"
+rsync -a \
+  --exclude '/.bin' --exclude '/.package-lock.json' --exclude '/@types' \
+  --exclude '*.map' --exclude '*.ts' --exclude '*.tsbuildinfo' \
+  --exclude 'README*' --exclude 'CHANGELOG*' --exclude 'HISTORY*' \
+  "$PROVIDERS_SRC/node_modules/" "$PROVIDERS/node_modules/"
+# Agregator tworzy plik ustawień, kopiując domyślny z paczki; kopia dziedziczy
+# uprawnienia, więc wzorzec musi być zapisywalny dla właściciela.
+chmod -R u+w "$PROVIDERS"
+# Agregator to sam JavaScript: binarka w jego zależnościach oznaczałaby moduł
+# natywny, którego ten skrypt nie budował i nie sprawdzał.
+if find "$PROVIDERS" -type f -exec file -b {} + | grep -q '^Mach-O'; then
+  die "W aio-abs-providers pojawił się plik Mach-O (moduł natywny w zależnościach)."
+fi
+
 # Rozszerzenie SQLite jest uniwersalne; aplikacja jest tylko dla Apple Silicon.
 if lipo -archs "$ABS/libnusqlite3.dylib" | grep -q x86_64; then
   lipo -thin arm64 "$ABS/libnusqlite3.dylib" -output "$ABS/libnusqlite3.dylib"
@@ -145,6 +169,29 @@ console.log('  zależności produkcyjne (' + deps.length + '): ok')")
 env -i "$PAYLOAD/ffmpeg/bin/ffmpeg" -version | head -1 | sed 's/^/  /'
 env -i "$PAYLOAD/ffmpeg/bin/ffprobe" -version > /dev/null
 
+step "Test źródeł metadanych na podpisanym Node"
+# Start tak, jak robi to aplikacja: wolny port na pętli zwrotnej, ustawienia poza
+# paczką, stdin z potoku, którego zamknięcie kończy proces.
+PTEST="$REL/providers-test"
+mkdir -p "$PTEST"
+(cd "$PTEST" && sleep 20 | env -i PATH=/usr/bin:/bin PORT=0 HOST=127.0.0.1 CONFIG_PATH="$PTEST/config.json" \
+  API_KEY=test EXIT_ON_STDIN_CLOSE=1 "$PAYLOAD/node" "$PROVIDERS/src/backbone/server.js" > "$PTEST/out.log" 2>&1) &
+PROVIDERS_URL=""
+for _ in $(seq 1 50); do
+  PROVIDERS_URL="$(sed -n 's|^Backbone listening on \(http://127\.0\.0\.1:[0-9]*\).*|\1|p' "$PTEST/out.log" | head -1)"
+  [[ -z "$PROVIDERS_URL" ]] || break
+  sleep 0.2
+done
+[[ -n "$PROVIDERS_URL" ]] || { cat "$PTEST/out.log" >&2; die "Agregator nie wystartował na podpisanym Node."; }
+curl -fsS --max-time 5 "$PROVIDERS_URL/healthz" | grep -q '"status":"ok"' || die "Agregator nie odpowiada na /healthz."
+[[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$PROVIDERS_URL/search?query=test")" == "401" ]] \
+  || die "Agregator odpowiada na /search bez klucza."
+[[ -w "$PTEST/config.json" ]] || die "Plik ustawień agregatora nie jest zapisywalny."
+pkill -f "$PROVIDERS/src/backbone/server.js" || true
+wait || true
+rm -rf "$PTEST"
+echo "  aio-abs-providers: start, /healthz, klucz, zapis ustawień: ok"
+
 # --- Aplikacja --------------------------------------------------------------
 
 step "Archiwum Xcode (Release, build $BUILD_NUMBER)"
@@ -182,9 +229,11 @@ cp "$ROOT/build/node-runtime/LICENSE" "$LICENSES/Node.js-LICENSE.txt"
 cp "$ROOT/build/node-runtime/SOURCE.txt" "$LICENSES/Node.js-SOURCE.txt"
 cp "$ROOT/build/ffmpeg/licenses/"* "$LICENSES/"
 cp "$ROOT/packaging/licenses/nunicode-LICENSE.txt" "$LICENSES/nunicode-sqlite-LICENSE.txt"
+cp "$PROVIDERS_SRC/LICENSE" "$LICENSES/aio-abs-providers-LICENSE.txt"
 cat > "$LICENSES/VERSIONS.txt" <<EOF
 AudiobookSwift $VERSION ($BUILD_NUMBER), commit $(git -C "$ROOT" rev-parse HEAD)
 audiobookshelf $(git -C "$ROOT/vendor/audiobookshelf" describe --tags --always), commit $(git -C "$ROOT/vendor/audiobookshelf" rev-parse HEAD)
+aio-abs-providers, commit $(git -C "$ROOT/vendor/aio-abs-providers" rev-parse HEAD) (https://github.com/lakafior/aio-abs-providers)
 Node.js $("$PAYLOAD/node" --version) (własny build ze źródeł z https://nodejs.org/dist/, zob. Node.js-SOURCE.txt)
 $("$PAYLOAD/ffmpeg/bin/ffmpeg" -version | head -1)
 libnusqlite3 $(cat "$SERVER_SRC/libnusqlite3.dylib.ver") (nunicode 1.11, https://github.com/mikiher/nunicode-sqlite)

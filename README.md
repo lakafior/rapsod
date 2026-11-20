@@ -165,7 +165,7 @@ Ustalone w kodzie upstreamu (`server/Server.js`, `server/Auth.js`, `server/auth/
 
 ## Źródła metadanych (etap 7)
 
-Opcjonalne i domyślnie wyłączone: LubimyCzytać, Audioteka, Storytel i Audible jako jedno źródło w oknie dopasowywania książki w audiobookshelf, bez osobnego kontenera i bez wpisywania czegokolwiek w ustawieniach serwera. Kod źródeł to agregator [aio-abs-providers](https://github.com/lakafior/aio-abs-providers) (GPL-3.0), dołączony jako drugi submodule (`vendor/aio-abs-providers`) przypięty do commita i niemodyfikowany. Na razie działa tylko w aplikacji uruchomionej z Xcode — do paczki DMG jeszcze nie trafia.
+Opcjonalne i domyślnie wyłączone: LubimyCzytać, Audioteka, Storytel i Audible jako jedno źródło w oknie dopasowywania książki w audiobookshelf, bez osobnego kontenera i bez wpisywania czegokolwiek w ustawieniach serwera. Kod źródeł to agregator [aio-abs-providers](https://github.com/lakafior/aio-abs-providers) (GPL-3.0), dołączony jako drugi submodule (`vendor/aio-abs-providers`) przypięty do commita i niemodyfikowany.
 
 ```bash
 git submodule update --init
@@ -216,7 +216,7 @@ scripts/release.sh
 Czas: za pierwszym razem na danym Macu ok. 45 minut, z czego ok. 30 minut to kompilacja Node; potem ok. 10 minut, w większości czekanie na notaryzację. Szczegóły w krokach:
 
 1. buduje serwer (`scripts/build-server.sh`, ok. 1–2 minut, potem pomijany), Node do paczki (`scripts/build-node.sh`, ok. 30 minut raz na wersję Node, potem kopia z pamięci podręcznej) i ffmpeg (`scripts/build-ffmpeg.sh`, ok. 1 minuty, potem pomijany) — pobierane pliki są przypięte do wersji i sprawdzane sumą SHA-256;
-2. składa `Contents/Resources/Server`: `node`, `ffmpeg/bin` (ffmpeg, ffprobe), `ffmpeg/lib` (ich wspólne biblioteki) i odchudzony `abs-server` (skompilowany kod, `client/dist`, zależności produkcyjne bez map źródeł, typów TypeScript, `node-gyp`, źródeł SQLite i alternatywnych kopii pakietów, których serwer nie ładuje — źródeł ES i paczek dla przeglądarki `moment`, `validator`, `jose`, `node-unrar-js`, `lodash/fp`; pliki licencji pakietów zostają);
+2. składa `Contents/Resources/Server`: `node`, `ffmpeg/bin` (ffmpeg, ffprobe), `ffmpeg/lib` (ich wspólne biblioteki) odchudzony `aio-abs-providers` (kod agregatora źródeł metadanych i jego zależności produkcyjne) i odchudzony `abs-server` (skompilowany kod, `client/dist`, zależności produkcyjne bez map źródeł, typów TypeScript, `node-gyp`, źródeł SQLite i alternatywnych kopii pakietów, których serwer nie ładuje — źródeł ES i paczek dla przeglądarki `moment`, `validator`, `jose`, `node-unrar-js`, `lodash/fp`; pliki licencji pakietów zostają);
 3. podpisuje każdą binarkę Mach-O w tym folderze (w tym biblioteki ffmpeg, moduł natywny `node_sqlite3.node` i `libnusqlite3.dylib`), sprawdza, że podpisany Node ładuje sqlite3 z rozszerzeniem i wszystkie zależności produkcyjne serwera;
 4. archiwizuje aplikację w konfiguracji Release i eksportuje ją z podpisem Developer ID;
 5. wstawia serwer i folder `Licenses` do paczki, podpisuje aplikację od nowa z uprawnieniami z eksportu;
