@@ -34,7 +34,7 @@ struct CloudflareTunnelSection: View {
 
     @ViewBuilder
     private var installHint: some View {
-        Text("Do tunelu potrzebny jest program cloudflared. Zainstaluj go poleceniem `brew install cloudflared` (Homebrew) i wybierz „Sprawdź ponownie”. Bez niego reszta aplikacji działa normalnie.")
+        Text("Do tunelu potrzebny jest program cloudflared. Zainstaluj go oficjalnym instalatorem `cloudflared-arm64.pkg` ze strony github.com/cloudflare/cloudflared/releases albo poleceniem `brew install cloudflared` i wybierz „Sprawdź ponownie”. Bez niego reszta aplikacji działa normalnie.")
             .fixedSize(horizontal: false, vertical: true)
         HStack {
             Spacer()

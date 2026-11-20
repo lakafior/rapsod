@@ -70,6 +70,10 @@ struct ServerMenu: View {
 
         Divider()
 
+        Button("O programie AudiobookSwift") {
+            openWindow.bringToFront(id: AboutWindow.windowID)
+        }
+
         Button("Zakończ") {
             NSApp.terminate(nil)
         }

@@ -2,9 +2,13 @@ import Foundation
 
 /// Jedyne miejsce, które wie, skąd biorą się Node, ffmpeg, kod serwera i jego dane.
 ///
-/// Na razie Node i serwer pochodzą z katalogu `build/` repozytorium (tworzy go
-/// `scripts/build-server.sh`), a ffmpeg/ffprobe z Homebrew. W etapie 6 wszystko to
-/// zostanie zastąpione zasobami wbudowanymi w paczkę aplikacji — zmiana tylko tutaj.
+/// Dwa układy:
+/// - **wydanie** — wszystko leży w paczce, w `Contents/Resources/Server`
+///   (wkłada je tam `scripts/release.sh`); aplikacja nie potrzebuje repozytorium,
+///   Homebrew ani Node w systemie;
+/// - **tryb deweloperski** (uruchomienie z Xcode) — Node i serwer z katalogu `build/`
+///   repozytorium (`scripts/build-server.sh`), ffmpeg/ffprobe z `build/ffmpeg`
+///   (`scripts/build-ffmpeg.sh`), a gdy go nie ma — z Homebrew.
 struct ServerEnvironment: Sendable {
     // MARK: Konfiguracja sieci
 
@@ -72,7 +76,8 @@ struct ServerEnvironment: Sendable {
     // MARK: Cloudflare Tunnel (opcjonalny)
 
     /// `cloudflared` jest opcjonalny: bez niego działa wszystko poza tunelem Cloudflare.
-    /// Na razie z Homebrew (wbudowanie w paczkę to etap 5 — zmiana tylko tutaj).
+    /// Celowo nie jest częścią paczki — szukamy kopii zainstalowanej przez użytkownika
+    /// (Homebrew albo oficjalny instalator Cloudflare, który używa `/usr/local/bin`).
     /// Do testów ścieżkę można podmienić argumentem `-ABSCloudflared /ścieżka`.
     static func cloudflared(fileManager: FileManager = .default) -> URL? {
         let candidates: [String]
@@ -97,32 +102,65 @@ struct ServerEnvironment: Sendable {
     }
 
     enum ResolveError: LocalizedError {
-        case missingDevelopmentRoot
+        case missingServer
         case missing(what: String, path: String, hint: String)
 
         var errorDescription: String? {
             switch self {
-            case .missingDevelopmentRoot:
-                "Brak klucza ABSDevelopmentRoot w Info.plist."
+            case .missingServer:
+                "Ta kopia aplikacji nie zawiera serwera audiobookshelf. Pobierz aplikację ponownie."
             case let .missing(what, path, hint):
                 "Nie znaleziono: \(what) (\(path)). \(hint)"
             }
         }
     }
 
-    static func resolve(bundle: Bundle = .main, fileManager: FileManager = .default) throws -> ServerEnvironment {
-        guard let rootPath = bundle.object(forInfoDictionaryKey: "ABSDevelopmentRoot") as? String, !rootPath.isEmpty else {
-            throw ResolveError.missingDevelopmentRoot
-        }
-        let buildRoot = URL(filePath: rootPath, directoryHint: .isDirectory).standardizedFileURL
-        let buildHint = "Uruchom scripts/build-server.sh."
+    /// Folder z serwerem wbudowanym w paczkę (tylko w wydaniu).
+    static func bundledServerDirectory(bundle: Bundle = .main, fileManager: FileManager = .default) -> URL? {
+        guard let directory = bundle.resourceURL?.appending(path: "Server", directoryHint: .isDirectory),
+              fileManager.fileExists(atPath: directory.appending(path: "abs-server/dist-server/index.js").path) else { return nil }
+        return directory
+    }
 
-        let node = buildRoot.appending(path: "node/bin/node")
-        let serverRoot = buildRoot.appending(path: "abs-server", directoryHint: .isDirectory)
+    /// Teksty licencji dołączone do paczki (tylko w wydaniu).
+    static func licensesDirectory(bundle: Bundle = .main, fileManager: FileManager = .default) -> URL? {
+        guard let directory = bundle.resourceURL?.appending(path: "Licenses", directoryHint: .isDirectory),
+              fileManager.fileExists(atPath: directory.path) else { return nil }
+        return directory
+    }
+
+    static func resolve(bundle: Bundle = .main, fileManager: FileManager = .default) throws -> ServerEnvironment {
+        let node: URL
+        let serverRoot: URL
+        let ffmpeg: URL
+        let ffprobe: URL
+        let buildHint: String
+        let ffmpegHint: String
+
+        if let bundled = bundledServerDirectory(bundle: bundle, fileManager: fileManager) {
+            node = bundled.appending(path: "node")
+            serverRoot = bundled.appending(path: "abs-server", directoryHint: .isDirectory)
+            ffmpeg = bundled.appending(path: "ffmpeg")
+            ffprobe = bundled.appending(path: "ffprobe")
+            buildHint = "Paczka aplikacji jest uszkodzona — pobierz ją ponownie."
+            ffmpegHint = buildHint
+        } else if let rootPath = bundle.object(forInfoDictionaryKey: "ABSDevelopmentRoot") as? String, !rootPath.isEmpty {
+            let buildRoot = URL(filePath: rootPath, directoryHint: .isDirectory).standardizedFileURL
+            node = buildRoot.appending(path: "node/bin/node")
+            serverRoot = buildRoot.appending(path: "abs-server", directoryHint: .isDirectory)
+            let built = buildRoot.appending(path: "ffmpeg/bin", directoryHint: .isDirectory)
+            let ffmpegDirectory = fileManager.isExecutableFile(atPath: built.appending(path: "ffmpeg").path)
+                ? built
+                : URL(filePath: "/opt/homebrew/bin", directoryHint: .isDirectory)
+            ffmpeg = ffmpegDirectory.appending(path: "ffmpeg")
+            ffprobe = ffmpegDirectory.appending(path: "ffprobe")
+            buildHint = "Uruchom scripts/build-server.sh."
+            ffmpegHint = "Uruchom scripts/build-ffmpeg.sh albo zainstaluj: brew install ffmpeg."
+        } else {
+            throw ResolveError.missingServer
+        }
+
         let entryPoint = serverRoot.appending(path: "dist-server/index.js")
-        let homebrew = URL(filePath: "/opt/homebrew/bin", directoryHint: .isDirectory)
-        let ffmpeg = homebrew.appending(path: "ffmpeg")
-        let ffprobe = homebrew.appending(path: "ffprobe")
         let nusqlite3 = serverRoot.appending(path: "libnusqlite3.dylib")
 
         guard fileManager.isExecutableFile(atPath: node.path) else {
@@ -132,7 +170,7 @@ struct ServerEnvironment: Sendable {
             throw ResolveError.missing(what: "zbudowany serwer audiobookshelf", path: entryPoint.path, hint: buildHint)
         }
         for (name, url) in [("ffmpeg", ffmpeg), ("ffprobe", ffprobe)] where !fileManager.isExecutableFile(atPath: url.path) {
-            throw ResolveError.missing(what: name, path: url.path, hint: "Zainstaluj: brew install ffmpeg.")
+            throw ResolveError.missing(what: name, path: url.path, hint: ffmpegHint)
         }
         guard let parentWatch = bundle.url(forResource: "parent-watch", withExtension: "js") else {
             throw ResolveError.missing(what: "parent-watch.js", path: "zasoby aplikacji", hint: "Przebuduj aplikację.")

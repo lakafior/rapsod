@@ -31,6 +31,13 @@ struct AudiobookSwiftApp: App {
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+
+        Window("O programie AudiobookSwift", id: AboutWindow.windowID) {
+            AboutWindow(supervisor: appDelegate.supervisor)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
     }
 }
 

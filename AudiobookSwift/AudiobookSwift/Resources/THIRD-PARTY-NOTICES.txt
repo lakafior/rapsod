@@ -1,0 +1,39 @@
+AudiobookSwift jest wolnym oprogramowaniem na licencji GNU General Public
+License w wersji 3 lub (według uznania) dowolnej późniejszej. Program jest
+rozpowszechniany BEZ JAKIEJKOLWIEK GWARANCJI. Pełny tekst licencji: plik LICENSE.
+
+Wydana aplikacja zawiera następujące komponenty innych autorów. Żaden z nich
+nie został zmodyfikowany.
+
+audiobookshelf — serwer i klient web
+  Licencja: GPL-3.0
+  Źródła: https://github.com/advplyr/audiobookshelf (tag odpowiadający wersji
+  pokazanej w oknie „O programie”)
+  Zawiera pakiety npm innych autorów (m.in. MIT, ISC, BSD, Apache-2.0); ich
+  licencje leżą w paczce obok kodu: Server/abs-server/node_modules/<pakiet>/
+  oraz Server/abs-server/dist-server/server/libs/. Licencje bibliotek klienta web
+  są w komentarzach plików Server/abs-server/client/dist/.
+
+Node.js — środowisko uruchomieniowe serwera
+  Licencja: MIT oraz licencje dołączonych bibliotek (V8, OpenSSL, ICU i inne)
+  Źródła: https://nodejs.org/dist/ (wersja w pliku Licenses/VERSIONS.txt)
+  Pełny tekst: Licenses/Node.js-LICENSE.txt
+
+FFmpeg — ffmpeg i ffprobe
+  Licencja: LGPL-2.1-or-later (build bez --enable-gpl i --enable-nonfree)
+  Źródła, sumy kontrolne i opcje budowania: Licenses/FFmpeg-SOURCE.txt;
+  przepis: scripts/build-ffmpeg.sh w repozytorium aplikacji
+  Pełny tekst: Licenses/FFmpeg-COPYING.LGPLv2.1.txt
+
+libwebp — koder WebP wlinkowany statycznie w ffmpeg
+  Licencja: BSD-3-Clause
+  Źródła: https://chromium.googlesource.com/webm/libwebp
+  Pełny tekst: Licenses/libwebp-COPYING.txt
+
+nunicode-sqlite (libnusqlite3) — rozszerzenie SQLite
+  Licencja: MIT (nunicode); SQLite jest w domenie publicznej
+  Źródła: https://github.com/mikiher/nunicode-sqlite
+  Pełny tekst: Licenses/nunicode-sqlite-LICENSE.txt
+
+Folder Licenses jest częścią wydanej aplikacji
+(AudiobookSwift.app/Contents/Resources/Licenses).

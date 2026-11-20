@@ -10,7 +10,9 @@
 		<true/>
 	</dict>
 	<key>ABSDevelopmentRoot</key>
-	<string>$(SRCROOT)/../build</string>
+	<string>$(ABS_DEVELOPMENT_ROOT)</string>
+	<key>ABSSourceURL</key>
+	<string></string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu.</string>
 	<key>NSDesktopFolderUsageDescription</key>

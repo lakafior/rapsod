@@ -6,13 +6,18 @@ Serwer audiobookshelf jest dołączony jako git submodule (`vendor/audiobookshel
 
 ## Budowanie i uruchamianie
 
-Wymagania: Xcode 27 z zalogowanym kontem zespołu deweloperskiego `5TA8RF548P` (podpis), ffmpeg i ffprobe z Homebrew (`brew install ffmpeg`), dostęp do sieci przy pierwszym budowaniu serwera.
+Gotową aplikację pobiera się jako plik DMG (zob. „Wydanie”); ten rozdział dotyczy pracy z kodem.
+
+Wymagania: Apple Silicon, Xcode 27 z zalogowanym kontem zespołu deweloperskiego `5TA8RF548P` (podpis), dostęp do sieci przy pierwszym budowaniu. Homebrew ani Node w systemie nie są potrzebne.
 
 ```bash
 git submodule update --init
 scripts/build-server.sh
+scripts/build-ffmpeg.sh
 open AudiobookSwift/AudiobookSwift.xcodeproj
 ```
+
+`scripts/build-ffmpeg.sh` (kilka minut) można pominąć, jeśli jest ffmpeg z Homebrew — aplikacja uruchomiona z Xcode użyje wtedy `/opt/homebrew/bin/ffmpeg`. Ten z Homebrew nie ma jednak kodera WebP, więc miniatury okładek w web UI nie będą się generować.
 
 W Xcode uruchom schemat `AudiobookSwift`. Aplikacja nie ma ikony w Docku — pojawia się jako ikona książek na pasku menu. Serwer startuje razem z aplikacją; „Otwórz” pokazuje web UI audiobookshelf w oknie (zalogowane automatycznie).
 
@@ -65,7 +70,7 @@ Po podbiciu sprawdź w upstreamie wersję Node (`Dockerfile`) i nazwy zmiennych 
 
 ## Jak to działa
 
-- `AudiobookSwift/AudiobookSwift/Server/ServerEnvironment.swift` — jedyne miejsce ze ścieżkami do Node, ffmpeg, kodu serwera i danych oraz z hostem, portem i zmiennymi środowiskowymi serwera.
+- `AudiobookSwift/AudiobookSwift/Server/ServerEnvironment.swift` — jedyne miejsce ze ścieżkami do Node, ffmpeg, kodu serwera i danych oraz z hostem, portem i zmiennymi środowiskowymi serwera. W wydaniu wszystko bierze z `Contents/Resources/Server` w paczce; uruchomiona z Xcode — z katalogu `build/` repozytorium (klucz `ABSDevelopmentRoot` w `Info.plist`, pusty w konfiguracji Release).
 - `AudiobookSwift/AudiobookSwift/Server/ServerSupervisor.swift` — uruchamia `node`, zbiera stdout/stderr, wykrywa gotowość po HTTP (`/healthcheck`) i nieoczekiwane zakończenie, zatrzymuje serwer przez SIGINT.
 - `AudiobookSwift/AudiobookSwift/Resources/parent-watch.js` — ładowany przez `node --require`; wyłącza serwer, gdy aplikacja zniknie (także po `kill -9`), więc nie zostaje osierocony proces.
 - `AudiobookSwift/AudiobookSwift/Server/AudiobookshelfClient.swift` — mały klient HTTP API serwera.
@@ -99,7 +104,7 @@ Tryb jest zapisany w `sharing.json` (pole `externalAccess`; stary plik z wpisany
 
 Wariant: tunel zarządzany zdalnie, uruchamiany tokenem. Wymaga konta Cloudflare i domeny dodanej do Cloudflare (stały adres `https://<nazwa>.<twoja-domena>`). Szybkie tunele `trycloudflare.com` odpadają, bo adres zmienia się przy każdym starcie; tunel tworzony lokalnie (`cloudflared tunnel login`) trzyma poświadczenia w plikach w `~/.cloudflared`.
 
-1. `brew install cloudflared` (do etapu 5 aplikacja nie ma własnej kopii; bez `cloudflared` opcja pokazuje tę wskazówkę, reszta aplikacji działa).
+1. Zainstaluj `cloudflared`: oficjalny instalator `cloudflared-arm64.pkg` ze [strony wydań](https://github.com/cloudflare/cloudflared/releases) (instaluje do `/usr/local/bin`) albo `brew install cloudflared`. Aplikacja celowo nie zawiera własnej kopii — szuka go w `/usr/local/bin` i `/opt/homebrew/bin`; bez `cloudflared` opcja pokazuje tę wskazówkę, a reszta aplikacji działa.
 2. Panel Cloudflare → **Networking → Tunnels → Create tunnel** → typ **Cloudflared**, dowolna nazwa (np. `audiobookswift`).
 3. Na ekranie instalacji skopiuj polecenie z tokenem (`… service install eyJ…`) — **nie uruchamiaj go**, tylko wklej w aplikacji w pole „Token tunelu” (całe polecenie albo sam token). Token trafia wyłącznie do pęku kluczy.
 4. W tunelu, zakładka **Routes → Add route → Published application**: subdomena i domena (np. `ksiazki.example.com`), usługa **HTTP**, adres `127.0.0.1:13378`. Cloudflare sam utworzy rekord DNS.
@@ -156,6 +161,62 @@ Ustalone w kodzie upstreamu (`server/Server.js`, `server/Auth.js`, `server/auth/
 - `GET /api/me` — użytkownik, do którego należy token (`type`: `root`, `admin`, `user`, `guest`).
 - Web UI trzyma access token w `localStorage['token']` i wczytuje użytkownika tylko na stronie `/login` (`checkAuth`), dlatego automatyczne logowanie ładuje `/login`.
 
+## Wydanie
+
+Wydanie to plik `AudiobookSwift-<wersja>.dmg`: aplikacja podpisana Developer ID z hardened runtime, notaryzowana, z biletem zszytym z aplikacją i z obrazem dysku. Zawiera Node, serwer audiobookshelf z klientem web, ffmpeg, ffprobe i rozszerzenie SQLite — działa bez repozytorium, Homebrew i Node w systemie. Tylko Apple Silicon, macOS 27 lub nowszy (`MACOSX_DEPLOYMENT_TARGET`).
+
+### Jednorazowa konfiguracja
+
+1. W pęku kluczy musi być tożsamość „Developer ID Application: … (5TA8RF548P)” (Xcode → Settings → Accounts → Manage Certificates → „+” → Developer ID Application).
+2. Konto zespołu zalogowane w Xcode — eksport z podpisem automatycznym tworzy przy pierwszym wydaniu profil aprowizacji Developer ID dla `net.smigi.abswift` (grupa pęku kluczy jest uprawnieniem wymagającym profilu).
+3. Profil `notarytool`:
+   - na [account.apple.com](https://account.apple.com) → Logowanie i bezpieczeństwo → Hasła do aplikacji utwórz hasło (np. o nazwie `notarytool`);
+   - zapisz je w pęku kluczy — polecenie zapyta o hasło, nie podawaj go w argumentach:
+     ```bash
+     xcrun notarytool store-credentials audiobookswift-notary --apple-id <twój Apple ID> --team-id 5TA8RF548P
+     ```
+   Inną nazwę profilu podaje się zmienną `ABS_NOTARY_PROFILE`.
+
+### Zrobienie wydania
+
+```bash
+git submodule update --init
+scripts/release.sh
+```
+
+Skrypt (ok. 10–15 minut za pierwszym razem, potem kilka; większość to czekanie na Apple):
+
+1. buduje serwer (`scripts/build-server.sh`) i ffmpeg (`scripts/build-ffmpeg.sh`) — pobierane pliki są przypięte do wersji i sprawdzane sumą SHA-256;
+2. składa `Contents/Resources/Server`: `node`, `ffmpeg`, `ffprobe` i odchudzony `abs-server` (skompilowany kod, `client/dist`, zależności produkcyjne bez map źródeł, typów TypeScript, `node-gyp` i źródeł SQLite; pliki licencji pakietów zostają);
+3. podpisuje każdą binarkę Mach-O w tym folderze (w tym moduł natywny `node_sqlite3.node` i `libnusqlite3.dylib`) i sprawdza, że podpisany Node ładuje sqlite3 z rozszerzeniem;
+4. archiwizuje aplikację w konfiguracji Release i eksportuje ją z podpisem Developer ID;
+5. wstawia serwer i folder `Licenses` do paczki, podpisuje aplikację od nowa z uprawnieniami z eksportu;
+6. notaryzuje aplikację i zszywa bilet, tworzy DMG (aplikacja + skrót do `/Applications`), podpisuje, notaryzuje i zszywa bilet z DMG;
+7. sprawdza wynik: `codesign --verify --deep --strict`, `stapler validate`, `spctl --assess` dla aplikacji i DMG.
+
+Wynik: `build/release/AudiobookSwift-<wersja>.dmg` (pliku nie commitujemy). `scripts/release.sh --skip-notarize` robi wszystko poza notaryzacją — do testów lokalnych, nie do publikacji.
+
+### Wersje
+
+- Wersja aplikacji to `MARKETING_VERSION` w projekcie (własna numeracja, niezależna od audiobookshelf). Numer builda to liczba commitów (`ABS_BUILD_NUMBER` go nadpisuje).
+- Wersję audiobookshelf pokazuje okno statusu i „O programie”; dokładne wersje wszystkich składników są w `Contents/Resources/Licenses/VERSIONS.txt`.
+- Nowa wersja audiobookshelf u użytkowników = nowe wydanie aplikacji po „Podbiciu wersji audiobookshelf” (wyżej). Aktualizacji automatycznych nie ma: użytkownik pobiera nowy DMG i podmienia aplikację; dane w `~/Library/Application Support/AudiobookSwift/` i pęk kluczy zostają.
+- Migracje bazy uruchamia sam upstream przy starcie (`server/managers/MigrationManager.js`): przed migracją kopiuje bazę do `absdatabase.backup.sqlite`, a przy błędzie przywraca kopię, zostawia nieudaną jako `absdatabase.failed.sqlite` i kończy proces. Starsza wersja serwera na nowszej bazie wykonuje migracje wstecz. Automatyczne kopie zapasowe upstreamu są domyślnie wyłączone — włącza się je w web UI („Zarządzanie serwerem…” → Settings → Backups).
+
+### Podpis i uprawnienia runtime
+
+- Aplikacja: hardened runtime, bez sandboxa; uprawnienia tylko te, które nadaje profil (identyfikator aplikacji, zespół, grupa pęku kluczy `5TA8RF548P.net.smigi.abswift`). Ta sama grupa co w buildach z Xcode, więc wydana aplikacja czyta istniejące pozycje pęku kluczy.
+- `node`: jedno uprawnienie, `com.apple.security.cs.allow-jit` (`packaging/node.entitlements`). Silnik V8 rezerwuje pamięć wykonywalną dla JIT; bez tego uprawnienia Node pod hardened runtime kończy się przy starcie błędem „Failed to reserve virtual memory for CodeRange”. Pozostałe uprawnienia z oficjalnej binarki Node (`allow-unsigned-executable-memory`, `disable-executable-page-protection`, `disable-library-validation`, `allow-dyld-environment-variables`) nie są potrzebne: moduł `node_sqlite3.node` i `libnusqlite3.dylib` są podpisane tym samym zespołem, więc przechodzą walidację bibliotek.
+- `ffmpeg`, `ffprobe`, `node_sqlite3.node`, `libnusqlite3.dylib`: hardened runtime bez uprawnień.
+
+### ffmpeg
+
+`scripts/build-ffmpeg.sh` kompiluje ffmpeg 9.0.2 statycznie z niezmienionych źródeł, z libwebp 1.6.0, AudioToolbox, SecureTransport i zlib; bez `--enable-gpl`, więc na LGPL 2.1+. Upstream oczekuje ffmpeg 5.1 (`BinaryManager.js`), ale przez API serwera sprawdzone na tym buildzie: skan i metadane (ffprobe), miniatury okładek WebP/JPEG, strumień HLS z kopiowaniem i z kodowaniem do AAC, osadzanie metadanych, scalanie do M4B (AAC). Nie działa opcja „OPUS” w narzędziu M4B: upstream wywołuje eksperymentalny koder `opus` bez `-strict -2`, co kończy się błędem na każdym ffmpeg.
+
 ## Licencja
 
-audiobookshelf jest na licencji GPL-3.0.
+AudiobookSwift jest wolnym oprogramowaniem na licencji **GPL-3.0-or-later** (plik `LICENSE`). To nie jest porada prawna, tylko przyjęte rozwiązanie: aplikacja jest rozprowadzana w jednej paczce z serwerem audiobookshelf (GPL-3.0), a jej skrypt `parent-watch.js` działa w procesie serwera.
+
+Wydana paczka zawiera niezmienione komponenty innych autorów: audiobookshelf (GPL-3.0) z pakietami npm, Node.js (MIT i licencje dołączonych bibliotek), FFmpeg (LGPL-2.1+), libwebp (BSD-3-Clause), nunicode-sqlite (MIT). Lista jest w `AudiobookSwift/AudiobookSwift/Resources/THIRD-PARTY-NOTICES.txt` i w oknie „O programie”; pełne teksty licencji, adresy źródeł, sumy kontrolne i opcje budowania ffmpeg trafiają do `Contents/Resources/Licenses` w paczce.
+
+Rozprowadzanie binarek na GPL/LGPL wymaga udostępnienia odpowiadającego im kodu źródłowego. Dlatego **przed publikacją wydania** to repozytorium (z przypiętym submodule i skryptami budowania) musi być publicznie dostępne, a jego adres wpisany w klucz `ABSSourceURL` w `AudiobookSwift/Info.plist` — pokazuje go „O programie”, a `scripts/release.sh` ostrzega, gdy jest pusty.
