@@ -10,9 +10,11 @@ audiobookshelf — serwer i klient web
   Źródła: https://github.com/advplyr/audiobookshelf (tag odpowiadający wersji
   pokazanej w oknie „O programie”)
   Zawiera pakiety npm innych autorów (m.in. MIT, ISC, BSD, Apache-2.0); ich
-  licencje leżą w paczce obok kodu: Server/abs-server/node_modules/<pakiet>/
-  oraz Server/abs-server/dist-server/server/libs/. Licencje bibliotek klienta web
-  są w komentarzach plików Server/abs-server/client/dist/.
+  licencje leżą w paczce obok kodu:
+    Server/abs-server/node_modules/<pakiet>/
+    Server/abs-server/dist-server/server/libs/
+  Licencje bibliotek klienta web są w komentarzach plików
+  Server/abs-server/client/dist/.
 
 Node.js — środowisko uruchomieniowe serwera
   Licencja: MIT oraz licencje dołączonych bibliotek (V8, OpenSSL, ICU i inne)
