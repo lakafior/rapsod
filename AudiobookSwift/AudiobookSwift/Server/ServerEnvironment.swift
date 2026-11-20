@@ -117,12 +117,18 @@ struct ServerEnvironment: Sendable {
     /// do testów na czystym folderze można go podmienić argumentem uruchomienia
     /// `-ABSDataRoot /ścieżka` (np. `open AudiobookSwift.app --args -ABSDataRoot /tmp/abs`).
     static func resolveDataRoot(fileManager: FileManager = .default) throws -> URL {
+        let root: URL
         if let override = UserDefaults.standard.string(forKey: "ABSDataRoot"), !override.isEmpty {
-            return URL(filePath: (override as NSString).expandingTildeInPath, directoryHint: .isDirectory).standardizedFileURL
+            root = URL(filePath: (override as NSString).expandingTildeInPath, directoryHint: .isDirectory)
+        } else {
+            root = try fileManager
+                .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                .appending(path: "AudiobookSwift", directoryHint: .isDirectory)
         }
-        return try fileManager
-            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appending(path: "AudiobookSwift", directoryHint: .isDirectory)
+        // Folder musi istnieć przed normalizacją: `standardizedFileURL` usuwa prefiks
+        // `/private` tylko z istniejących ścieżek, a ścieżka jest kluczem w pęku kluczy.
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        return root.standardizedFileURL
     }
 
     func prepareDirectories(fileManager: FileManager = .default) throws {

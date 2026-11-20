@@ -31,16 +31,19 @@ struct WebUIView: NSViewRepresentable {
         webView.isInspectable = true
         #endif
         webView.allowsBackForwardNavigationGestures = true
-        let request = URLRequest(url: url)
         if let refreshToken = login?.refreshToken, let cookie = Self.refreshCookie(refreshToken, for: url) {
+            // Start od strony logowania: tylko ona wczytuje użytkownika z tokenu
+            // (`checkAuth` w `client/pages/login.vue`) i sama przekierowuje dalej.
+            // Wejście prosto na `/` z samym tokenem kończy się pustą stroną.
+            let request = URLRequest(url: url.appending(path: "login"))
             Task {
                 await configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
-                logger.notice("Ładuję \(url.absoluteString, privacy: .public) z automatycznym logowaniem")
+                logger.notice("Ładuję \(request.url?.absoluteString ?? "", privacy: .public) z automatycznym logowaniem")
                 webView.load(request)
             }
         } else {
             logger.notice("Ładuję \(url.absoluteString, privacy: .public)")
-            webView.load(request)
+            webView.load(URLRequest(url: url))
         }
         return webView
     }
