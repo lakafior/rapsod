@@ -38,9 +38,9 @@ Cel: słuchanie i codzienne zarządzanie w natywnych oknach, bez WebKit (web UI 
 
 - **9a. Odtwarzacz — zrobione.** Przeniesiony z projektu Dove (`AudiobookPlayer.swift`: kolejka plików, rozdziały, przewijanie, timer usypiania, „Teraz odtwarzane” i klawisze multimedialne) wraz z widokiem odtwarzacza. Do tego lista „Słuchaj dalej” i prosta lista książek. Pliki odtwarzane prosto z dysku, bo serwer działa na tym samym Macu; postęp synchronizowany z serwerem, żeby telefon widział to samo.
 - **9b. Biblioteka słuchacza — zrobione.** Okno „Biblioteka” jako pełny widok słuchacza: start z półkami, siatka okładek z sortowaniem i filtrami, serie, autorzy, lektorzy, kolekcje, playlisty, statystyki, wyszukiwanie, strony książki i podcastu z kompletem metadanych, rozdziałami, plikami i zakładkami. Zmiany z telefonu i skanu widać na żywo (Socket.IO).
-- **9b2. Zarządzanie pozycją.** Dopasowanie metadanych (tu działają wbudowane źródła metadanych), edycja szczegółów, okładki i rozdziałów — w menu „Więcej” strony książki.
+- **9b2. Zarządzanie pozycją — zrobione.** Arkusz na stronie książki (przycisk „Edytuj” i menu „Więcej”): dopasowanie metadanych z porównaniem pole po polu (domyślnie wbudowane źródła metadanych), edycja szczegółów, okładki (plik, adres, wyszukiwanie, usunięcie) i rozdziałów (także po ASIN). Zapis tokenem root w osobnym kliencie; konto słuchacza bez prawa edycji.
 - **9c. Domknięcie ustawień.** Kopie zapasowe, ponowny skan biblioteki, wielu użytkowników z uprawnieniami. Reszta stron zarządzania web UI (klucze API, powiadomienia, e-mail, RSS, OIDC, statystyki) według potrzeby.
-- **Potem:** web UI zostaje jako wyjście awaryjne dla rzadkich funkcji (edycja rozdziałów, narzędzia M4B, zarządzanie podcastami) albo znika, gdy i one zostaną przeniesione.
+- **Potem:** web UI zostaje jako wyjście awaryjne dla rzadkich funkcji (narzędzia M4B, osadzanie metadanych w plikach, edycja podcastów i ich odcinków) albo znika, gdy i one zostaną przeniesione.
 - **Wzorce:** odtwarzacz i widoki z Dove (własny projekt, MPL-2.0); wywołania API i modele audiobookshelf w [AudioBooth](https://github.com/AudioBooth/AudioBooth) (MPL-2.0, klient iOS) jako punkt odniesienia.
 
 ### Bardziej natywna aplikacja

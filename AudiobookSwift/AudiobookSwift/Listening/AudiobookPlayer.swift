@@ -51,7 +51,7 @@ final class AudiobookPlayer {
         let author: String?
         let duration: Double
         var tracks: [Track]
-        let chapters: [Chapter]
+        var chapters: [Chapter]
 
         var key: String { episodeID.map { "\(itemID)/\($0)" } ?? itemID }
     }
@@ -256,6 +256,14 @@ final class AudiobookPlayer {
     }
 
     /// Przewija do miejsca na osi czasu książki; między plikami ładuje właściwy plik.
+    /// Nowe rozdziały bieżącej książki (edycja w oknie biblioteki); ścieżki i pozycja bez zmian.
+    func replaceChapters(_ chapters: [Chapter]) {
+        guard book != nil else { return }
+        book?.chapters = chapters
+        let id = Self.chapter(in: chapters, at: currentTime)?.id
+        if id != currentChapterID { currentChapterID = id }
+    }
+
     func seek(to time: Double) {
         guard let book else { return }
         let target = min(max(0, time), max(0, book.duration - 0.5))

@@ -22,9 +22,13 @@ final class CoverCache {
     private var missing: Set<String> = []
     /// Trwające wczytania, żeby ta sama okładka nie była dekodowana dwa razy naraz.
     private var loading: [String: Task<NSImage?, Never>] = [:]
+    /// Wersja okładki pozycji (rośnie po zmianie): stare wpisy wypadają z `NSCache` same.
+    private var versions: [String: Int] = [:]
 
     func image(itemID: String, path: String?, pixels: Int, fetch: @escaping (Int) async -> Data?) async -> NSImage? {
-        let key = "\(itemID)@\(pixels)"
+        // Ścieżka w kluczu: po zmianie okładki widok z jeszcze starą ścieżką (plik zostaje na dysku)
+        // nie może podsunąć starego obrazka widokowi, który ma już nową.
+        let key = "\(itemID)#\(versions[itemID] ?? 0)@\(pixels)|\(path ?? "")"
         if let image = images.object(forKey: key as NSString) { return image }
         if missing.contains(key) { return nil }
         if let task = loading[key] { return await task.value }
@@ -50,6 +54,11 @@ final class CoverCache {
         return image
     }
 
+    /// Okładka pozycji się zmieniła (zapis z edycji albo zdarzenie serwera) — następne pytanie czyta ją od nowa.
+    func forget(itemID: String) {
+        versions[itemID, default: 0] += 1
+    }
+
     /// Zwalnia wszystko (okładka bieżącej książki żyje dalej w odtwarzaczu — `AudiobookPlayer.artwork`).
     func purge() {
         images.removeAllObjects()
@@ -60,7 +69,7 @@ final class CoverCache {
         CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary).flatMap { thumbnail(source: $0, pixels: pixels) }
     }
 
-    nonisolated private static func thumbnail(data: Data, pixels: Int) async -> NSImage? {
+    nonisolated static func thumbnail(data: Data, pixels: Int) async -> NSImage? {
         CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary).flatMap { thumbnail(source: $0, pixels: pixels) }
     }
 

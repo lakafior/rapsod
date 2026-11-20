@@ -17,7 +17,8 @@ final class ListeningEvents {
     enum Event {
         case progress(AudiobookshelfClient.MediaProgress)
         case user(AudiobookshelfClient.MeState)
-        case itemsChanged(Set<String>)
+        /// Biblioteki i pozycje, które się zmieniły (dodane, zmienione, usunięte).
+        case itemsChanged(libraries: Set<String>, items: Set<String>)
         case reconnected
     }
 
@@ -134,7 +135,8 @@ final class ListeningEvents {
         case "item_added", "item_updated", "item_removed", "items_added", "items_updated":
             let items = (payload as? [[String: Any]]) ?? [(payload as? [String: Any]) ?? [:]]
             let libraries = Set(items.compactMap { $0["libraryId"] as? String })
-            if !libraries.isEmpty { handler(.itemsChanged(libraries)) }
+            let ids = Set(items.compactMap { $0["id"] as? String })
+            if !libraries.isEmpty { handler(.itemsChanged(libraries: libraries, items: ids)) }
         default:
             break
         }

@@ -36,12 +36,18 @@ struct ItemPage: View {
 }
 
 /// Strona książki: to, co słuchacz widzi w web UI (okładka, metadane z linkami, postęp, opis,
-/// zakładki, rozdziały, pliki) i akcje słuchacza. Dopasowanie i edycja metadanych, okładki
-/// i rozdziałów (etap zarządzania) dostaną miejsce w pasku akcji obok „Więcej”.
+/// zakładki, rozdziały, pliki) i akcje słuchacza. „Edytuj” (i wpisy w „Więcej”) otwiera arkusz
+/// zarządzania pozycją (etap 9b2: szczegóły, okładka, rozdziały, dopasowanie) na koncie root.
 private struct BookPage: View {
     let browser: LibraryBrowser
     let item: AudiobookshelfClient.ItemDetail
     @State private var confirmReset = false
+    @State private var editing: EditRequest?
+
+    private struct EditRequest: Identifiable {
+        let tab: ItemEditorModel.Tab
+        var id: ItemEditorModel.Tab { tab }
+    }
 
     private var listening: ListeningController { browser.listening }
     private var metadata: AudiobookshelfClient.ItemDetail.Media.Metadata { item.media.metadata }
@@ -76,6 +82,9 @@ private struct BookPage: View {
             Button("Wyzeruj postęp", role: .destructive) { Task { await listening.resetProgress(itemID: item.id) } }
         } message: {
             Text("Pozycja w książce i data rozpoczęcia znikną z serwera — także na telefonie.")
+        }
+        .sheet(item: $editing) { request in
+            ItemEditorSheet(browser: browser, item: item, tab: request.tab)
         }
     }
 
@@ -219,7 +228,25 @@ private struct BookPage: View {
             .accessibilityLabel(finishedTitle)
             .accessibilityIdentifier("book.finished")
 
+            Button {
+                editing = EditRequest(tab: .details)
+            } label: {
+                Label("Edytuj", systemImage: "pencil").labelStyle(.iconOnly)
+            }
+            .controlSize(.large)
+            .disabled(!browser.manager.isAvailable)
+            .help(browser.manager.isAvailable ? "Edytuj szczegóły, okładkę i rozdziały" : browser.manager.unavailableReason)
+            .accessibilityLabel("Edytuj")
+            .accessibilityIdentifier("book.edit")
+
             Menu {
+                if browser.manager.isAvailable {
+                    Button("Dopasuj…") { editing = EditRequest(tab: .match) }
+                    Button("Edytuj szczegóły…") { editing = EditRequest(tab: .details) }
+                    Button("Okładka…") { editing = EditRequest(tab: .cover) }
+                    if hasAudio { Button("Rozdziały…") { editing = EditRequest(tab: .chapters) } }
+                    Divider()
+                }
                 if progress != nil {
                     Button("Wyzeruj postęp…", role: .destructive) { confirmReset = true }
                     if progress?.hideFromContinueListening != true, progress?.isFinished != true {

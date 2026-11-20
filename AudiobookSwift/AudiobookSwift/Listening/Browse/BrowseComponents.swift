@@ -12,8 +12,10 @@ struct AsyncCover: View {
 
     var body: some View {
         CoverView(image: image, symbol: symbol)
-            .task(id: itemID) {
-                image = await listening.cover(for: itemID, path: path, size: size)
+            .task(id: "\(itemID)#\(listening.coverRevision[itemID] ?? 0)|\(path ?? "")") {
+                let loaded = await listening.cover(for: itemID, path: path, size: size)
+                // Po zmianie okładki starsze wczytanie może skończyć się później — nie nadpisuje nowszego.
+                if !Task.isCancelled { image = loaded }
             }
     }
 }
