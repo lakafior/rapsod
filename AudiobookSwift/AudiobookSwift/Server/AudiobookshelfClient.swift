@@ -50,6 +50,8 @@ struct AudiobookshelfClient: Sendable {
         let name: String
         let mediaType: String
         let folders: [Folder]
+        /// Domyślny dostawca metadanych biblioteki (`google`, `audible`, `custom-<id>`…).
+        var provider: String? = nil
     }
 
     /// Zadanie w tle serwera (`TaskManager` upstreamu), np. skanowanie biblioteki.
@@ -169,6 +171,13 @@ struct AudiobookshelfClient: Sendable {
         }
         let body = Body(name: name, folders: [Folder(fullPath: folderPath)], mediaType: mediaType)
         return try decode(Library.self, from: await send("POST", "api/libraries", body: body, token: token))
+    }
+
+    /// Ustawia domyślnego dostawcę metadanych biblioteki (`PATCH /api/libraries/:id`).
+    /// Upstream zmienia tylko to pole, bez skanu; `custom-<id>` musi istnieć.
+    func setLibraryProvider(id: String, provider: String, token: String) async throws {
+        struct Body: Encodable { let provider: String }
+        _ = try await send("PATCH", "api/libraries/\(id)", body: Body(provider: provider), token: token)
     }
 
     /// Usuwa bibliotekę z serwera: jej pozycje, postęp słuchania, kolekcje i metadane

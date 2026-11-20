@@ -15,7 +15,7 @@ struct MetadataSourcesSection: View {
         ))
         .disabled(sources.isBusy)
 
-        Text("LubimyCzytać, Audioteka, Storytel i Audible jako jedno źródło w oknie dopasowywania książki w audiobookshelf. Aplikacja dodaje je do serwera sama. Działają tylko wtedy, gdy serwer o nie pyta — w spoczynku nie zajmują pamięci.")
+        Text("LubimyCzytać, Audioteka, Storytel i Audible jako jedno źródło w oknie dopasowywania książki w audiobookshelf. Aplikacja dodaje je do serwera sama i ustawia jako domyślne źródło bibliotek z książkami. Działają tylko wtedy, gdy serwer o nie pyta — w spoczynku nie zajmują pamięci.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

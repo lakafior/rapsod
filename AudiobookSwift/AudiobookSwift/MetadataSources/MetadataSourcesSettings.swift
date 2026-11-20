@@ -9,6 +9,9 @@ struct MetadataSourcesSettings: Codable, Sendable, Equatable {
     /// Po nim (i po adresie) rozpoznajemy własny wpis, żeby nie ruszać dostawców
     /// dodanych ręcznie przez użytkownika.
     var providerID: String?
+    /// Biblioteki, którym aplikacja już ustawiła te źródła jako domyślnego dostawcę.
+    /// Każdej ustawia raz — późniejsza zmiana dostawcy w audiobookshelf zostaje.
+    var defaultedLibraryIDs: [String] = []
 
     init() {}
 
@@ -16,6 +19,7 @@ struct MetadataSourcesSettings: Codable, Sendable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
         providerID = try container.decodeIfPresent(String.self, forKey: .providerID)
+        defaultedLibraryIDs = try container.decodeIfPresent([String].self, forKey: .defaultedLibraryIDs) ?? []
     }
 
     /// Brak pliku albo plik nieczytelny daje ustawienia domyślne (funkcja wyłączona).

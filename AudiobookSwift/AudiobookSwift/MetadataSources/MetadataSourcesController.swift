@@ -104,8 +104,11 @@ final class MetadataSourcesController {
     /// obserwacją stanu konta (żeby usunąć wpis, który został po wcześniejszym włączeniu).
     func activate() {
         accountObservation = Task { [weak self] in
-            let ready = Observations { [weak self] in self?.account.state == .ready }
-            for await _ in ready {
+            // Także lista bibliotek: nowa biblioteka dostaje te źródła jako domyślnego dostawcę.
+            let inputs = Observations { [weak self] in
+                self.map { ReconcileInputs(isReady: $0.account.state == .ready, libraryIDs: $0.account.libraries.map(\.id)) }
+            }
+            for await _ in inputs {
                 guard let self else { return }
                 requestReconcile()
             }
@@ -419,7 +422,9 @@ final class MetadataSourcesController {
                     try await account.withAdminToken { try await $0.deleteCustomMetadataProvider(id: provider.id, token: $1) }
                 }
                 if !own.isEmpty { logger.notice("Usunięto wpis źródeł metadanych z audiobookshelf") }
+                // Biblioteki z tym dostawcą upstream sam przestawił na `google`.
                 settings.providerID = nil
+                settings.defaultedLibraryIDs = []
                 saveSettings()
                 registration = .none
                 return
@@ -432,6 +437,7 @@ final class MetadataSourcesController {
                     settings.providerID = current.id
                     saveSettings()
                 }
+                try await applyLibraryDefault(providerID: current.id, replacing: [])
                 registration = .registered
                 return
             }
@@ -441,6 +447,8 @@ final class MetadataSourcesController {
             }
             settings.providerID = created.id
             saveSettings()
+            // Przed usunięciem starego wpisu: inaczej upstream przestawiłby jego biblioteki na `google`.
+            try await applyLibraryDefault(providerID: created.id, replacing: own.map(\.id))
             for provider in own {
                 try await account.withAdminToken { try await $0.deleteCustomMetadataProvider(id: provider.id, token: $1) }
             }
@@ -449,6 +457,31 @@ final class MetadataSourcesController {
         } catch {
             logger.error("Wpis źródeł metadanych w audiobookshelf: \(error.localizedDescription, privacy: .public)")
             registration = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Ustawia źródła jako domyślnego dostawcę bibliotek z książkami (decyzja użytkownika):
+    /// każdej bibliotece raz — przy włączeniu funkcji albo gdy biblioteka jest nowa — oraz
+    /// tym, które wskazywały na zastępowany wpis. Dostawcy zmienionego później ręcznie
+    /// w audiobookshelf nie nadpisujemy. Po wyłączeniu funkcji upstream sam wraca na `google`.
+    private func applyLibraryDefault(providerID: String, replacing replaced: [String]) async throws {
+        let slug = "custom-\(providerID)"
+        let replacedSlugs = Set(replaced.filter { $0 != providerID }.map { "custom-\($0)" })
+        let libraries = try await account.withAdminToken { try await $0.libraries(token: $1) }
+        var handled = Set(settings.defaultedLibraryIDs)
+        for library in libraries where library.mediaType == "book" {
+            let pointedAtReplaced = library.provider.map(replacedSlugs.contains) ?? false
+            if library.provider != slug, pointedAtReplaced || !handled.contains(library.id) {
+                try await account.withAdminToken { try await $0.setLibraryProvider(id: library.id, provider: slug, token: $1) }
+                logger.notice("Ustawiono źródła metadanych jako domyślnego dostawcę biblioteki")
+            }
+            handled.insert(library.id)
+        }
+        // Usunięte biblioteki wypadają z listy.
+        let updated = handled.intersection(libraries.map(\.id)).sorted()
+        if updated != settings.defaultedLibraryIDs {
+            settings.defaultedLibraryIDs = updated
+            saveSettings()
         }
     }
 
@@ -469,4 +502,9 @@ final class MetadataSourcesController {
             recentLog.removeFirst(recentLog.count - Self.logLimit)
         }
     }
+}
+
+private struct ReconcileInputs: Sendable, Equatable {
+    let isReady: Bool
+    let libraryIDs: [String]
 }
