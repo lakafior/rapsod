@@ -8,6 +8,20 @@ struct PairingSettings: Codable, Sendable, Equatable {
     var isEnabled = false
     /// Adres spoza sieci lokalnej wpisany przez użytkownika (pusty = brak).
     var externalURL = ""
+    /// Wyłączenie parowania nie zdołało usunąć klucza API albo rekordu (serwer nie działał,
+    /// brak sieci) — sprzątanie zostanie powtórzone przy następnej okazji.
+    var needsCleanup = false
+
+    init() {}
+
+    /// Brakujące pola dostają wartości domyślne, żeby starszy plik nie zgubił identyfikatora.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        serverID = try container.decode(String.self, forKey: .serverID)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        externalURL = try container.decodeIfPresent(String.self, forKey: .externalURL) ?? ""
+        needsCleanup = try container.decodeIfPresent(Bool.self, forKey: .needsCleanup) ?? false
+    }
 
     /// Brak pliku albo plik nieczytelny daje ustawienia domyślne (parowanie wyłączone).
     static func load(from url: URL) -> PairingSettings {

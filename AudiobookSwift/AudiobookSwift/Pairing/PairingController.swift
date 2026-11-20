@@ -76,7 +76,11 @@ final class PairingController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                Task { await self.refreshCloudState(); self.schedulePublish() }
+                Task {
+                    await self.refreshCloudState()
+                    self.schedulePublish()
+                    await self.cleanUpIfNeeded()
+                }
             }
         }
         Task { await refreshCloudState() }
@@ -94,6 +98,7 @@ final class PairingController {
     /// Serwer działa i konto aplikacji jest połączone.
     func serverDidConnect() {
         schedulePublish()
+        Task { await cleanUpIfNeeded() }
     }
 
     func serverDidStop() {
@@ -121,12 +126,11 @@ final class PairingController {
             saveSettings()
             bonjour.stop()
             record = nil
-            do {
-                try await account.revokePairingKey()
-            } catch {
-                lastError = "Nie udało się unieważnić tokenu: \(error.localizedDescription)"
+            settings.needsCleanup = true
+            await cleanUpIfNeeded()
+            if settings.needsCleanup {
+                lastError = "Nie udało się jeszcze usunąć tokenu albo rekordu z iCloud — aplikacja ponowi próbę po połączeniu z serwerem i iCloud."
             }
-            await removeRecord()
         }
         // `HOST` serwer czyta przy starcie, więc zmiana nasłuchu wymaga restartu.
         // Po starcie `serverDidConnect()` opublikuje rekord (gdy parowanie jest włączone).
@@ -264,7 +268,20 @@ final class PairingController {
         }
     }
 
-    private func removeRecord() async {
+    /// Po wyłączeniu parowania usuwa klucz API i rekord; nieudane kroki zostają do ponowienia.
+    private func cleanUpIfNeeded() async {
+        guard !settings.isEnabled, settings.needsCleanup else { return }
+        var done = true
+        if account.state == .ready {
+            do {
+                try await account.revokePairingKey()
+            } catch {
+                logger.error("Unieważnianie klucza API: \(error.localizedDescription, privacy: .public)")
+                done = false
+            }
+        } else {
+            done = false
+        }
         savedRecord = nil
         do {
             try await cloud.delete(serverID: settings.serverID)
@@ -273,6 +290,12 @@ final class PairingController {
         } catch {
             logger.error("Usuwanie rekordu parowania: \(error.localizedDescription, privacy: .public)")
             recordState = .failed("Nie udało się usunąć rekordu z iCloud: \(error.localizedDescription)")
+            done = false
+        }
+        // Ustawienia mogły się zmienić w trakcie (ponowne włączenie parowania).
+        if done, !settings.isEnabled {
+            settings.needsCleanup = false
+            saveSettings()
         }
     }
 

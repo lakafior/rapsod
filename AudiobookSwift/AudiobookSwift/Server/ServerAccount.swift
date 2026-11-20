@@ -228,11 +228,13 @@ final class ServerAccount {
     enum UserSetupError: LocalizedError {
         case usernameTaken
         case reserved
+        case notRegularUser
 
         var errorDescription: String? {
             switch self {
             case .usernameTaken: "Ta nazwa jest już zajęta na serwerze. Jeśli to Twoje konto, podaj jego hasło."
             case .reserved: "Konto root służy do zarządzania serwerem — wybierz inną nazwę."
+            case .notRegularUser: "To konto ma uprawnienia administratora. Do słuchania wybierz zwykłe konto użytkownika — jego klucz dostaje iPhone."
             }
         }
     }
@@ -260,7 +262,9 @@ final class ServerAccount {
             logger.notice("Założono konto użytkownika")
             login = try await client.login(credentials)
         }
-        guard let login, login.username.lowercased() != ServerEnvironment.rootUsername else { throw UserSetupError.reserved }
+        guard let login else { throw AudiobookshelfClient.APIError.unauthorized }
+        // Klucz API tego konta trafia do iCloud i do sieci lokalnej — tylko najmniejsze uprawnienia.
+        guard try await client.me(token: login.accessToken).type == "user" else { throw UserSetupError.notRegularUser }
         try userStore.save(credentials)
         userCredentials = credentials
         userID = login.userID
