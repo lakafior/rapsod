@@ -16,17 +16,21 @@ final class LoopbackProxy: @unchecked Sendable {
     typealias Open = @Sendable () async throws -> Int
     /// Wywoływane raz po zakończeniu każdego przyjętego połączenia (także nieudanego).
     typealias Close = @Sendable () -> Void
+    /// Nasłuch, który już działał, przestał działać (np. po zmianie stanu sieci).
+    typealias Failure = @Sendable (any Error) -> Void
 
     private let queue = DispatchQueue(label: "net.smigi.abswift.loopback-proxy")
     private let open: Open
     private let close: Close
+    private let failure: Failure
     private var listener: NWListener?
     private var pendingStart: CheckedContinuation<Void, any Error>?
     private var relays: [ObjectIdentifier: Relay] = [:]
 
-    init(open: @escaping Open, close: @escaping Close) {
+    init(open: @escaping Open, close: @escaping Close, failure: @escaping Failure) {
         self.open = open
         self.close = close
+        self.failure = failure
     }
 
     /// Zaczyna nasłuch na `127.0.0.1:port`. Zgłasza błąd, gdy port jest zajęty.
@@ -65,7 +69,13 @@ final class LoopbackProxy: @unchecked Sendable {
             case .failed(let error), .waiting(let error):
                 self.listener?.cancel()
                 self.listener = nil
-                self.finishStart(error)
+                // Błąd przy starcie dostaje wywołujący `start`; późniejszy — właściciel przekaźnika,
+                // żeby nie pokazywał działającego nasłuchu przy zamkniętym porcie.
+                if self.pendingStart != nil {
+                    self.finishStart(error)
+                } else {
+                    self.failure(error)
+                }
             case .cancelled:
                 self.finishStart(CancellationError())
             default:
@@ -180,19 +190,23 @@ private final class Relay: @unchecked Sendable {
     private func pump(from source: NWConnection, to destination: NWConnection, isResponse: Bool) {
         source.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
             guard let self, !self.isFinished else { return }
-            let ended = isComplete || error != nil
+            // Zerwane połączenie (np. klient zniknął w połowie żądania): nie ma komu odpowiadać.
+            if error != nil {
+                self.finish()
+                return
+            }
             if let data, !data.isEmpty {
                 destination.send(content: data, completion: .contentProcessed { [weak self] sendError in
                     guard let self, !self.isFinished else { return }
                     if sendError != nil {
                         self.finish()
-                    } else if ended {
+                    } else if isComplete {
                         self.sourceEnded(destination: destination, isResponse: isResponse)
                     } else {
                         self.pump(from: source, to: destination, isResponse: isResponse)
                     }
                 })
-            } else if ended {
+            } else if isComplete {
                 self.sourceEnded(destination: destination, isResponse: isResponse)
             } else {
                 self.pump(from: source, to: destination, isResponse: isResponse)
@@ -208,7 +222,17 @@ private final class Relay: @unchecked Sendable {
             // więc klient od razu dostaje zamknięcie (nie zostaje z martwym połączeniem keep-alive).
             if isResponse { self?.finish() }
         })
+        if !isResponse {
+            // Klient zamknął swój kierunek. Usługa ma ograniczony czas na dokończenie
+            // odpowiedzi — połączenie, którego nie zamknie, nie może trzymać jej przy życiu bez końca.
+            queue.asyncAfter(deadline: .now() + Self.responseGrace) { [weak self] in
+                self?.finish()
+            }
+        }
     }
+
+    /// Dłużej niż klient (audiobookshelf: 10 s) czeka na odpowiedź.
+    private static let responseGrace: DispatchTimeInterval = .seconds(15)
 
     func finish() {
         guard !isFinished else { return }

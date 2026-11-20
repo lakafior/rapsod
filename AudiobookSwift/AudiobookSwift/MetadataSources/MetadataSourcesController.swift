@@ -52,8 +52,11 @@ final class MetadataSourcesController {
     private(set) var isBusy = false
     /// Ostatnie linie wyjścia agregatora (bez klucza API) i znaczniki startu/uśpienia.
     private(set) var recentLog: [String] = []
-    /// Którą stronę pokazuje okno źródeł metadanych.
-    var page: Page = .configuration
+    /// Którą stronę ma pokazać okno źródeł metadanych; `pageRequest` rośnie przy każdym
+    /// żądaniu, żeby ponowne wybranie tej samej strony wczytało ją od nowa (w oknie można
+    /// było w międzyczasie przejść linkiem na drugą).
+    private(set) var page: Page = .configuration
+    private(set) var pageRequest = 0
 
     /// Działa proces, który trzeba zatrzymać przed wyjściem z aplikacji.
     var hasProcess: Bool { process.isRunning }
@@ -169,6 +172,9 @@ final class MetadataSourcesController {
             },
             close: { [weak self] in
                 Task { @MainActor in self?.connectionClosed() }
+            },
+            failure: { [weak self] error in
+                Task { @MainActor in await self?.listenerDidFail(error) }
             }
         )
         do {
@@ -193,6 +199,14 @@ final class MetadataSourcesController {
         state = .sleeping
         logger.notice("Źródła metadanych nasłuchują na porcie \(ServerEnvironment.metadataSourcesPort, privacy: .public)")
         requestReconcile()
+    }
+
+    /// Nasłuch przestał działać w trakcie pracy: stan ma to pokazać, a „Spróbuj ponownie” go wznawia.
+    private func listenerDidFail(_ error: any Error) async {
+        guard isEnabled, isListening else { return }
+        logger.error("Nasłuch źródeł metadanych przerwany: \(error.localizedDescription, privacy: .public)")
+        await stopListening()
+        state = .failed("Nasłuch na porcie \(ServerEnvironment.metadataSourcesPort) został przerwany (\(error.localizedDescription)). Wybierz „Spróbuj ponownie”.")
     }
 
     private func stopListening() async {
@@ -318,6 +332,12 @@ final class MetadataSourcesController {
     }
 
     // MARK: - Okno stron agregatora
+
+    /// Wybór strony przyciskiem w oknie statusu (okno otwiera wywołujący).
+    func showPage(_ page: Page) {
+        self.page = page
+        pageRequest += 1
+    }
 
     /// Adres strony agregatora dla okna aplikacji (z kluczem API w zapytaniu — nie logować).
     /// Budzi agregator i nie pozwala mu zasnąć, dopóki okno jest otwarte.

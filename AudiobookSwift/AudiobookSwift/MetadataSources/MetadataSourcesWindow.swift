@@ -11,7 +11,7 @@ struct MetadataSourcesWindow: View {
 
     private enum Content {
         case loading
-        case page(URL)
+        case page(URL, request: Int)
         case failed(String)
     }
 
@@ -20,7 +20,7 @@ struct MetadataSourcesWindow: View {
     @State private var attempt = 0
 
     private struct LoadKey: Equatable {
-        let page: MetadataSourcesController.Page
+        let request: Int
         let isEnabled: Bool
         let attempt: Int
     }
@@ -37,11 +37,11 @@ struct MetadataSourcesWindow: View {
                 switch content {
                 case .loading:
                     ProgressView("Uruchamianie źródeł metadanych…")
-                case .page(let url):
+                case .page(let url, let request):
                     // Strony agregatora mają własne linki między konfiguracją a wyszukiwarką.
                     AggregatorPageView(url: url)
-                        // Inna strona albo ponowna próba wymaga nowego widoku.
-                        .id(url)
+                        // Każde żądanie strony (przycisk, ponowna próba) to nowy widok.
+                        .id(request)
                 case .failed(let message):
                     ContentUnavailableView {
                         Label("Źródła metadanych nie działają", systemImage: "exclamationmark.triangle")
@@ -55,7 +55,7 @@ struct MetadataSourcesWindow: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 720, minHeight: 520)
-        .task(id: LoadKey(page: sources.page, isEnabled: sources.isEnabled, attempt: attempt)) {
+        .task(id: LoadKey(request: sources.pageRequest, isEnabled: sources.isEnabled, attempt: attempt)) {
             await load()
         }
         .onDisappear {
@@ -73,7 +73,7 @@ struct MetadataSourcesWindow: View {
         do {
             let url = try await sources.openPage(sources.page)
             guard !Task.isCancelled else { return }
-            content = .page(url)
+            content = .page(url, request: sources.pageRequest &* 1000 &+ attempt)
         } catch {
             guard !Task.isCancelled else { return }
             content = .failed(error.localizedDescription)

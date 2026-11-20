@@ -73,7 +73,7 @@ struct MetadataSourcesSection: View {
     }
 
     private func open(_ page: MetadataSourcesController.Page) {
-        sources.page = page
+        sources.showPage(page)
         openWindow.bringToFront(id: MetadataSourcesWindow.windowID)
     }
 }
