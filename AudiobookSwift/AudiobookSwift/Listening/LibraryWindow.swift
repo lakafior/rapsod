@@ -130,8 +130,11 @@ struct LibraryWindow: View {
     }
 
     private func withPlayerBar(_ content: some View) -> some View {
+        // Panel odtwarzacza pokazuje to samo, więc pasek jest tylko wtedy, gdy panel jest schowany.
         content.safeAreaInset(edge: .bottom, spacing: 0) {
-            MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
+            if !showsPlayer {
+                MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
+            }
         }
     }
 

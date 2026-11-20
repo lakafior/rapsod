@@ -393,10 +393,12 @@ final class ListeningController {
     /// Rozdziały z serwera; bez nich — po jednym na plik.
     private static func chapters(_ playback: AudiobookshelfClient.PlaybackSession, tracks: [AudiobookPlayer.Track]) -> [AudiobookPlayer.Chapter] {
         if !playback.chapters.isEmpty {
-            return playback.chapters.enumerated().map { .init(id: $0.offset, start: $0.element.start, end: $0.element.end, title: $0.element.title) }
+            let titles = ChapterTitles.display(playback.chapters.map(\.title))
+            return playback.chapters.enumerated().map { .init(id: $0.offset, start: $0.element.start, end: $0.element.end, title: titles[$0.offset]) }
         }
+        let titles = ChapterTitles.display(tracks.map(\.title))
         return tracks.enumerated().map {
-            .init(id: $0.offset, start: $0.element.startOffset, end: $0.element.end, title: tracks.count == 1 ? (playback.displayTitle ?? $0.element.title) : $0.element.title)
+            .init(id: $0.offset, start: $0.element.startOffset, end: $0.element.end, title: tracks.count == 1 ? (playback.displayTitle ?? $0.element.title) : titles[$0.offset])
         }
     }
 

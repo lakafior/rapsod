@@ -312,11 +312,12 @@ private struct ChaptersSection: View {
     var body: some View {
         let chapters = item.media.chapters ?? []
         if !chapters.isEmpty {
+            let titles = Dictionary(zip(chapters.map(\.id), ChapterTitles.display(chapters.map(\.title))), uniquingKeysWith: { first, _ in first })
             DisclosureGroup("Rozdziały (\(chapters.count))") {
                 Table(chapters) {
                     TableColumn("#") { Text("\($0.id + 1)").monospacedDigit() }.width(36)
                     TableColumn("Tytuł") { chapter in
-                        Button(chapter.title) { Task { await browser.listening.play(itemID: item.id, at: chapter.start) } }
+                        Button(titles[chapter.id] ?? chapter.title) { Task { await browser.listening.play(itemID: item.id, at: chapter.start) } }
                             .buttonStyle(.link)
                             .help("Odtwarzaj od tego rozdziału")
                     }
