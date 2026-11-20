@@ -87,8 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard supervisor.hasProcess else { return .terminateNow }
+        guard supervisor.hasProcess || sharing.tunnel.isRunning else { return .terminateNow }
         Task {
+            // Najpierw tunel, żeby nie przekazywał ruchu do zamykanego serwera.
+            await sharing.shutdown()
             await supervisor.stop()
             sender.reply(toApplicationShouldTerminate: true)
         }

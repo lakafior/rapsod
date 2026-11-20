@@ -66,6 +66,26 @@ struct ServerEnvironment: Sendable {
     /// Konto zwykłego użytkownika: wspólne dla web UI na Macu i klienta na telefonie.
     static let userKeychainService = "net.smigi.abswift.server-user"
     var keychainAccount: String { dataRoot.path }
+    /// Token opcjonalnego tunelu Cloudflare (konto jak wyżej: ścieżka folderu danych).
+    static let cloudflareTunnelKeychainService = "net.smigi.abswift.cloudflare-tunnel"
+
+    // MARK: Cloudflare Tunnel (opcjonalny)
+
+    /// `cloudflared` jest opcjonalny: bez niego działa wszystko poza tunelem Cloudflare.
+    /// Na razie z Homebrew (wbudowanie w paczkę to etap 5 — zmiana tylko tutaj).
+    /// Do testów ścieżkę można podmienić argumentem `-ABSCloudflared /ścieżka`.
+    static func cloudflared(fileManager: FileManager = .default) -> URL? {
+        let candidates: [String]
+        if let override = UserDefaults.standard.string(forKey: "ABSCloudflared"), !override.isEmpty {
+            candidates = [(override as NSString).expandingTildeInPath]
+        } else {
+            candidates = ["/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared"]
+        }
+        return candidates.lazy
+            .filter { fileManager.isExecutableFile(atPath: $0) }
+            .map { URL(filePath: $0) }
+            .first
+    }
 
     // MARK: Wersja
 

@@ -76,6 +76,10 @@ struct CredentialStore<Value: Codable & Sendable & Equatable>: Sendable {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
+    func delete() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
+    }
 }
 
 struct KeychainError: LocalizedError {

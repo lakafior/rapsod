@@ -2,8 +2,12 @@ import Foundation
 import Network
 import Observation
 
-/// Udostępnianie serwera w sieci lokalnej: przełącznik nasłuchu, adresy do wpisania
-/// w kliencie audiobookshelf na telefonie i opcjonalny adres zewnętrzny.
+/// Udostępnianie serwera: przełącznik nasłuchu w sieci lokalnej, adresy do wpisania
+/// w kliencie audiobookshelf na telefonie i opcjonalny dostęp spoza domu.
+///
+/// Dostęp spoza domu to jeden „adres zewnętrzny” (`externalURL`): wpisany ręcznie
+/// (Tailscale, własny tunel) albo pochodzący z tunelu Cloudflare (`Tunnel/`), który
+/// ten kontroler tylko włącza i wyłącza. Tunel jest niezależny od sieci lokalnej.
 ///
 /// Telefon łączy się dowolnym istniejącym klientem audiobookshelf, podając adres
 /// oraz nazwę i hasło konta użytkownika — aplikacja niczego nie ogłasza ani nie wysyła.
@@ -18,13 +22,29 @@ final class SharingController {
     private(set) var lastError: String?
 
     var isEnabled: Bool { settings.isEnabled }
-    var externalURL: URL? { settings.externalURL.isEmpty ? nil : URL(string: settings.externalURL) }
+    var externalAccess: ExternalAccessMode { settings.externalAccess }
+    /// Opcjonalny tunel Cloudflare (działa tylko w trybie `.cloudflareTunnel`).
+    let tunnel = CloudflareTunnel()
+
+    /// Jedyne źródło adresu spoza domu dla sekcji „Połącz telefon”.
+    var externalURL: URL? {
+        switch settings.externalAccess {
+        case .none: nil
+        case .custom: settings.externalURL.isEmpty ? nil : URL(string: settings.externalURL)
+        case .cloudflareTunnel: tunnel.publicURL
+        }
+    }
+
+    /// Serwer działa i ma konto root — dopiero wtedy wolno go wystawić poza ten Mac
+    /// (niezainicjalizowany serwer pozwala każdemu założyć roota).
+    private var serverIsReady: Bool { supervisor.state == .running && account.state == .ready }
 
     @ObservationIgnored private let supervisor: ServerSupervisor
     @ObservationIgnored private let account: ServerAccount
     @ObservationIgnored private var settingsURL: URL?
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
     @ObservationIgnored private var networkDebounce: Task<Void, Never>?
+    @ObservationIgnored private var tunnelObservation: Task<Void, Never>?
 
     init(supervisor: ServerSupervisor, account: ServerAccount) {
         self.supervisor = supervisor
@@ -33,6 +53,7 @@ final class SharingController {
             let url = ServerEnvironment.sharingSettingsURL(dataRoot: dataRoot)
             settingsURL = url
             settings = SharingSettings.load(from: url)
+            tunnel.load(dataRoot: dataRoot)
         }
     }
 
@@ -45,6 +66,52 @@ final class SharingController {
         }
         monitor.start(queue: .main)
         pathMonitor = monitor
+
+        // Tunel startuje i zatrzymuje się razem z wyborem w ustawieniach i ze stanem serwera.
+        tunnelObservation = Task { [weak self] in
+            let inputs = Observations { [weak self] in
+                self.map { TunnelInputs(selected: $0.settings.externalAccess == .cloudflareTunnel, serverReady: $0.serverIsReady) }
+            }
+            for await input in inputs {
+                guard let self, let input else { return }
+                await tunnel.update(selected: input.selected, serverReady: input.serverReady)
+            }
+        }
+    }
+
+    /// Zatrzymuje tunel przed zakończeniem aplikacji.
+    func shutdown() async {
+        tunnelObservation?.cancel()
+        await tunnel.stop()
+    }
+
+    /// Ponowna próba po błędzie tunelu albo po doinstalowaniu `cloudflared`.
+    func retryTunnel() async {
+        await tunnel.update(selected: settings.externalAccess == .cloudflareTunnel, serverReady: serverIsReady, retry: true)
+    }
+
+    func saveTunnelToken(_ text: String) async -> Bool {
+        guard await tunnel.saveToken(text) else { return false }
+        await retryTunnel()
+        return true
+    }
+
+    func removeTunnelToken() async {
+        await tunnel.removeToken()
+        await retryTunnel()
+    }
+
+    func setExternalAccess(_ mode: ExternalAccessMode) {
+        guard mode != settings.externalAccess else { return }
+        if mode == .cloudflareTunnel {
+            guard account.state == .ready, case .ready = account.userState else {
+                lastError = "Dostęp spoza domu wymaga działającego serwera i konta użytkownika."
+                return
+            }
+        }
+        lastError = nil
+        settings.externalAccess = mode
+        saveSettings()
     }
 
     func setEnabled(_ enabled: Bool) async {
@@ -109,4 +176,9 @@ final class SharingController {
             lastError = "Nie udało się zapisać ustawień udostępniania: \(error.localizedDescription)"
         }
     }
+}
+
+private struct TunnelInputs: Sendable, Equatable {
+    let selected: Bool
+    let serverReady: Bool
 }

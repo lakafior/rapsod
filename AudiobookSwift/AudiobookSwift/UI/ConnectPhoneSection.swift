@@ -41,7 +41,7 @@ struct ConnectPhoneSection: View {
             }
         }
         if let external = sharing.externalURL {
-            CopyableRow(title: "Adres zewnętrzny", value: external.absoluteString)
+            CopyableRow(title: "Adres spoza domu", value: external.absoluteString)
         }
         if let credentials = account.phoneCredentials {
             CopyableRow(title: "Nazwa użytkownika", value: credentials.username)
@@ -54,20 +54,39 @@ struct ConnectPhoneSection: View {
             }
         }
 
-        LabeledContent("Własny adres zewnętrzny") {
-            HStack {
-                TextField("Własny adres zewnętrzny", text: $externalURL, prompt: Text("opcjonalnie, np. https://ksiazki.example.com/audiobookshelf"))
-                    .labelsHidden()
-                    .onSubmit { sharing.setExternalURL(externalURL) }
-                Button("Zapisz") { sharing.setExternalURL(externalURL) }
-                    .disabled(externalURL.trimmingCharacters(in: .whitespaces) == sharing.settings.externalURL)
-            }
+        Picker("Dostęp spoza domu", selection: Binding(
+            get: { sharing.externalAccess },
+            set: { sharing.setExternalAccess($0) }
+        )) {
+            Text("Brak").tag(ExternalAccessMode.none)
+            Text("Własny adres").tag(ExternalAccessMode.custom)
+            Text("Cloudflare Tunnel").tag(ExternalAccessMode.cloudflareTunnel)
         }
-        .onAppear { externalURL = sharing.settings.externalURL }
-        Text("Dostęp spoza domu jest opcjonalny i aplikacja go nie zestawia. Jeśli masz własny tunel lub VPN (np. Tailscale, Cloudflare Tunnel), wpisz tu jego adres, żeby mieć go pod ręką razem z danymi logowania.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+
+        switch sharing.externalAccess {
+        case .none:
+            Text("Serwer jest dostępny tylko z tego Maca\(sharing.isEnabled ? " i z sieci lokalnej" : ""). Dostęp spoza domu jest opcjonalny: własny adres (np. Tailscale, własny tunel lub VPN) albo Cloudflare Tunnel zestawiany przez aplikację.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        case .custom:
+            LabeledContent("Własny adres") {
+                HStack {
+                    TextField("Własny adres", text: $externalURL, prompt: Text("np. https://ksiazki.example.com"))
+                        .labelsHidden()
+                        .onSubmit { sharing.setExternalURL(externalURL) }
+                    Button("Zapisz") { sharing.setExternalURL(externalURL) }
+                        .disabled(externalURL.trimmingCharacters(in: .whitespaces) == sharing.settings.externalURL)
+                }
+            }
+            .onAppear { externalURL = sharing.settings.externalURL }
+            Text("Aplikacja niczego pod tym adresem nie zestawia — to adres Twojego tunelu albo VPN (np. Tailscale), pokazywany razem z danymi logowania.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        case .cloudflareTunnel:
+            CloudflareTunnelSection(sharing: sharing, phonePassword: account.phoneCredentials?.password)
+        }
 
         if let error = sharing.lastError {
             Text(error)
@@ -88,7 +107,7 @@ struct ConnectPhoneSection: View {
 }
 
 /// Wiersz z wartością do przepisania i przyciskiem kopiowania.
-private struct CopyableRow<Accessory: View>: View {
+struct CopyableRow<Accessory: View>: View {
     let title: String
     let value: String
     var shown: String?
