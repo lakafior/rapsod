@@ -30,6 +30,10 @@ LubimyCzytać, Audioteka, Storytel i Audible jako jedno opcjonalne źródło w o
 - **Konfiguracja i wyszukiwarka:** strony agregatora pokazywane w oknie aplikacji.
 - **Do sprawdzenia przed publikacją:** źródła pobierają dane ze stron serwisów, więc trzeba przejrzeć ich regulaminy pod kątem dystrybucji w publicznej aplikacji.
 
+## Przed następnym wydaniem
+
+- **Podbić `vendor/aio-abs-providers`.** Submodule jest przypięty do `1f1a880`, a w agregatorze są nowsze zmiany (od `1ae6500`: niemiecki sklep Audioteki, tytuł oryginalny, tylko prawdziwe numery ISBN, większe okładki z Audible). Kroki: przesunąć przypięcie na aktualny `origin/main` agregatora, `scripts/build-providers.sh`, sprawdzić wyszukiwanie w aplikacji i zbudować wydanie.
+
 ## Planowane
 
 ### Natywne słuchanie i zarządzanie zamiast web UI
