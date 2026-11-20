@@ -68,7 +68,7 @@ Po podbiciu sprawdź w upstreamie wersję Node (`Dockerfile`) i nazwy zmiennych 
 - `AudiobookSwift/AudiobookSwift/Server/ServerEnvironment.swift` — jedyne miejsce ze ścieżkami do Node, ffmpeg, kodu serwera i danych oraz z hostem, portem i zmiennymi środowiskowymi serwera.
 - `AudiobookSwift/AudiobookSwift/Server/ServerSupervisor.swift` — uruchamia `node`, zbiera stdout/stderr, wykrywa gotowość po HTTP (`/healthcheck`) i nieoczekiwane zakończenie, zatrzymuje serwer przez SIGINT.
 - `AudiobookSwift/AudiobookSwift/Resources/parent-watch.js` — ładowany przez `node --require`; wyłącza serwer, gdy aplikacja zniknie (także po `kill -9`), więc nie zostaje osierocony proces.
-- `AudiobookSwift/AudiobookSwift/Server/AudiobookshelfClient.swift` — mały klient HTTP API serwera (tylko Foundation; w etapie 4 trafi też do iOS).
+- `AudiobookSwift/AudiobookSwift/Server/AudiobookshelfClient.swift` — mały klient HTTP API serwera.
 - `AudiobookSwift/AudiobookSwift/Server/ServerAccount.swift` — konto aplikacji na serwerze: zakłada roota, loguje się, tworzy biblioteki i czeka na skan. `CredentialStore.swift` trzyma dane roota w pęku kluczy.
 - `AudiobookSwift/AudiobookSwift/App/LoginItem.swift` — start przy logowaniu.
 - `AudiobookSwift/AudiobookSwift/Sharing/` — udostępnianie w sieci lokalnej: `SharingController.swift` (przełącznik, adresy, adres zewnętrzny), `SharingSettings.swift` (`sharing.json`), `LocalNetwork.swift` (nazwa `.local` i adresy IPv4 Maca).
