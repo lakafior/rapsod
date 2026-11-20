@@ -27,7 +27,7 @@ struct LibraryWindow: View {
         self.supervisor = supervisor
         self.account = account
         self.settings = settings
-        _browser = State(initialValue: LibraryBrowser(listening: listening))
+        _browser = State(initialValue: LibraryBrowser(listening: listening, account: account))
     }
 
     private var needsUser: Bool {

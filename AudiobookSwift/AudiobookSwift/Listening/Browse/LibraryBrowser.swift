@@ -42,6 +42,8 @@ final class LibraryBrowser {
     }
 
     let listening: ListeningController
+    /// Zarządzanie pozycją (konto root) — osobno od słuchania.
+    let manager: ItemManager
     var libraryID: String? {
         didSet {
             guard libraryID != oldValue else { return }
@@ -84,8 +86,9 @@ final class LibraryBrowser {
     /// Pozycja, dla której okno pyta o nazwę nowej playlisty.
     var newPlaylistEntry: AudiobookshelfClient.PlaylistEntry?
 
-    init(listening: ListeningController) {
+    init(listening: ListeningController, account: ServerAccount) {
         self.listening = listening
+        manager = ItemManager(account: account)
         libraryID = UserDefaults.standard.string(forKey: "libraryWindow.library")
         itemSort = Self.load("items") ?? itemSort
         podcastSort = Self.load("podcasts") ?? podcastSort
@@ -112,6 +115,11 @@ final class LibraryBrowser {
     func loadFilterData() async {
         guard filterData == nil, let libraryID else { return }
         filterData = try? await listening.api { try await $0.filterData(libraryID: libraryID, token: $1) }
+    }
+
+    /// Po edycji pozycji mogły dojść nowe wartości (autor, seria, gatunek, tag).
+    func invalidateFilterData() {
+        filterData = nil
     }
 
     func loadPlaylists() async {

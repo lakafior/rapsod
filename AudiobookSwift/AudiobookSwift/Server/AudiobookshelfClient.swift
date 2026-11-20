@@ -249,7 +249,8 @@ struct AudiobookshelfClient: Sendable {
         query: [URLQueryItem] = [],
         body: (any Encodable)? = nil,
         token: String? = nil,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        timeout: TimeInterval = 30
     ) async throws -> Data {
         var url = baseURL.appending(path: path)
         if !query.isEmpty {
@@ -257,7 +258,7 @@ struct AudiobookshelfClient: Sendable {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = try JSONEncoder().encode(body)
@@ -269,7 +270,12 @@ struct AudiobookshelfClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        return try await execute(request)
+    }
 
+    /// Wysyła gotowe zapytanie i zamienia status HTTP na `APIError`
+    /// (wspólne dla JSON i np. wysyłania plików w `multipart/form-data`).
+    func execute(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         switch http.statusCode {

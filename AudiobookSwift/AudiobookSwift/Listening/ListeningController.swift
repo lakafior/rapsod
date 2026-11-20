@@ -36,6 +36,8 @@ final class ListeningController {
     /// Rośnie, gdy serwer zgłosi zmianę pozycji w bibliotece (skan, nowa książka) — widoki
     /// okna przeładowują wtedy listy.
     private(set) var libraryRevision: [String: Int] = [:]
+    /// Rośnie po zmianie okładki pozycji — `AsyncCover` wczytuje ją wtedy od nowa.
+    private(set) var coverRevision: [String: Int] = [:]
     /// Kolejka playlisty: po ukończeniu bieżącej pozycji gra następna.
     private(set) var queue: [QueueEntry] = []
     private(set) var isRefreshing = false
@@ -59,6 +61,7 @@ final class ListeningController {
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var playingFromQueue = false
     @ObservationIgnored private var changedLibraries: Set<String> = []
+    @ObservationIgnored private var changedItems: Set<String> = []
     @ObservationIgnored private var revisionFlush: Task<Void, Never>?
     /// Plik okładki bieżącej książki (z sesji odtwarzania).
     @ObservationIgnored private(set) var nowPlayingCoverPath: String?
@@ -188,15 +191,19 @@ final class ListeningController {
             progress[key] = value
         case .user(let me):
             apply(me)
-        case .itemsChanged(let libraryIDs):
+        case .itemsChanged(let libraryIDs, let itemIDs):
             changedLibraries.formUnion(libraryIDs)
+            changedItems.formUnion(itemIDs)
             // Skan dodaje pozycje seriami zdarzeń — listy przeładowują się raz na sekundę, nie przy każdym.
             if revisionFlush == nil {
                 revisionFlush = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(1))
                     guard let self else { return }
                     for id in changedLibraries { libraryRevision[id, default: 0] += 1 }
+                    // Zdarzenie nie mówi, czy zmieniła się okładka — wczytanie z dysku jest tanie.
+                    for id in changedItems { forgetCover(itemID: id) }
                     changedLibraries = []
+                    changedItems = []
                     revisionFlush = nil
                 }
             }
@@ -250,6 +257,27 @@ final class ListeningController {
             guard let auth = self?.auth else { return nil }
             return try? await auth.perform { try await $0.authorImage(id: id, width: width, token: $1) }
         }
+    }
+
+    /// Okładka pozycji się zmieniła: widoki wczytują ją od nowa, odtwarzacz (dla bieżącej
+    /// książki) odświeża obrazek w „Teraz odtwarzane”.
+    func coverChanged(itemID: String, path: String?) {
+        forgetCover(itemID: itemID)
+        if player.book?.itemID == itemID {
+            nowPlayingCoverPath = path
+            loadArtwork(itemID: itemID, path: path)
+        }
+    }
+
+    private func forgetCover(itemID: String) {
+        covers.forget(itemID: itemID)
+        coverRevision[itemID, default: 0] += 1
+    }
+
+    /// Rozdziały pozycji zmienione w edycji: odtwarzana książka dostaje nowe bez przerywania odtwarzania.
+    func chaptersChanged(itemID: String, chapters: [AudiobookPlayer.Chapter]) {
+        guard player.book?.itemID == itemID, player.book?.episodeID == nil else { return }
+        player.replaceChapters(chapters)
     }
 
     static func key(_ itemID: String, _ episodeID: String?) -> String {
