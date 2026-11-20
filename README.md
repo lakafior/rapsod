@@ -161,6 +161,33 @@ Ustalone w kodzie upstreamu (`server/Server.js`, `server/Auth.js`, `server/auth/
 - `GET /api/me` — użytkownik, do którego należy token (`type`: `root`, `admin`, `user`, `guest`).
 - Web UI trzyma access token w `localStorage['token']` i wczytuje użytkownika tylko na stronie `/login` (`checkAuth`), dlatego automatyczne logowanie ładuje `/login`.
 
+## Źródła metadanych (etap 7)
+
+Opcjonalne i domyślnie wyłączone: LubimyCzytać, Audioteka, Storytel i Audible jako jedno źródło w oknie dopasowywania książki w audiobookshelf, bez osobnego kontenera i bez wpisywania czegokolwiek w ustawieniach serwera. Kod źródeł to agregator [aio-abs-providers](https://github.com/lakafior/aio-abs-providers) (GPL-3.0), dołączony jako drugi submodule (`vendor/aio-abs-providers`) przypięty do commita i niemodyfikowany. Na razie działa tylko w aplikacji uruchomionej z Xcode — do paczki DMG jeszcze nie trafia.
+
+```bash
+git submodule update --init
+scripts/build-server.sh      # daje też Node w build/node
+scripts/build-providers.sh   # eksport submodule do build/aio-abs-providers + npm ci --omit=dev
+```
+
+Bez zbudowanego agregatora aplikacja działa normalnie, a sekcja pokazuje, czego brakuje. Aktualizacja źródeł = przesunięcie przypięcia submodule, `scripts/build-providers.sh` i nowe wydanie aplikacji.
+
+### Obsługa
+
+Okno statusu, sekcja **Źródła metadanych**: przełącznik, stan (wyłączone / uśpione / uruchamianie / działa / błąd z powodem), stan wpisu w audiobookshelf, przyciski **Konfiguracja…** i **Wyszukiwarka…** oraz log. Przyciski otwierają w oknie aplikacji strony samego agregatora (`/admin`: które źródła, język, scalanie wyników; `/search-ui`: próbne wyszukiwanie). Zmiany zapisane na stronie konfiguracji działają od następnego wyszukiwania.
+
+W audiobookshelf źródło pojawia się jako „Źródła metadanych (AudiobookSwift)” na liście dostawców w oknie dopasowywania (Match). Aplikacja nie ustawia go jako domyślnego dostawcy biblioteki.
+
+### Jak to działa
+
+- **Uruchamianie na żądanie.** Audiobookshelf dostaje stały adres `http://127.0.0.1:13379` (port serwera + 1; `-ABSMetadataPort` go zmienia). Pod tym adresem nasłuchuje sama aplikacja (`MetadataSources/LoopbackProxy.swift`, przekaźnik TCP na pętli zwrotnej). Pierwsze połączenie uruchamia agregator na wolnym porcie (`PORT=0`), aplikacja czeka na jego `/healthz` i dopiero wtedy przekazuje ruch — zapytanie z audiobookshelf po prostu trwa o ok. 0,3 s dłużej. Po 5 minutach bez połączeń (`-ABSMetadataIdle <sekundy>`) agregator jest zatrzymywany; otwarte okno jego stron wstrzymuje usypianie. W spoczynku nie działa żaden dodatkowy proces, a przy wyłączonej funkcji aplikacja nie nasłuchuje wcale.
+- **Nadzór procesu** (`MetadataSources/AggregatorProcess.swift`): jawne środowisko (`HOST=127.0.0.1`, `CONFIG_PATH`, `API_KEY`, `EXIT_ON_STDIN_CLOSE=1`), bufor logu, stan. Aplikacja trzyma potok stdin agregatora; jego zamknięcie (zatrzymanie, wyjście, także `kill -9` aplikacji) kończy proces, więc nie zostaje osierocony.
+- **Klucz.** Losowy klucz API (32 znaki) leży w pęku kluczy (`net.smigi.abswift.metadata-sources`, konto = ścieżka folderu danych). Agregator dostaje go przez środowisko, audiobookshelf jako `authHeaderValue` wpisu (upstream trzyma go w swojej bazie), strony w oknie aplikacji — w adresie (`?key=…`), dlatego to okno nie loguje adresów i ma nietrwały magazyn danych. Bez klucza `/search` i `/admin` odpowiadają 401.
+- **Wpis w audiobookshelf** (`MetadataSources/MetadataSourcesController.swift`): po włączeniu aplikacja dodaje dostawcę przez `POST /api/custom-metadata-providers`, po wyłączeniu usuwa. Przy każdym połączeniu z serwerem uzgadnia stan: brak wpisu przy włączonej funkcji → dodaje; wpis ze starym adresem lub kluczem → zastępuje (upstream nie ma edycji wpisu); wpis przy wyłączonej funkcji → usuwa. Własny wpis rozpoznaje po zapamiętanym identyfikatorze albo po dokładnie swoim adresie, więc dostawców dodanych ręcznie nie rusza. Uwaga: usuwając wpis, upstream przestawia biblioteki, które miały go jako domyślnego dostawcę, na `google`.
+- **Pliki** w folderze danych (osobne dla każdego `-ABSDataRoot`): `metadata-sources/settings.json` (przełącznik i identyfikator wpisu, bez sekretów) oraz `metadata-sources/config.json` (konfiguracja agregatora; tworzy ją i zmienia on sam, format opisuje `vendor/aio-abs-providers/docs/CONFIG.md`).
+- **Ścieżki** są w wydzielonym bloku `ServerEnvironment.swift`: z Xcode `build/node` i `build/aio-abs-providers`, w wydaniu `Contents/Resources/Server/node` i `Contents/Resources/Server/aio-abs-providers`.
+
 ## Wydanie
 
 Wydanie to plik `AudiobookSwift-<wersja>.dmg`: aplikacja podpisana Developer ID z hardened runtime, notaryzowana, z biletem zszytym z aplikacją i z obrazem dysku. Zawiera Node, serwer audiobookshelf z klientem web, ffmpeg, ffprobe i rozszerzenie SQLite — działa bez repozytorium, Homebrew i Node w systemie. Tylko Apple Silicon, macOS 27 lub nowszy (`MACOSX_DEPLOYMENT_TARGET`).

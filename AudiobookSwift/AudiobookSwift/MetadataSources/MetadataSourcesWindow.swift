@@ -26,46 +26,34 @@ struct MetadataSourcesWindow: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("Strona", selection: Binding(get: { sources.page }, set: { sources.page = $0 })) {
-                Text("Konfiguracja").tag(MetadataSourcesController.Page.configuration)
-                Text("Wyszukiwarka").tag(MetadataSourcesController.Page.search)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 320)
-            .padding(8)
-
-            Divider()
-
-            Group {
-                if !sources.isEnabled {
-                    ContentUnavailableView(
-                        "Źródła metadanych są wyłączone",
-                        systemImage: "text.book.closed",
-                        description: Text("Włącz je w oknie „Status i logi”.")
-                    )
-                } else {
-                    switch content {
-                    case .loading:
-                        ProgressView("Uruchamianie źródeł metadanych…")
-                    case .page(let url):
-                        AggregatorPageView(url: url)
-                            // Zmiana strony albo ponowna próba wymaga nowego widoku.
-                            .id(url)
-                    case .failed(let message):
-                        ContentUnavailableView {
-                            Label("Źródła metadanych nie działają", systemImage: "exclamationmark.triangle")
-                        } description: {
-                            Text(message)
-                        } actions: {
-                            Button("Spróbuj ponownie") { attempt += 1 }
-                        }
+        Group {
+            if !sources.isEnabled {
+                ContentUnavailableView(
+                    "Źródła metadanych są wyłączone",
+                    systemImage: "text.book.closed",
+                    description: Text("Włącz je w oknie „Status i logi”.")
+                )
+            } else {
+                switch content {
+                case .loading:
+                    ProgressView("Uruchamianie źródeł metadanych…")
+                case .page(let url):
+                    // Strony agregatora mają własne linki między konfiguracją a wyszukiwarką.
+                    AggregatorPageView(url: url)
+                        // Inna strona albo ponowna próba wymaga nowego widoku.
+                        .id(url)
+                case .failed(let message):
+                    ContentUnavailableView {
+                        Label("Źródła metadanych nie działają", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        Button("Spróbuj ponownie") { attempt += 1 }
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 720, minHeight: 520)
         .task(id: LoadKey(page: sources.page, isEnabled: sources.isEnabled, attempt: attempt)) {
             await load()
