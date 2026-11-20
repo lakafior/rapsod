@@ -243,7 +243,7 @@ struct AudiobookshelfClient: Sendable {
 
     // MARK: - HTTP
 
-    private func send(
+    func send(
         _ method: String,
         _ path: String,
         query: [URLQueryItem] = [],
@@ -285,7 +285,7 @@ struct AudiobookshelfClient: Sendable {
         }
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {

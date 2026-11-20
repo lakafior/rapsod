@@ -6,6 +6,7 @@ struct ServerMenu: View {
     let loginItem: LoginItem
     let webMode: WebUIMode
     let settings: SettingsNavigation
+    let player: AudiobookPlayer
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -13,11 +14,17 @@ struct ServerMenu: View {
 
         Divider()
 
+        MenuPlayerControls(player: player)
+
         Button("Otwórz bibliotekę") {
+            openWindow.bringToFront(id: LibraryWindow.windowID)
+        }
+        .keyboardShortcut("o")
+
+        Button("\(WebUIWindow.title)…") {
             webMode.isManagement = false
             openWindow.bringToFront(id: WebUIWindow.windowID)
         }
-        .keyboardShortcut("o")
 
         Button("Zarządzanie serwerem…") {
             webMode.isManagement = true
