@@ -225,7 +225,7 @@ private struct ProgressLine: View {
                 Label("Ukończone", systemImage: "checkmark.circle.fill").labelStyle(.titleAndIcon)
             } else if let progress, let value = progress.progress, value > 0 {
                 ProgressView(value: min(1, value)).frame(maxWidth: 120)
-                Text(value.formatted(.percent.precision(.fractionLength(0))))
+                Text(value.formatted(.percent.precision(.fractionLength(0)))).fixedSize()
             } else if let duration, duration > 0 {
                 Text(ChapterScrubber.time(duration))
             }

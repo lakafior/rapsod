@@ -125,6 +125,8 @@ final class AudiobookPlayer {
     /// Otwiera plik; `fresh` prosi o nowy token (poprzedni został odrzucony).
     @ObservationIgnored var assetProvider: (@MainActor (Track, _ fresh: Bool) async throws -> AVURLAsset)?
     @ObservationIgnored var onEvent: (@MainActor (Event) -> Void)?
+    /// Strumień HLS: czeka, aż serwer przygotuje segment z czasem `local` (sekundy w strumieniu).
+    @ObservationIgnored var waitForStream: (@MainActor (_ path: String, _ local: Double) async -> Void)?
     /// Pozycja z serwera przed wznowieniem, jeśli zmieniła się gdzie indziej; `nil` = bez zmian.
     @ObservationIgnored var resumeCheck: (@MainActor () async -> Double?)?
 
@@ -361,10 +363,14 @@ final class AudiobookPlayer {
             do {
                 guard let assetProvider else { return }
                 let asset = try await assetProvider(track, fresh)
+                let local = localTime(time, in: track)
+                if case .remote(let path) = track.source, path.hasSuffix(".m3u8") {
+                    // AVPlayer nie ponawia segmentu, którego serwer jeszcze nie przetranskodował.
+                    await waitForStream?(path, local)
+                }
                 guard !Task.isCancelled, self.book?.key == key else { return }
                 let item = makeItem(asset, track: index)
                 player.insert(item, after: nil)
-                let local = localTime(time, in: track)
                 if local > 0 {
                     await player.seek(to: CMTime(seconds: local, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
                 }

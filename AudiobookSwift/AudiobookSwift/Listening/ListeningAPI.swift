@@ -59,19 +59,42 @@ extension AudiobookshelfClient {
     /// Pełna pozycja (`GET /api/items/:id`) — tu tylko po to, by dostać listę odcinków podcastu.
     struct ItemDetail: Decodable, Sendable {
         struct Media: Decodable, Sendable {
-            let episodes: [PodcastEpisode]?
+            let episodes: LenientList<PodcastEpisode>?
         }
         let id: String
         let media: Media
     }
 
-    /// Postęp słuchania (`MediaProgress.getOldMediaProgress()` upstreamu).
+    /// Dowolny obiekt JSON, którego nie potrzebujemy — tylko po to, by przesunąć się w liście.
+    private struct SkippedElement: Decodable {}
+
+    /// Lista, w której element o nieoczekiwanym kształcie jest pomijany zamiast psuć całą odpowiedź
+    /// (dane z prawdziwych bibliotek bywają różne, np. postęp samego e-booka).
+    struct LenientList<Element: Decodable & Sendable>: Decodable, Sendable {
+        let elements: [Element]
+
+        init(from decoder: any Decoder) throws {
+            var container = try decoder.unkeyedContainer()
+            var elements: [Element] = []
+            while !container.isAtEnd {
+                if let element = try? container.decode(Element.self) {
+                    elements.append(element)
+                } else if (try? container.decode(SkippedElement.self)) == nil {
+                    break
+                }
+            }
+            self.elements = elements
+        }
+    }
+
+    /// Postęp słuchania (`MediaProgress.getOldMediaProgress()` upstreamu). `libraryItemId` bywa `null`
+    /// (rekord bez `extraData`), a `currentTime` pusty przy postępie samego e-booka.
     struct MediaProgress: Decodable, Sendable, Hashable {
-        let libraryItemId: String
+        let libraryItemId: String?
         let episodeId: String?
         let duration: Double?
         let progress: Double?
-        let currentTime: Double
+        let currentTime: Double?
         let isFinished: Bool
         let hideFromContinueListening: Bool?
         /// Milisekundy od epoki; zmienia się przy każdym zapisie z dowolnego urządzenia.
@@ -158,7 +181,7 @@ extension AudiobookshelfClient {
     /// Wszystkie pozycje biblioteki posortowane po tytule, pobierane stronami.
     func libraryItems(libraryID: String, token: String) async throws -> [LibraryItem] {
         struct Response: Decodable {
-            let results: [LibraryItem]
+            let results: LenientList<LibraryItem>
             let total: Int
         }
         let pageSize = 200
@@ -172,23 +195,24 @@ extension AudiobookshelfClient {
                 URLQueryItem(name: "sort", value: "media.metadata.title"),
             ]
             let response = try decode(Response.self, from: await send("GET", "api/libraries/\(libraryID)/items", query: query, token: token))
-            items += response.results
+            items += response.results.elements
             page += 1
-            if response.results.isEmpty || items.count >= response.total { return items }
+            // Pominięte elementy też liczą się do strony — koniec rozpoznajemy po liczbie stron.
+            if response.results.elements.isEmpty || page * pageSize >= response.total { return items }
         }
     }
 
     /// „Słuchaj dalej” ze wszystkich bibliotek: rozpoczęte i nieukończone, z czasem ostatniej zmiany.
     func itemsInProgress(token: String) async throws -> [LibraryItem] {
-        struct Response: Decodable { let libraryItems: [LibraryItem] }
+        struct Response: Decodable { let libraryItems: LenientList<LibraryItem> }
         let query = [URLQueryItem(name: "limit", value: "50")]
-        return try decode(Response.self, from: await send("GET", "api/me/items-in-progress", query: query, token: token)).libraryItems
+        return try decode(Response.self, from: await send("GET", "api/me/items-in-progress", query: query, token: token)).libraryItems.elements
     }
 
     /// Cały postęp użytkownika (pole `mediaProgress` w `GET /api/me`).
     func allProgress(token: String) async throws -> [MediaProgress] {
-        struct Response: Decodable { let mediaProgress: [MediaProgress] }
-        return try decode(Response.self, from: await send("GET", "api/me", token: token)).mediaProgress
+        struct Response: Decodable { let mediaProgress: LenientList<MediaProgress> }
+        return try decode(Response.self, from: await send("GET", "api/me", token: token)).mediaProgress.elements
     }
 
     /// Postęp jednej pozycji; `nil`, gdy jej jeszcze nie słuchano (serwer odpowiada 404).
@@ -221,13 +245,24 @@ extension AudiobookshelfClient {
     /// Odcinki podcastu, najnowsze pierwsze.
     func podcastEpisodes(itemID: String, token: String) async throws -> [PodcastEpisode] {
         let detail = try decode(ItemDetail.self, from: await send("GET", "api/items/\(itemID)", token: token))
-        return (detail.media.episodes ?? []).sorted { ($0.publishedAt ?? 0) > ($1.publishedAt ?? 0) }
+        return (detail.media.episodes?.elements ?? []).sorted { ($0.publishedAt ?? 0) > ($1.publishedAt ?? 0) }
     }
 
     /// Okładka przeskalowana przez serwer (gdy pliku okładki nie da się przeczytać z dysku).
     func cover(itemID: String, width: Int, token: String) async throws -> Data {
         let query = [URLQueryItem(name: "width", value: String(width)), URLQueryItem(name: "format", value: "jpeg")]
         return try await send("GET", "api/items/\(itemID)/cover", query: query, token: token)
+    }
+
+    /// Czy plik strumienia (segment HLS) już istnieje. Brakujący segment poza zasięgiem trwającego
+    /// transkodowania każe serwerowi zacząć transkodowanie od niego (`HlsRouter.streamFileRequest`).
+    func streamFileExists(path: String, token: String) async throws -> Bool {
+        do {
+            _ = try await send("GET", path, token: token)
+            return true
+        } catch APIError.http(status: 404, _) {
+            return false
+        }
     }
 
     // MARK: Sesja odtwarzania

@@ -63,6 +63,7 @@ final class ListeningController {
         }
         player.onEvent = { [weak self] event in self?.handle(event) }
         player.resumeCheck = { [weak self] in await self?.serverPositionIfChanged() }
+        player.waitForStream = { [weak self] path, local in await self?.waitForSegment(playlist: path, at: local) }
     }
 
     private var deviceInfo: AudiobookshelfClient.DeviceInfo {
@@ -151,7 +152,7 @@ final class ListeningController {
             libraries = try await auth.perform { try await $0.userLibraries(token: $1) }
             continueListening = try await auth.perform { try await $0.itemsInProgress(token: $1) }
             let all = try await auth.perform { try await $0.allProgress(token: $1) }
-            progress = Dictionary(all.map { (Self.key($0.libraryItemId, $0.episodeId), $0) }, uniquingKeysWith: { $1 })
+            progress = Dictionary(all.compactMap { p in p.libraryItemId.map { (Self.key($0, p.episodeId), p) } }, uniquingKeysWith: { $1 })
             loadError = nil
         } catch {
             logger.error("Odświeżanie list: \(error.localizedDescription, privacy: .public)")
@@ -348,17 +349,32 @@ final class ListeningController {
         }
     }
 
+    /// Czeka (do ok. 20 s), aż serwer przygotuje segment HLS z danym czasem. Upstream tnie strumień
+    /// na segmenty po 6 s (`hls_time 6`, `output-<n>.ts`); brakujący segment każe mu przetranskodować
+    /// od tego miejsca.
+    private func waitForSegment(playlist: String, at local: Double) async {
+        guard let auth else { return }
+        let segment = (playlist as NSString).deletingLastPathComponent + "/output-\(Int(local / 6)).ts"
+        for _ in 0..<40 {
+            if (try? await auth.perform({ try await $0.streamFileExists(path: segment, token: $1) })) == true { return }
+            try? await Task.sleep(for: .milliseconds(500))
+            if Task.isCancelled { return }
+        }
+        logger.error("Segment strumienia nie pojawił się na czas")
+    }
+
     /// Przed wznowieniem: pozycja z serwera, jeśli ktoś (telefon) zmienił ją od naszej ostatniej.
     private func serverPositionIfChanged() async -> Double? {
         guard let book = player.book, let auth else { return nil }
         guard let server = try? await auth.perform({ try await $0.progress(itemID: book.itemID, episodeID: book.episodeID, token: $1) }),
               !server.isFinished
         else { return nil }
-        if let lastAgreed, abs(server.currentTime - lastAgreed) < 1 { return nil }
+        let serverTime = server.currentTime ?? 0
+        if let lastAgreed, abs(serverTime - lastAgreed) < 1 { return nil }
         logger.notice("Pozycja zmieniła się na serwerze — przejmuję ją przed wznowieniem")
-        lastAgreed = server.currentTime
+        lastAgreed = serverTime
         progress[book.key] = server
-        return server.currentTime
+        return serverTime
     }
 
     // MARK: - Synchronizacja
