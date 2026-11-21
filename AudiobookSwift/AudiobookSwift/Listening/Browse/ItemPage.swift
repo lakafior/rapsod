@@ -44,6 +44,7 @@ private struct BookPage: View {
     @State private var confirmReset = false
     @State private var editing: EditRequest?
     @State private var itemAction: ItemAction?
+    @State private var fileRequest: LibraryFileRequest?
 
     private struct EditRequest: Identifiable {
         let tab: ItemEditorModel.Tab
@@ -89,10 +90,11 @@ private struct BookPage: View {
                 BookmarksSection(browser: browser, itemID: item.id)
                 ChaptersSection(browser: browser, item: item)
                 TracksSection(item: item)
-                FilesSection(item: item)
+                FilesSection(browser: browser, item: item, request: $fileRequest)
             }
             .padding(24)
         }
+        .modifier(LibraryFileActions(browser: browser, item: item, request: $fileRequest))
         .confirmationDialog("Wyzerować postęp „\(item.title)”?", isPresented: $confirmReset) {
             Button("Wyzeruj postęp", role: .destructive) { Task { await listening.resetProgress(itemID: item.id) } }
         } message: {
@@ -185,7 +187,7 @@ private struct BookPage: View {
 
     @ViewBuilder private var progressBox: some View {
         let progress = listening.progress[item.id]
-        if let progress, progress.isFinished || (progress.currentTime ?? 0) > 0 || (progress.ebookProgress ?? 0) > 0 {
+        if let progress, progress.isFinished || (progress.currentTime ?? 0) > 0 || ((progress.ebookProgress ?? 0) > 0 && item.media.ebookFile != nil) {
             VStack(alignment: .leading, spacing: 4) {
                 if progress.isFinished {
                     Label("Ukończone" + (Formats.date(ms: progress.finishedAt).map { " \($0)" } ?? ""), systemImage: "checkmark.circle.fill")
@@ -444,8 +446,12 @@ private struct TracksSection: View {
     }
 }
 
+/// Pliki pozycji z menu „…” w wierszu (etap 9g): e-book podstawowy/dodatkowy, czytanie,
+/// informacje o pliku audio z ffprobe, usunięcie pliku.
 private struct FilesSection: View {
+    let browser: LibraryBrowser
     let item: AudiobookshelfClient.ItemDetail
+    @Binding var request: LibraryFileRequest?
 
     var body: some View {
         let files = item.libraryFiles?.elements ?? []
@@ -460,12 +466,21 @@ private struct FilesSection: View {
                         .help("Pokaż w Finderze")
                     }
                     TableColumn("Rozmiar") { Text(Formats.size($0.metadata.size)) }.width(80)
-                    TableColumn("Typ") { Text(Self.typeName($0.fileType)) }.width(80)
+                    TableColumn("Typ") { Text(typeName($0)) }.width(130)
+                    TableColumn("") { file in
+                        LibraryFileMenu(browser: browser, item: item, file: file, request: $request)
+                    }
+                    .width(28)
                 }
                 .frame(height: min(CGFloat(files.count) * 24 + 32, 300))
             }
             .frame(maxWidth: 760)
         }
+    }
+
+    private func typeName(_ file: AudiobookshelfClient.ItemDetail.LibraryFile) -> String {
+        guard file.isEbook else { return Self.typeName(file.fileType) }
+        return item.media.ebookFile?.ino == file.ino ? "e-book podstawowy" : "e-book dodatkowy"
     }
 
     static func typeName(_ type: String?) -> String {

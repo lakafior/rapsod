@@ -25,6 +25,13 @@ extension AudiobookshelfClient {
         let discNumFromMeta: Int?
         let discNumFromFilename: Int?
         let metadata: ItemDetail.Media.FileMetadata?
+        // Szczegóły pliku (etap 9g, okno „Informacje o pliku audio”).
+        let format: String?
+        let channelLayout: String?
+        let timeBase: String?
+        let language: String?
+        let embeddedCoverArt: String?
+        let chapters: LenientList<ItemDetail.Media.Chapter>?
         var id: String { ino }
     }
 
@@ -202,4 +209,13 @@ private final class UploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
         guard totalBytesExpectedToSend > 0 else { return }
         report(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
+}
+
+// Rozdziały pliku audio w `AudioFileEntry` (etap 9g) — lista łagodna, a wpis musi być `Hashable`.
+extension AudiobookshelfClient.LenientList: Equatable where Element: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.elements == rhs.elements }
+}
+
+extension AudiobookshelfClient.LenientList: Hashable where Element: Hashable {
+    func hash(into hasher: inout Hasher) { hasher.combine(elements) }
 }
