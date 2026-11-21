@@ -36,6 +36,10 @@ final class EpubController {
     private(set) var hasLocations = false
     private(set) var error: String?
 
+    /// EPUB (epub.js) albo MOBI/AZW3 (`mobi.js` z web UI, etap 9h) — to samo API strony.
+    enum Kind { case epub, mobi }
+
+    let kind: Kind
     let fileURL: URL
     let startLocation: String?
     /// Lokacje epub.js zapamiętane z poprzedniego otwarcia (liczenie trwa przy dużych książkach).
@@ -47,7 +51,8 @@ final class EpubController {
     @ObservationIgnored private var pendingSettings: ReaderSettings?
     @ObservationIgnored fileprivate var isPageReady = false
 
-    init(fileURL: URL, cacheKey: String, startLocation: String?) {
+    init(fileURL: URL, cacheKey: String, startLocation: String?, kind: Kind = .epub) {
+        self.kind = kind
         self.fileURL = fileURL
         self.startLocation = startLocation
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -74,7 +79,8 @@ final class EpubController {
 
     fileprivate func pageReady(settings: ReaderSettings) {
         isPageReady = true
-        let locations = try? String(contentsOf: locationsCache, encoding: .utf8)
+        // Lokacje liczy tylko epub.js; MOBI mierzy postęp przewinięciem.
+        let locations = kind == .epub ? try? String(contentsOf: locationsCache, encoding: .utf8) : nil
         var options = "{settings: \((pendingSettings ?? settings).json)"
         if let startLocation { options += ", location: \(Self.json(startLocation))" }
         if let locations, !locations.isEmpty { options += ", locations: \(Self.json(locations))" }
@@ -179,7 +185,7 @@ struct EpubReaderView: NSViewRepresentable {
         init(controller: EpubController, settings: ReaderSettings) {
             self.controller = controller
             self.settings = settings
-            files = ReaderFiles(book: controller.fileURL)
+            files = ReaderFiles(book: controller.fileURL, kind: controller.kind)
         }
 
         func load(into webView: WKWebView) {
@@ -192,7 +198,7 @@ struct EpubReaderView: NSViewRepresentable {
                     } else if let error {
                         logger.error("Reguła treści czytnika: \(error.localizedDescription, privacy: .public)")
                     }
-                    webView.load(URLRequest(url: ReaderFiles.pageURL))
+                    webView.load(URLRequest(url: ReaderFiles.pageURL(for: self.controller.kind)))
                 }
             }
         }
@@ -263,16 +269,22 @@ private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// Schemat `absreader:` — strona czytnika, epub.js, JSZip i jeden e-book. Nic więcej.
+/// Schemat `absreader:` — strona czytnika, jej skrypty (epub.js i JSZip albo `mobi.js`) i jeden
+/// e-book. Nic więcej.
 @MainActor
 final class ReaderFiles: NSObject, WKURLSchemeHandler {
     static let scheme = "absreader"
-    static let pageURL = URL(string: "absreader://local/reader.html")!
+
+    static func pageURL(for kind: EpubController.Kind) -> URL {
+        URL(string: kind == .epub ? "absreader://local/reader.html" : "absreader://local/mobi.html")!
+    }
 
     private let book: URL
+    private let kind: EpubController.Kind
 
-    init(book: URL) {
+    init(book: URL, kind: EpubController.Kind) {
         self.book = book
+        self.kind = kind
     }
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
@@ -282,7 +294,11 @@ final class ReaderFiles: NSObject, WKURLSchemeHandler {
         case "/reader.js": Bundle.main.url(forResource: "reader", withExtension: "js").map { ($0, "text/javascript; charset=utf-8") }
         case "/epub.min.js": Bundle.main.url(forResource: "epub.min", withExtension: "js").map { ($0, "text/javascript; charset=utf-8") }
         case "/jszip.min.js": Bundle.main.url(forResource: "jszip.min", withExtension: "js").map { ($0, "text/javascript; charset=utf-8") }
-        case "/book.epub": (book, "application/epub+zip")
+        case "/book.epub" where kind == .epub: (book, "application/epub+zip")
+        case "/mobi.html" where kind == .mobi: Bundle.main.url(forResource: "mobi", withExtension: "html").map { ($0, "text/html; charset=utf-8") }
+        case "/mobi-reader.js" where kind == .mobi: Bundle.main.url(forResource: "mobi-reader", withExtension: "js").map { ($0, "text/javascript; charset=utf-8") }
+        case "/mobi.js" where kind == .mobi: Bundle.main.url(forResource: "mobi", withExtension: "js").map { ($0, "text/javascript; charset=utf-8") }
+        case "/book.mobi" where kind == .mobi: (book, "application/x-mobipocket-ebook")
         default: nil
         }
         guard let (file, type) = source, let data = try? Data(contentsOf: file, options: .mappedIfSafe) else {

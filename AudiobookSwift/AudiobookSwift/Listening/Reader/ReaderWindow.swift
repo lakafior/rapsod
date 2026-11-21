@@ -9,7 +9,7 @@ struct ReaderTarget: Codable, Hashable, Sendable {
     let title: String
 }
 
-/// Formaty czytnika. Web UI obsługuje też MOBI/AZW3 własnym parserem — tu dopiero w etapie 9h.
+/// Formaty czytnika (MOBI/AZW3 od etapu 9h, parserem z web UI).
 enum EbookFormat: String {
     case epub, pdf, comic, mobi, other
 
@@ -102,7 +102,11 @@ final class ReaderSession {
                 temporary = folder
                 pages.loadComic(pages: images, start: startPage)
                 phase = .ready(.comic)
-            case .mobi, .other:
+            case .mobi:
+                let controller = EpubController(fileURL: url, cacheKey: "\(target.itemID)-\(ino)", startLocation: saved?.hasPrefix("mobi:") == true ? saved : nil, kind: .mobi)
+                controller.onRelocated = { [weak self] position in self?.record(location: position.cfi, progress: position.percentage) }
+                phase = .ready(.epub(controller))
+            case .other:
                 phase = .ready(.unsupported(format, url))
             }
         } catch {
@@ -223,11 +227,9 @@ struct ReaderWindow: View {
 
     private func unsupported(_ format: EbookFormat, _ url: URL) -> some View {
         ContentUnavailableView {
-            Label(format == .mobi ? "MOBI i AZW3 jeszcze nie w tym czytniku" : "Nieobsługiwany format", systemImage: "book.closed")
+            Label("Nieobsługiwany format", systemImage: "book.closed")
         } description: {
-            Text(format == .mobi
-                ? "Czytnik obsługuje EPUB, PDF oraz komiksy CBZ i CBR. MOBI i AZW3 przeczytasz w web UI albo w innej aplikacji."
-                : "Czytnik obsługuje EPUB, PDF oraz komiksy CBZ i CBR.")
+            Text("Czytnik obsługuje EPUB, MOBI, AZW3, PDF oraz komiksy CBZ i CBR.")
         } actions: {
             Button("Otwórz w innej aplikacji") { NSWorkspace.shared.open(url) }
             Button("Pokaż w Finderze") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
