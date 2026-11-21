@@ -20,6 +20,11 @@ final class ListeningEvents {
         /// Biblioteki i pozycje, które się zmieniły (dodane, zmienione, usunięte).
         case itemsChanged(libraries: Set<String>, items: Set<String>)
         case reconnected
+        /// Pierwsze udane połączenie (serwer przysłał `init`).
+        case connected
+        /// Zadanie w tle serwera ruszyło albo się skończyło (`task_started`, `task_finished`):
+        /// skan, dopasowanie całej biblioteki. Używa tego podstrona „Biblioteki” (token root).
+        case task(AudiobookshelfClient.ServerTask, finished: Bool)
     }
 
     private let url: URL
@@ -100,7 +105,7 @@ final class ListeningEvents {
                         if let (name, payload) = Self.parse(packet.dropFirst()) {
                             if name == "auth_failed" { return .rejected(token) }
                             if name == "init" {
-                                if isReconnect { handler(.reconnected) }
+                                handler(isReconnect ? .reconnected : .connected)
                                 continue
                             }
                             dispatch(name, payload)
@@ -137,6 +142,10 @@ final class ListeningEvents {
             let libraries = Set(items.compactMap { $0["libraryId"] as? String })
             let ids = Set(items.compactMap { $0["id"] as? String })
             if !libraries.isEmpty { handler(.itemsChanged(libraries: libraries, items: ids)) }
+        case "task_started", "task_finished":
+            if let data = data(payload), let task = try? decoder.decode(AudiobookshelfClient.ServerTask.self, from: data) {
+                handler(.task(task, finished: name == "task_finished"))
+            }
         default:
             break
         }

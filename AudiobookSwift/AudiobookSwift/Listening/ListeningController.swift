@@ -55,6 +55,7 @@ final class ListeningController {
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
     @ObservationIgnored private var syncInFlight: Task<Void, Never>?
     @ObservationIgnored private var watcher: Task<Void, Never>?
+    @ObservationIgnored private var permissionsWatcher: Task<Void, Never>?
     /// Ostatnia pozycja uzgodniona z serwerem (wysłana albo przejęta) dla bieżącej książki.
     @ObservationIgnored private var lastAgreed: Double?
     @ObservationIgnored let covers = CoverCache()
@@ -103,6 +104,19 @@ final class ListeningController {
                 await setAvailable(ready)
             }
         }
+        // Administrator zmienił uprawnienia konta (np. dostęp do bibliotek albo treści dla dorosłych).
+        permissionsWatcher = Task { [weak self] in
+            let changes = Observations { [weak self] in self?.account.listenerRevision }
+            var last: Int?
+            for await revision in changes {
+                guard let self, let revision else { return }
+                defer { last = revision }
+                guard last != nil, availability == .ready else { continue }
+                // Jak po ponownym połączeniu: siatki i strony też wczytują się od nowa.
+                await refresh()
+                for library in libraries { libraryRevision[library.id, default: 0] += 1 }
+            }
+        }
     }
 
     private func setAvailable(_ ready: Bool) async {
@@ -144,6 +158,7 @@ final class ListeningController {
     /// Pełne zakończenie aplikacji: pozycja trafia na serwer, zanim ten zostanie zatrzymany.
     func shutdown() async {
         watcher?.cancel()
+        permissionsWatcher?.cancel()
         guard player.book != nil else { return }
         player.pause()
         await closeSession()
@@ -211,6 +226,8 @@ final class ListeningController {
             // Zdarzenia z przerwy przepadły: świeży postęp i przeładowanie list.
             for library in libraries { libraryRevision[library.id, default: 0] += 1 }
             Task { await refresh() }
+        case .connected, .task:
+            break
         }
     }
 

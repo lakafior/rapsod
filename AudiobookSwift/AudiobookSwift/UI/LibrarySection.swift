@@ -4,8 +4,11 @@ import SwiftUI
 struct LibrarySection: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
+    /// Skan i dopasowanie istniejących bibliotek (tylko w ustawieniach, nie w oknie powitalnym).
+    var tasks: LibraryTasks? = nil
     @Environment(\.openWindow) private var openWindow
     @State private var libraryToRemove: AudiobookshelfClient.Library?
+    @State private var libraryToMatch: AudiobookshelfClient.Library?
     @State private var removing = false
     @State private var removalError: String?
 
@@ -48,8 +51,14 @@ struct LibrarySection: View {
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
+                    if let tasks, let activity = tasks.activities[library.id] {
+                        LibraryActivityRow(activity: activity)
+                    }
                 }
                 Spacer()
+                if let tasks {
+                    taskMenu(for: library, tasks: tasks)
+                }
                 Button("Usuń bibliotekę „\(library.name)”", systemImage: "trash", role: .destructive) {
                     removalError = nil
                     libraryToRemove = library
@@ -57,7 +66,7 @@ struct LibrarySection: View {
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .help("Usuń bibliotekę z serwera (pliki zostają na dysku)")
-                .disabled(account.isScanning || removing)
+                .disabled(account.isScanning || removing || tasks?.isRunning(library.id) == true)
             }
         }
         if let removalError {
@@ -89,6 +98,36 @@ struct LibrarySection: View {
         } message: { _ in
             Text("Biblioteka zniknie z serwera razem z postępem słuchania, kolekcjami i metadanymi jej pozycji. Pliki w folderze zostaną na dysku nietknięte.")
         }
+        .confirmationDialog(
+            "Dopasować wszystkie książki w „\(libraryToMatch?.name ?? "")”?",
+            isPresented: Binding(
+                get: { libraryToMatch != nil },
+                set: { if !$0 { libraryToMatch = nil } }
+            ),
+            presenting: libraryToMatch
+        ) { library in
+            Button("Dopasuj wszystkie") { tasks?.matchAll(library) }
+            Button("Anuluj", role: .cancel) {}
+        } message: { _ in
+            Text("Serwer wyszuka każdą książkę w domyślnym źródle metadanych tej biblioteki i uzupełni brakujące metadane i okładki. Przy wielu książkach trwa to długo; pojedyncze pozycje wygodniej dopasować w oknie „Biblioteka”.")
+        }
+    }
+
+    private func taskMenu(for library: AudiobookshelfClient.Library, tasks: LibraryTasks) -> some View {
+        Menu {
+            Button("Wymuś pełny skan") { tasks.scan(library, force: true) }
+            if library.mediaType == "book" {
+                Button("Dopasuj wszystkie…") { libraryToMatch = library }
+            }
+        } label: {
+            Text("Skanuj")
+        } primaryAction: {
+            tasks.scan(library, force: false)
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help("Skanuj folder biblioteki; strzałka: pełny skan albo dopasowanie wszystkich książek")
+        .disabled(tasks.isRunning(library.id) || account.isScanning || removing)
     }
 
     private func add(_ kind: ServerAccount.LibraryKind) {
@@ -104,6 +143,7 @@ struct LibrarySection: View {
             defer { removing = false }
             do {
                 try await account.removeLibrary(library)
+                tasks?.forget(library.id)
             } catch {
                 removalError = "Nie udało się usunąć biblioteki „\(library.name)”: \(error.localizedDescription)"
             }
@@ -113,6 +153,68 @@ struct LibrarySection: View {
     private func reconnect() {
         guard let environment = supervisor.environment, supervisor.state == .running else { return }
         Task { await account.connect(environment: environment) }
+    }
+}
+
+/// Stan ostatniego skanu albo dopasowania biblioteki (pod jej nazwą).
+struct LibraryActivityRow: View {
+    let activity: LibraryTasks.Activity
+
+    var body: some View {
+        Group {
+            switch activity.phase {
+            case .requested, .running:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text(runningText)
+                }
+                .foregroundStyle(.secondary)
+            case .finished(let results, let canceled):
+                Label(finishedText(results, canceled: canceled), systemImage: canceled ? "stop.circle" : "checkmark.circle")
+                    .foregroundStyle(canceled ? Color.orange : Color.green)
+            case .failed(let message):
+                Label(message, systemImage: "xmark.octagon")
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+        }
+        .font(.caption)
+    }
+
+    private var runningText: String {
+        switch activity.kind {
+        case .scan(let force): force ? "Pełny skan…" : "Skanowanie…"
+        case .matchAll: "Dopasowywanie książek…"
+        }
+    }
+
+    private func finishedText(_ results: AudiobookshelfClient.ServerTask.ScanResults?, canceled: Bool) -> String {
+        let (what, done, stopped) = switch activity.kind {
+        case .scan: ("Skan", "zakończony", "przerwany")
+        case .matchAll: ("Dopasowanie", "zakończone", "przerwane")
+        }
+        if canceled { return "\(what) \(stopped)." }
+        guard let results else { return "\(what) \(done)." }
+        var parts: [String] = []
+        switch activity.kind {
+        case .scan:
+            parts.append("dodane: \(results.added ?? 0)")
+            parts.append("zmienione: \(results.updated ?? 0)")
+            if let missing = results.missing, missing > 0 { parts.append("brakujące: \(missing)") }
+        case .matchAll:
+            parts.append("zaktualizowane: \(results.updated ?? 0)")
+        }
+        let elapsed = results.elapsed.map { Self.elapsedText(milliseconds: $0) } ?? ""
+        return "\(what) \(done) — " + parts.joined(separator: ", ") + elapsed + "."
+    }
+}
+
+extension LibraryActivityRow {
+    /// „ (12 s)”, „ (3 min 5 s)”; poniżej sekundy nic.
+    static func elapsedText(milliseconds: Double) -> String {
+        let seconds = Int(milliseconds / 1000)
+        guard seconds > 0 else { return "" }
+        return seconds < 60 ? " (\(seconds) s)" : " (\(seconds / 60) min \(seconds % 60) s)"
     }
 }
 

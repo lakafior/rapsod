@@ -90,6 +90,9 @@ final class ServerAccount {
     private(set) var username: String?
     private(set) var userState: UserState = .unknown
     private(set) var scan: ScanProgress?
+    /// Rośnie, gdy administrator zmienił uprawnienia albo dostęp konta do słuchania —
+    /// okno „Biblioteka” wczytuje wtedy listy od nowa.
+    private(set) var listenerRevision = 0
 
     var isScanning: Bool {
         switch scan?.phase {
@@ -110,6 +113,7 @@ final class ServerAccount {
         return userCredentials
     }
     @ObservationIgnored private var accessToken: String?
+    @ObservationIgnored private var environment: ServerEnvironment?
     /// Rośnie przy każdym połączeniu/rozłączeniu, żeby spóźnione odpowiedzi nie nadpisały stanu.
     @ObservationIgnored private var generation = 0
 
@@ -119,6 +123,7 @@ final class ServerAccount {
     func connect(environment: ServerEnvironment) async {
         generation += 1
         let generation = generation
+        self.environment = environment
         client = AudiobookshelfClient(baseURL: ServerEnvironment.baseURL)
         store = CredentialStore(
             service: ServerEnvironment.keychainService,
@@ -160,6 +165,13 @@ final class ServerAccount {
             logger.error("Połączenie z serwerem: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// Łączy się od nowa z działającym serwerem — np. po przywróceniu kopii zapasowej,
+    /// która podmieniła bazę (konta, hasła, biblioteki).
+    func reconnect() async {
+        guard let environment else { return }
+        await connect(environment: environment)
     }
 
     /// Wywoływane, gdy serwer przestał działać.
@@ -305,6 +317,47 @@ final class ServerAccount {
         try userStore.save(credentials)
         userCredentials = credentials
         userState = .ready(username: login.username)
+    }
+
+    // MARK: - Zmiany konta do słuchania z podstrony „Użytkownicy”
+
+    /// Nazwa konta do słuchania, którego używa aplikacja (i telefon), gdy działa.
+    var listeningUsername: String? {
+        if case .ready(let username) = userState { return username }
+        return userCredentials?.username
+    }
+
+    /// Serwer przyjął nową nazwę albo hasło konta do słuchania: aplikacja zapisuje je od razu,
+    /// bo serwer unieważnił już stare sesje tego konta. Okno biblioteki odnowi token samo
+    /// (refresh token jest unieważniony, więc zaloguje się ponownie nowymi danymi).
+    func listenerCredentialsChanged(username: String?, password: String?) {
+        guard var credentials = userCredentials else { return }
+        if let username { credentials.username = username }
+        if let password, !password.isEmpty { credentials.password = password }
+        userCredentials = credentials
+        do {
+            try userStore?.save(credentials)
+            userState = .ready(username: credentials.username)
+        } catch {
+            logger.error("Zapis konta użytkownika w pęku kluczy: \(error.localizedDescription, privacy: .public)")
+            userState = .invalid("Serwer przyjął zmianę konta „\(credentials.username)”, ale nie udało się zapisać jej w pęku kluczy (\(error.localizedDescription)). Podaj nazwę i nowe hasło, żeby aplikacja je zapamiętała.")
+        }
+    }
+
+    /// Administrator zmienił uprawnienia lub dostęp konta do słuchania.
+    func listenerPermissionsChanged() {
+        listenerRevision += 1
+    }
+
+    /// Konto do słuchania usunięto z serwera: aplikacja zapomina je i prosi o nowe.
+    func listenerDeleted() {
+        do {
+            try userStore?.delete()
+        } catch {
+            logger.error("Usuwanie konta użytkownika z pęku kluczy: \(error.localizedDescription, privacy: .public)")
+        }
+        userCredentials = nil
+        userState = .missing
     }
 
     // MARK: - Web UI

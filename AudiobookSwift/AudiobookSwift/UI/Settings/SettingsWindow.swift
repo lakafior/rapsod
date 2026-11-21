@@ -9,6 +9,7 @@ struct AppModels {
     let loginItem: LoginItem
     let sharing: SharingController
     let metadataSources: MetadataSourcesController
+    let libraryTasks: LibraryTasks
 }
 
 /// Podstrony okna „Ustawienia aplikacji” — jedyna lista. Nowa podstrona to nowy
@@ -17,6 +18,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     case general
     case libraries
     case accounts
+    case users
+    case backups
     case sharing
     case metadata
     case log
@@ -28,6 +31,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "Ogólne"
         case .libraries: "Biblioteki"
         case .accounts: "Konta"
+        case .users: "Użytkownicy"
+        case .backups: "Kopie zapasowe"
         case .sharing: "Udostępnianie"
         case .metadata: "Źródła metadanych"
         case .log: "Log serwera"
@@ -39,6 +44,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .libraries: "books.vertical"
         case .accounts: "person.2"
+        case .users: "person.3"
+        case .backups: "clock.arrow.circlepath"
         case .sharing: "iphone.and.arrow.forward"
         case .metadata: "text.book.closed"
         case .log: "doc.text.magnifyingglass"
@@ -51,6 +58,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: GeneralSettingsPage(models: models)
         case .libraries: LibrariesSettingsPage(models: models)
         case .accounts: AccountsSettingsPage(models: models)
+        case .users: UsersSettingsPage(models: models)
+        case .backups: BackupsSettingsPage(models: models)
         case .sharing: SharingSettingsPage(models: models)
         case .metadata: MetadataSettingsPage(models: models)
         case .log: LogSettingsPage(models: models)
@@ -74,6 +83,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             case .missing, .invalid: return true
             case .unknown, .ready: return false
             }
+        case .users, .backups:
+            return false
         case .sharing:
             return models.sharing.lastError != nil
         case .metadata:

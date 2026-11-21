@@ -110,7 +110,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
     private(set) lazy var listening = ListeningController(supervisor: supervisor, account: account)
-    private(set) lazy var models = AppModels(supervisor: supervisor, account: account, loginItem: loginItem, sharing: sharing, metadataSources: metadataSources)
+    private(set) lazy var libraryTasks = LibraryTasks(account: account)
+    private(set) lazy var models = AppModels(
+        supervisor: supervisor,
+        account: account,
+        loginItem: loginItem,
+        sharing: sharing,
+        metadataSources: metadataSources,
+        libraryTasks: libraryTasks
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         supervisor.onStateChange = { [weak self] state in

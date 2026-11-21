@@ -7,14 +7,23 @@ struct LibrariesSettingsPage: View {
     var body: some View {
         SettingsForm {
             Section {
-                LibrarySection(supervisor: models.supervisor, account: models.account)
+                LibrarySection(supervisor: models.supervisor, account: models.account, tasks: models.libraryTasks)
             } header: {
                 Text("Biblioteki na serwerze")
             } footer: {
-                Text("Usunięcie biblioteki usuwa ją z serwera; pliki w folderze zostają na dysku.")
+                Text("„Skanuj” dodaje nowe pliki i zauważa zmienione lub usunięte; „Wymuś pełny skan” czyta od nowa wszystkie pozycje. „Dopasuj wszystkie” uzupełnia metadane książek z domyślnego źródła biblioteki. Usunięcie biblioteki usuwa ją z serwera; pliki w folderze zostają na dysku.")
                     .foregroundStyle(.secondary)
             }
         }
+        .onAppear { models.libraryTasks.appear() }
+        // Biblioteki mogły przybyć albo zniknąć poza aplikacją (web UI, inny administrator).
+        .task(id: models.account.state) {
+            guard models.account.state == .ready else { return }
+            models.libraryTasks.resume()
+            guard !models.account.isScanning else { return }
+            try? await models.account.refreshLibraries()
+        }
+        .onDisappear { models.libraryTasks.disappear() }
     }
 }
 

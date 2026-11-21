@@ -58,6 +58,16 @@ struct AudiobookshelfClient: Sendable {
     struct ServerTask: Decodable, Sendable {
         struct Payload: Decodable, Sendable {
             let libraryId: String?
+            /// Wynik skanu albo dopasowania (`LibraryScan.scanResults`), tylko w `task_finished`.
+            let scanResults: ScanResults?
+        }
+
+        struct ScanResults: Decodable, Sendable, Equatable {
+            let added: Int?
+            let updated: Int?
+            let missing: Int?
+            /// Milisekundy.
+            let elapsed: Double?
         }
 
         let id: String
@@ -65,6 +75,8 @@ struct AudiobookshelfClient: Sendable {
         let data: Payload?
         let isFailed: Bool?
         let error: String?
+        /// Np. `Task canceled by user` po anulowaniu.
+        let description: String?
     }
 
     /// Własny dostawca metadanych (`server/models/CustomMetadataProvider.js`):
