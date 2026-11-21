@@ -217,6 +217,17 @@ private struct BookPage: View {
         }
     }
 
+    private var readButton: some View {
+        Button {
+            openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title))
+        } label: {
+            Label(hasEbookProgress ? "Czytaj dalej" : "Czytaj", systemImage: "book")
+        }
+        .controlSize(.large)
+        .fixedSize()
+        .accessibilityIdentifier("book.read")
+    }
+
     private var actions: some View {
         let progress = listening.progress[item.id]
         let isCurrent = listening.player.book?.key == item.id
@@ -224,34 +235,31 @@ private struct BookPage: View {
         return HStack(spacing: 10) {
             // Sam e-book (bez audio): zamiast wyszarzonego „Odtwarzaj” główny przycisk to „Czytaj”.
             if hasAudio || item.media.ebookFile == nil {
-            Button {
-                Task { await listening.play(itemID: item.id) }
-            } label: {
-                if isCurrent, listening.player.isPlaying {
-                    Label("Pauza", systemImage: "pause.fill")
-                } else if listening.startingKey == item.id {
-                    Label { Text("Wczytywanie…") } icon: { ProgressView().controlSize(.small) }
-                } else {
-                    Label((progress?.currentTime ?? 0) > 0 && progress?.isFinished != true ? "Kontynuuj" : "Odtwarzaj", systemImage: "play.fill")
+                Button {
+                    Task { await listening.play(itemID: item.id) }
+                } label: {
+                    if isCurrent, listening.player.isPlaying {
+                        Label("Pauza", systemImage: "pause.fill")
+                    } else if listening.startingKey == item.id {
+                        Label { Text("Wczytywanie…") } icon: { ProgressView().controlSize(.small) }
+                    } else {
+                        Label((progress?.currentTime ?? 0) > 0 && progress?.isFinished != true ? "Kontynuuj" : "Odtwarzaj", systemImage: "play.fill")
+                    }
                 }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .fixedSize()
-            .disabled(!hasAudio)
-            .accessibilityIdentifier("book.play")
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .fixedSize()
+                .disabled(!hasAudio)
+                .accessibilityIdentifier("book.play")
             }
 
             if item.media.ebookFile != nil {
-                Button {
-                    openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title))
-                } label: {
-                    Label(hasEbookProgress ? "Czytaj dalej" : "Czytaj", systemImage: "book")
+                // Sam e-book (bez audio): „Czytaj” jest głównym przyciskiem.
+                if hasAudio {
+                    readButton.buttonStyle(.bordered)
+                } else {
+                    readButton.buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(ReadButtonStyle(prominent: !hasAudio))
-                .controlSize(.large)
-                .fixedSize()
-                .accessibilityIdentifier("book.read")
             }
 
             // Jak w web UI: przełącznik z ikoną, pełna nazwa w podpowiedzi i dla VoiceOver.
@@ -320,19 +328,6 @@ private struct BookPage: View {
             .accessibilityIdentifier("book.more")
         }
         .padding(.top, 4)
-    }
-}
-
-/// „Czytaj” jako główny przycisk, gdy pozycja nie ma audio.
-private struct ReadButtonStyle: PrimitiveButtonStyle {
-    let prominent: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        if prominent {
-            Button(role: configuration.role, action: configuration.trigger) { configuration.label }.buttonStyle(.borderedProminent)
-        } else {
-            Button(role: configuration.role, action: configuration.trigger) { configuration.label }.buttonStyle(.bordered)
-        }
     }
 }
 

@@ -326,9 +326,11 @@ struct ReaderWindow: View {
                 .keyboardShortcut(.rightArrow, modifiers: [.command])
         }
         ToolbarItem(placement: .primaryAction) {
-            Button { showsSettings.toggle() } label: { Label("Wygląd", systemImage: "textformat.size") }
-                .help("Motyw, czcionka i układ stron")
-                .popover(isPresented: $showsSettings, arrowEdge: .bottom) { settingsForm }
+            if hasAppearance {
+                Button { showsSettings.toggle() } label: { Label("Wygląd", systemImage: "textformat.size") }
+                    .help("Motyw, czcionka i układ stron")
+                    .popover(isPresented: $showsSettings, arrowEdge: .bottom) { settingsForm }
+            }
         }
     }
 
@@ -338,6 +340,14 @@ struct ReaderWindow: View {
 
     private func next() {
         if case .ready(.epub(let controller)) = session.phase { controller.next() } else { session.pages.next() }
+    }
+
+    /// Komiksy nie mają ustawień wyglądu (strona to obraz).
+    private var hasAppearance: Bool {
+        switch session.phase {
+        case .ready(.epub), .ready(.pdf): true
+        default: false
+        }
     }
 
     private var isEpub: Bool {

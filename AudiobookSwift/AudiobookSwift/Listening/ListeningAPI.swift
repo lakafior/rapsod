@@ -36,6 +36,8 @@ extension AudiobookshelfClient {
             let duration: Double?
             let numEpisodes: Int?
             let numTracks: Int?
+            /// Format podstawowego e-booka (lista pozycji, `toOldJSONMinified`).
+            var ebookFormat: String? = nil
             let size: Double?
         }
 

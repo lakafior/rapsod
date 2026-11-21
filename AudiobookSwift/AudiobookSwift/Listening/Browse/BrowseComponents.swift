@@ -28,6 +28,7 @@ struct ItemCard: View {
     /// Numer tomu (strona serii, „Kolejne w serii”).
     var sequence: String?
     @State private var hovering = false
+    @Environment(\.openWindow) private var openWindow
 
     static let width: CGFloat = 150
 
@@ -48,7 +49,14 @@ struct ItemCard: View {
                 if let sequence { Text("#\(sequence)").font(.caption2.weight(.semibold)).padding(.horizontal, 5).padding(.vertical, 2).background(.thinMaterial, in: Capsule()).padding(5) }
             }
             .overlay {
-                if hovering, let item, !item.isPodcast || item.recentEpisode != nil {
+                if hovering, let item, item.isEbookOnly {
+                    Button { openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title)) } label: {
+                        Image(systemName: "book.circle.fill")
+                            .font(.system(size: 40)).symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Czytaj")
+                } else if hovering, let item, !item.isPodcast || item.recentEpisode != nil {
                     Button { play(item) } label: {
                         Image(systemName: isCurrent(item) && listening.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 40)).symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
@@ -109,15 +117,21 @@ struct ProgressOverlay: View {
 struct ItemMenu: View {
     let browser: LibraryBrowser
     let item: AudiobookshelfClient.LibraryItem
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let listening = browser.listening
         let episodeID = item.recentEpisode?.id
         let progress = listening.progress[ListeningController.key(item.id, episodeID)]
         Button("Otwórz") { browser.open(.item(item.id)) }
+        if item.media.ebookFormat != nil, !item.isPodcast {
+            Button("Czytaj") { openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title)) }
+        }
         if !item.isPodcast || episodeID != nil {
-            Button((progress?.currentTime ?? 0) > 0 && progress?.isFinished != true ? "Kontynuuj" : "Odtwarzaj") {
-                Task { await listening.play(itemID: item.id, episodeID: episodeID) }
+            if !item.isEbookOnly {
+                Button((progress?.currentTime ?? 0) > 0 && progress?.isFinished != true ? "Kontynuuj" : "Odtwarzaj") {
+                    Task { await listening.play(itemID: item.id, episodeID: episodeID) }
+                }
             }
             Divider()
             if progress?.isFinished == true {
@@ -309,4 +323,9 @@ struct LoadingState: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
+}
+
+extension AudiobookshelfClient.LibraryItem {
+    /// Książka bez plików audio, z samym e-bookiem — główną akcją jest „Czytaj”, nie „Odtwarzaj”.
+    var isEbookOnly: Bool { !isPodcast && (media.numTracks ?? 1) == 0 && media.ebookFormat != nil }
 }

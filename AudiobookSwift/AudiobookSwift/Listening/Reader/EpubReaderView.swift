@@ -78,17 +78,11 @@ final class EpubController {
         if let startLocation { options += ", location: \(Self.json(startLocation))" }
         if let locations, !locations.isEmpty { options += ", locations: \(Self.json(locations))" }
         options += "}"
-        #if DEBUG
-        Self.debugLog(["type": "start", "message": startLocation ?? "(brak)"])
-        #endif
         call("reader.open(\(options))")
         pendingSettings = nil
     }
 
     fileprivate func handle(_ body: [String: Any]) {
-        #if DEBUG
-        Self.debugLog(body)
-        #endif
         switch body["type"] as? String {
         case "opened":
             isOpened = true
@@ -106,7 +100,7 @@ final class EpubController {
             // `book.locations.save()` to tekst JSON — zapisujemy go wprost, bez przeglądania.
             if let json = body["json"] as? String { try? json.write(to: locationsCache, atomically: true, encoding: .utf8) }
         case "log":
-            logger.notice("EPUB: \(body["message"] as? String ?? "", privacy: .public)")
+            logger.debug("EPUB: \(body["message"] as? String ?? "", privacy: .public)")
         case "locationsReady":
             hasLocations = true
         case "error":
@@ -123,21 +117,6 @@ final class EpubController {
             if let error { logger.debug("EPUB JS: \(error.localizedDescription, privacy: .public)") }
         }
     }
-
-    #if DEBUG
-    /// Diagnostyka czytnika w wersji Debug (`$TMPDIR/AudiobookSwift-reader.log`).
-    private static func debugLog(_ body: [String: Any]) {
-        let url = FileManager.default.temporaryDirectory.appending(path: "AudiobookSwift-reader.log")
-        let line = "\(Date()) \(body["type"] as? String ?? "?") \(String(describing: body["message"] ?? body["cfi"] ?? ""))\n"
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            handle.write(Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? Data(line.utf8).write(to: url)
-        }
-    }
-    #endif
 
     static func json(_ value: String) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: [value]),
