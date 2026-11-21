@@ -76,8 +76,8 @@ struct LibrarySection: View {
         }
         if let scan = account.scan {
             ScanProgressRow(scan: scan) {
-                // Podcasty dodaje się (na razie) tylko w web UI.
-                openWindow.bringToFront(id: scan.kind == .podcasts ? WebUIWindow.windowID : LibraryWindow.windowID)
+                // Podcasty dodaje się w oknie „Biblioteka” (przycisk „+” w bibliotece podcastów).
+                openWindow.bringToFront(id: LibraryWindow.windowID)
             }
         }
         HStack {

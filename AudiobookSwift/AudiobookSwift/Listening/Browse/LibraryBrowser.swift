@@ -8,7 +8,7 @@ import Observation
 @Observable
 final class LibraryBrowser {
     enum Section: Hashable {
-        case home, items, series, authors, narrators, collections, playlists, latestEpisodes, stats
+        case home, items, series, authors, narrators, collections, playlists, latestEpisodes, downloads, stats
     }
 
     enum Route: Hashable {
@@ -53,7 +53,9 @@ final class LibraryBrowser {
             filterData = nil
             playlists = nil
             searchText = ""
-            if let library, library.mediaType == "podcast", ![.home, .items, .latestEpisodes, .playlists, .stats].contains(section) {
+            if let library, library.mediaType != "podcast", section == .downloads {
+                section = .items
+            } else if let library, library.mediaType == "podcast", ![.home, .items, .latestEpisodes, .downloads, .playlists, .stats].contains(section) {
                 section = .items
             }
         }

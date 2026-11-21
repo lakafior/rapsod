@@ -48,7 +48,7 @@ struct CoverTab: View {
                             .accessibilityIdentifier("cover.useURL")
                     }
                     if !localImages.isEmpty {
-                        Text("Obrazy w folderze książki").font(.callout).foregroundStyle(.secondary)
+                        Text(model.isPodcast ? "Obrazy w folderze podcastu" : "Obrazy w folderze książki").font(.callout).foregroundStyle(.secondary)
                         HStack(spacing: 8) {
                             ForEach(localImages, id: \.path) { file in
                                 Button {
@@ -70,13 +70,19 @@ struct CoverTab: View {
             }
             Divider()
             HStack {
-                Picker("Źródło", selection: Bindable(search).provider) {
-                    ForEach(providers) { Text(Self.providerName($0)).tag($0.value) }
+                if model.isPodcast {
+                    // Okładki podcastów szuka serwer tylko w iTunes, po samym tytule.
+                    Text("iTunes").foregroundStyle(.secondary)
+                    TextField("Tytuł", text: Bindable(search).title).onSubmit(runSearch)
+                } else {
+                    Picker("Źródło", selection: Bindable(search).provider) {
+                        ForEach(providers) { Text(Self.providerName($0)).tag($0.value) }
+                    }
+                    .frame(maxWidth: 260)
+                    TextField("Tytuł", text: Bindable(search).title).onSubmit(runSearch)
+                    TextField("Autor", text: Bindable(search).author).onSubmit(runSearch)
+                        .frame(maxWidth: 200)
                 }
-                .frame(maxWidth: 260)
-                TextField("Tytuł", text: Bindable(search).title).onSubmit(runSearch)
-                TextField("Autor", text: Bindable(search).author).onSubmit(runSearch)
-                    .frame(maxWidth: 200)
                 Button("Szukaj okładek", action: runSearch)
                     .disabled(search.title.trimmingCharacters(in: .whitespaces).isEmpty || model.isBusy)
                     .accessibilityIdentifier("cover.search")
@@ -122,7 +128,7 @@ struct CoverTab: View {
         (model.item.libraryFiles?.elements ?? []).filter { $0.fileType == "image" && $0.metadata.path != model.item.media.coverPath }.map(\.metadata)
     }
 
-    static func isWebURL(_ text: String) -> Bool {
+    nonisolated static func isWebURL(_ text: String) -> Bool {
         let text = text.trimmingCharacters(in: .whitespaces).lowercased()
         return (text.hasPrefix("http://") || text.hasPrefix("https://")) && URL(string: text) != nil
     }
@@ -166,9 +172,10 @@ struct CoverTab: View {
 
     private func prepare() async {
         if search.title.isEmpty {
-            search.title = model.detailsBase.title
-            search.author = model.detailsBase.authors.first ?? ""
+            search.title = model.isPodcast ? model.item.title : model.detailsBase.title
+            search.author = model.isPodcast ? "" : (model.detailsBase.authors.first ?? "")
         }
+        guard !model.isPodcast else { return }
         guard providers.isEmpty, let loaded = try? await model.manager.loadProviders() else { return }
         providers = loaded.booksCovers
         // Domyślnie dostawca biblioteki (zwykle wbudowane źródła z polskimi okładkami), potem „Najlepsze”.
@@ -181,10 +188,13 @@ struct CoverTab: View {
     private func runSearch() {
         let title = search.title.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
-        let provider = search.provider, author = search.author.trimmingCharacters(in: .whitespaces)
+        let provider = search.provider, author = search.author.trimmingCharacters(in: .whitespaces), podcast = model.isPodcast
         Task {
             await model.perform("Szukanie okładek…", failure: "Nie udało się wyszukać okładek") {
-                let results = try await model.manager.run { try await $0.searchCovers(provider: provider, title: title, author: author, token: $1) }
+                let results = try await model.manager.run {
+                    podcast ? try await $0.searchPodcastCovers(title: title, token: $1)
+                        : try await $0.searchCovers(provider: provider, title: title, author: author, token: $1)
+                }
                 search.results = results
                 search.hasSearched = true
                 return nil

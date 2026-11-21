@@ -178,6 +178,11 @@ extension AudiobookshelfClient {
                 let author: String?
                 let releaseDate: String?
                 let type: String?
+                let feedUrl: String?
+                let imageUrl: String?
+                let itunesPageUrl: String?
+                let itunesId: String?
+                let itunesArtistId: String?
             }
             struct Chapter: Decodable, Sendable, Identifiable, Hashable {
                 let id: Int
@@ -211,6 +216,12 @@ extension AudiobookshelfClient {
             let tracks: LenientList<Track>?
             let episodes: LenientList<PodcastEpisode>?
             let numEpisodes: Int?
+            // Podcast: automatyczne pobieranie (`Podcast.toOldJSON`).
+            let autoDownloadEpisodes: Bool?
+            let autoDownloadSchedule: String?
+            let lastEpisodeCheck: Double?
+            let maxEpisodesToKeep: Int?
+            let maxNewEpisodesToDownload: Int?
         }
         struct LibraryFile: Decodable, Sendable, Identifiable, Hashable {
             let ino: String

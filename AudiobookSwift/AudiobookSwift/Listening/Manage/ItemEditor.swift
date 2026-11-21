@@ -9,6 +9,8 @@ import SwiftUI
 final class ItemEditorModel {
     enum Tab: Hashable {
         case details, cover, chapters, match
+        /// Tylko podcast: automatyczne pobieranie.
+        case schedule
     }
 
     struct Message: Equatable {
@@ -28,6 +30,12 @@ final class ItemEditorModel {
     var message: Message?
     let match = MatchSearch()
     let covers = CoverSearch()
+    // Podcast (etap 9d): szczegóły i harmonogram mają własne szkice.
+    var podcast: PodcastDraft
+    private(set) var podcastBase: PodcastDraft
+    var schedule: ScheduleDraft
+    private(set) var scheduleBase: ScheduleDraft
+    let podcastMatch = PodcastMatchSearch()
 
     init(browser: LibraryBrowser, item: AudiobookshelfClient.ItemDetail, tab: Tab) {
         self.browser = browser
@@ -39,6 +47,12 @@ final class ItemEditorModel {
         let chapters = ChapterDraft.list(item)
         self.chapters = chapters
         chaptersBase = chapters
+        let podcast = PodcastDraft(item)
+        self.podcast = podcast
+        podcastBase = podcast
+        let schedule = ScheduleDraft(item)
+        self.schedule = schedule
+        scheduleBase = schedule
     }
 
     var manager: ItemManager { browser.manager }
@@ -47,6 +61,11 @@ final class ItemEditorModel {
     var hasAudio: Bool { !(item.media.tracks?.elements.isEmpty ?? true) }
     var detailsDirty: Bool { !details.isSame(as: detailsBase) }
     var chaptersDirty: Bool { chapters != chaptersBase }
+    var isPodcast: Bool { item.isPodcast }
+    var podcastDirty: Bool { isPodcast && !podcast.update(from: podcastBase).isEmpty }
+    var scheduleDirty: Bool { isPodcast && !schedule.isSame(as: scheduleBase) }
+    /// Niezapisane zmiany w którejkolwiek zakładce (blokuje zamknięcie arkusza).
+    var anyDirty: Bool { isPodcast ? (podcastDirty || scheduleDirty) : (detailsDirty || chaptersDirty) }
     var isBusy: Bool { busy != nil }
 
     /// Wykonuje operację z opisem w stopce; błąd trafia do stopki zamiast alertu.
@@ -85,6 +104,88 @@ final class ItemEditorModel {
         guard (try? await reload()) != nil else { return }
         if !detailsDirty { resetDetails() }
         if !chaptersDirty { resetChapters() }
+        if !podcastDirty { resetPodcast() }
+        if !scheduleDirty { resetSchedule() }
+    }
+
+    func resetPodcast() {
+        podcast = PodcastDraft(item)
+        podcastBase = podcast
+    }
+
+    func resetSchedule() {
+        schedule = ScheduleDraft(item)
+        scheduleBase = schedule
+    }
+
+    // MARK: Podcast
+
+    func savePodcast() async {
+        if let problem = podcast.problem {
+            message = Message(text: problem, isError: true)
+            return
+        }
+        let update = podcast.update(from: podcastBase)
+        guard !update.isEmpty else { return }
+        await perform("Zapisywanie szczegółów…", failure: "Nie udało się zapisać szczegółów") {
+            let id = item.id
+            let updated = try await manager.run { try await $0.updatePodcast(itemID: id, update, token: $1) }
+            try await reload()
+            resetPodcast()
+            browser.invalidateFilterData()
+            if updated, update.metadata?.explicit == true, listenerSeesExplicit == false {
+                return "Zapisano szczegóły. Konto słuchacza nie ma dostępu do treści dla dorosłych — ten podcast zniknął z jego biblioteki (także na telefonie)."
+            }
+            return updated ? "Zapisano szczegóły." : "Nic się nie zmieniło."
+        }
+    }
+
+    func saveSchedule() async {
+        if let problem = schedule.problem {
+            message = Message(text: problem, isError: true)
+            return
+        }
+        let update = schedule.update(from: scheduleBase)
+        guard !update.isEmpty else { return }
+        await perform("Zapisywanie harmonogramu…", failure: "Nie udało się zapisać harmonogramu") {
+            let id = item.id
+            do {
+                _ = try await manager.run { try await $0.updatePodcast(itemID: id, update, token: $1) }
+            } catch AudiobookshelfClient.APIError.http(400, let body) where body.contains("cron") {
+                throw Reported(text: "Serwer nie przyjął wyrażenia „\(update.autoDownloadSchedule ?? "")” — to nie jest poprawny cron.")
+            }
+            try await reload()
+            resetSchedule()
+            return schedule.enabled ? "Zapisano. Serwer będzie sprawdzał kanał według harmonogramu." : "Zapisano. Automatyczne pobieranie wyłączone."
+        }
+    }
+
+    /// Jak `applyMatch`, tylko pola podcastu; okładka osobno, żeby jej błąd nie kasował reszty.
+    func applyPodcastMatch(_ update: AudiobookshelfClient.PodcastUpdate, coverURL: String?) async {
+        guard !update.isEmpty || coverURL != nil else { return }
+        await perform("Zapisywanie dopasowania…", failure: "Nie udało się zapisać dopasowania") {
+            let id = item.id
+            var notes: [String] = []
+            if !update.isEmpty {
+                let updated = try await manager.run { try await $0.updatePodcast(itemID: id, update, token: $1) }
+                notes.append(updated ? "Zapisano dane z iTunes." : "Dane bez zmian.")
+            }
+            if let coverURL {
+                do {
+                    try await manager.run { try await $0.setCover(itemID: id, url: coverURL, token: $1) }
+                    notes.append("Okładka zmieniona.")
+                } catch {
+                    notes.append(ItemManager.message(for: error, action: "Okładki nie udało się pobrać"))
+                }
+            }
+            try await reload()
+            resetPodcast()
+            browser.invalidateFilterData()
+            if coverURL != nil { listening.coverChanged(itemID: id, path: item.media.coverPath) }
+            podcastMatch.selected = nil
+            tab = .details
+            return notes.joined(separator: " ")
+        }
     }
 
     func resetDetails() {
@@ -206,20 +307,48 @@ struct ItemEditorSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            TabView(selection: $model.tab) {
-                DetailsTab(model: model).tabItem { Text("Szczegóły") }.tag(ItemEditorModel.Tab.details)
-                CoverTab(model: model).tabItem { Text("Okładka") }.tag(ItemEditorModel.Tab.cover)
-                if model.hasAudio {
-                    ChaptersTab(model: model).tabItem { Text("Rozdziały") }.tag(ItemEditorModel.Tab.chapters)
+            Group {
+                if model.isPodcast {
+                    // Podcast: przełącznik zamiast `TabView` — w `TabView` arkusza podcastu etykiety zakładek
+                    // rysowały się ucięte („S… O… H… D…”), choć AX podawał pełne szerokości (macOS 27).
+                    VStack(spacing: 0) {
+                        Picker("Zakładka", selection: $model.tab) {
+                            Text("Szczegóły").tag(ItemEditorModel.Tab.details)
+                            Text("Okładka").tag(ItemEditorModel.Tab.cover)
+                            Text("Harmonogram").tag(ItemEditorModel.Tab.schedule)
+                            Text("Dopasuj").tag(ItemEditorModel.Tab.match)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                        .accessibilityIdentifier("editor.tabs")
+                        Group {
+                            switch model.tab {
+                            case .cover: CoverTab(model: model)
+                            case .schedule: ScheduleTab(model: model)
+                            case .match: PodcastMatchTab(model: model)
+                            default: PodcastDetailsTab(model: model)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    }
+                } else {
+                    TabView(selection: $model.tab) {
+                        DetailsTab(model: model).tabItem { Text("Szczegóły") }.tag(ItemEditorModel.Tab.details)
+                        CoverTab(model: model).tabItem { Text("Okładka") }.tag(ItemEditorModel.Tab.cover)
+                        if model.hasAudio {
+                            ChaptersTab(model: model).tabItem { Text("Rozdziały") }.tag(ItemEditorModel.Tab.chapters)
+                        }
+                        MatchTab(model: model).tabItem { Text("Dopasuj") }.tag(ItemEditorModel.Tab.match)
+                    }
                 }
-                MatchTab(model: model).tabItem { Text("Dopasuj") }.tag(ItemEditorModel.Tab.match)
             }
             .padding([.horizontal, .bottom], 16)
             Divider()
             footer
         }
         .frame(minWidth: 820, idealWidth: 880, minHeight: 640, idealHeight: 720)
-        .interactiveDismissDisabled(model.detailsDirty || model.chaptersDirty)
+        .interactiveDismissDisabled(model.anyDirty)
         .task {
             await model.refreshOnOpen()
             await model.loadListenerPermissions()
@@ -240,7 +369,7 @@ struct ItemEditorSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 4))
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.item.title).font(.headline).lineLimit(1)
-                let authors = (model.item.media.metadata.authors ?? []).map(\.name).joined(separator: ", ")
+                let authors = model.isPodcast ? (model.item.media.metadata.author ?? "") : (model.item.media.metadata.authors ?? []).map(\.name).joined(separator: ", ")
                 if !authors.isEmpty { Text(authors).font(.callout).foregroundStyle(.secondary).lineLimit(1) }
             }
             Spacer()
@@ -266,7 +395,7 @@ struct ItemEditorSheet: View {
             Button("Zamknij") {
                 // Najpierw kończy edycję pola, żeby niezatwierdzony tekst (np. żeton bez przecinka) też się liczył.
                 NSApp.keyWindow?.makeFirstResponder(nil)
-                if model.detailsDirty || model.chaptersDirty { confirmClose = true } else { dismiss() }
+                if model.anyDirty { confirmClose = true } else { dismiss() }
             }
             .keyboardShortcut(.cancelAction)
             .accessibilityIdentifier("editor.close")
@@ -280,6 +409,8 @@ struct ItemEditorSheet: View {
         var parts: [String] = []
         if model.detailsDirty { parts.append("szczegóły") }
         if model.chaptersDirty { parts.append("rozdziały") }
+        if model.podcastDirty { parts.append("szczegóły") }
+        if model.scheduleDirty { parts.append("harmonogram") }
         return "Niezapisane: \(parts.joined(separator: " i ")). Zamknięcie je odrzuci."
     }
 }
