@@ -50,9 +50,12 @@ private struct BookPage: View {
         var id: ItemEditorModel.Tab { tab }
     }
 
+    @Environment(\.openWindow) private var openWindow
+
     private var listening: ListeningController { browser.listening }
     private var metadata: AudiobookshelfClient.ItemDetail.Media.Metadata { item.media.metadata }
     private var tasks: ItemTasks { browser.manager.tasks }
+    private var hasEbookProgress: Bool { (listening.progress[item.id]?.ebookProgress ?? 0) > 0 || listening.progress[item.id]?.ebookLocation != nil }
 
     var body: some View {
         ScrollView {
@@ -182,12 +185,12 @@ private struct BookPage: View {
 
     @ViewBuilder private var progressBox: some View {
         let progress = listening.progress[item.id]
-        if let progress, progress.isFinished || (progress.currentTime ?? 0) > 0 {
+        if let progress, progress.isFinished || (progress.currentTime ?? 0) > 0 || (progress.ebookProgress ?? 0) > 0 {
             VStack(alignment: .leading, spacing: 4) {
                 if progress.isFinished {
                     Label("Ukończone" + (Formats.date(ms: progress.finishedAt).map { " \($0)" } ?? ""), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                } else {
+                } else if (progress.currentTime ?? 0) > 0 {
                     let duration = progress.duration ?? item.media.duration ?? 0
                     let value = progress.progress ?? 0
                     HStack {
@@ -195,6 +198,10 @@ private struct BookPage: View {
                         Text(value.formatted(.percent.precision(.fractionLength(0))))
                     }
                     Text("Zostało \(Formats.duration(duration - (progress.currentTime ?? 0)))")
+                        .foregroundStyle(.secondary)
+                }
+                if let read = progress.ebookProgress, read > 0, item.media.ebookFile != nil {
+                    Label("Przeczytano \(read.formatted(.percent.precision(.fractionLength(0))))", systemImage: "book")
                         .foregroundStyle(.secondary)
                 }
                 if let started = Formats.date(ms: progress.startedAt) {
@@ -213,6 +220,8 @@ private struct BookPage: View {
         let isCurrent = listening.player.book?.key == item.id
         let hasAudio = !(item.media.tracks?.elements.isEmpty ?? true)
         return HStack(spacing: 10) {
+            // Sam e-book (bez audio): zamiast wyszarzonego „Odtwarzaj” główny przycisk to „Czytaj”.
+            if hasAudio || item.media.ebookFile == nil {
             Button {
                 Task { await listening.play(itemID: item.id) }
             } label: {
@@ -229,6 +238,19 @@ private struct BookPage: View {
             .fixedSize()
             .disabled(!hasAudio)
             .accessibilityIdentifier("book.play")
+            }
+
+            if item.media.ebookFile != nil {
+                Button {
+                    openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title))
+                } label: {
+                    Label(hasEbookProgress ? "Czytaj dalej" : "Czytaj", systemImage: "book")
+                }
+                .buttonStyle(ReadButtonStyle(prominent: !hasAudio))
+                .controlSize(.large)
+                .fixedSize()
+                .accessibilityIdentifier("book.read")
+            }
 
             // Jak w web UI: przełącznik z ikoną, pełna nazwa w podpowiedzi i dla VoiceOver.
             let finishedTitle = progress?.isFinished == true ? "Oznacz jako nieukończone" : "Oznacz jako ukończone"
@@ -296,6 +318,19 @@ private struct BookPage: View {
             .accessibilityIdentifier("book.more")
         }
         .padding(.top, 4)
+    }
+}
+
+/// „Czytaj” jako główny przycisk, gdy pozycja nie ma audio.
+private struct ReadButtonStyle: PrimitiveButtonStyle {
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if prominent {
+            Button(role: configuration.role, action: configuration.trigger) { configuration.label }.buttonStyle(.borderedProminent)
+        } else {
+            Button(role: configuration.role, action: configuration.trigger) { configuration.label }.buttonStyle(.bordered)
+        }
     }
 }
 

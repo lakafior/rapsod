@@ -197,6 +197,7 @@ extension AudiobookshelfClient {
                 let size: Double?
             }
             struct EbookFile: Decodable, Sendable, Hashable {
+                let ino: String?
                 let ebookFormat: String?
                 let metadata: FileMetadata?
             }
@@ -235,7 +236,10 @@ extension AudiobookshelfClient {
             let ino: String
             let metadata: Media.FileMetadata
             let fileType: String?
+            /// E-book dodatkowy (nie podstawowy); `nil` dla plików innych typów.
+            let isSupplementary: Bool?
             var id: String { ino }
+            var isEbook: Bool { fileType == "ebook" }
         }
 
         let id: String
