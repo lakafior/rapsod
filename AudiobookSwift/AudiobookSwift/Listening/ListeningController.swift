@@ -232,7 +232,7 @@ final class ListeningController {
             episodeDownloads.apply(download, phase)
         case .downloadQueueCleared(let itemID):
             episodeDownloads.clear(itemID: itemID)
-        case .connected, .task:
+        case .connected, .task, .taskProgress, .trackStarted:
             break
         }
     }
@@ -401,6 +401,24 @@ final class ListeningController {
         player.stop()
         nowPlayingCoverPath = nil
     }
+
+    /// Narzędzie pozycji za chwilę usunie albo przepisze pliki tej książki (etap 9e):
+    /// zatrzymuje ją, jeśli gra, i zapisuje pozycję, zanim pliki znikną spod odtwarzacza.
+    func release(itemID: String) async {
+        guard player.book?.itemID == itemID else { return }
+        await stopPlayback()
+    }
+
+    /// Pozycja usunięta z biblioteki: serwer skasował jej postęp, więc i lokalna kopia znika
+    /// (inaczej „Słuchaj dalej” pokazywałoby martwą książkę do następnego odświeżenia).
+    func itemDeleted(itemID: String, libraryID: String) {
+        progress = progress.filter { $0.key != itemID && !$0.key.hasPrefix(itemID + "/") }
+        bookmarks[itemID] = nil
+        libraryRevision[libraryID, default: 0] += 1
+    }
+
+    /// Czy ta pozycja jest teraz wczytana w odtwarzaczu (gra albo pauza).
+    func isLoaded(itemID: String) -> Bool { player.book?.itemID == itemID }
 
     /// Oznacza bieżącą książkę jako ukończoną (także przycisk w oknie).
     func markFinished() async {

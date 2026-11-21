@@ -87,6 +87,14 @@ final class LibraryBrowser {
     private(set) var playlists: [AudiobookshelfClient.Playlist]?
     /// Pozycja, dla której okno pyta o nazwę nowej playlisty.
     var newPlaylistEntry: AudiobookshelfClient.PlaylistEntry?
+    /// Otwarty arkusz wgrywania (etap 9e).
+    var uploadRequest: UploadRequest?
+
+    /// Pliki upuszczone na okno albo wybrane przyciskiem → arkusz wgrywania (konto root).
+    func upload(_ urls: [URL]) {
+        guard manager.isAvailable, uploadRequest == nil else { return }
+        uploadRequest = UploadRequest(urls: urls)
+    }
 
     init(listening: ListeningController, account: ServerAccount) {
         self.listening = listening

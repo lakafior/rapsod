@@ -214,6 +214,8 @@ extension AudiobookshelfClient {
             let size: Double?
             let chapters: [Chapter]?
             let tracks: LenientList<Track>?
+            /// Wszystkie pliki audio, także wykluczone (zakładka „Pliki”, etap 9e).
+            let audioFiles: LenientList<AudiobookshelfClient.AudioFileEntry>?
             let episodes: LenientList<PodcastEpisode>?
             let numEpisodes: Int?
             // Podcast: automatyczne pobieranie (`Podcast.toOldJSON`).
@@ -234,6 +236,10 @@ extension AudiobookshelfClient {
         let libraryId: String
         let mediaType: String
         let path: String?
+        /// Pozycja z jednego pliku leżącego wprost w folderze biblioteki (`path` to wtedy plik).
+        let isFile: Bool?
+        /// Pliki zniknęły z dysku (skan oznaczył pozycję jako brakującą).
+        let isMissing: Bool?
         let size: Double?
         let addedAt: Double?
         let media: Media

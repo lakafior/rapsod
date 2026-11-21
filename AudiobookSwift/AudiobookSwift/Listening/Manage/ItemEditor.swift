@@ -11,6 +11,8 @@ final class ItemEditorModel {
         case details, cover, chapters, match
         /// Tylko podcast: automatyczne pobieranie.
         case schedule
+        /// Tylko książka (etap 9e): kolejność i wykluczanie plików audio, narzędzia ffmpeg.
+        case files, tools
     }
 
     struct Message: Equatable {
@@ -25,6 +27,8 @@ final class ItemEditorModel {
     private(set) var detailsBase: DetailsDraft
     var chapters: [ChapterDraft]
     private(set) var chaptersBase: [ChapterDraft]
+    var files: [FileDraft]
+    private(set) var filesBase: [FileDraft]
     /// Trwająca operacja (opis w stopce).
     private(set) var busy: String?
     var message: Message?
@@ -47,6 +51,9 @@ final class ItemEditorModel {
         let chapters = ChapterDraft.list(item)
         self.chapters = chapters
         chaptersBase = chapters
+        let files = FileDraft.list(item)
+        self.files = files
+        filesBase = files
         let podcast = PodcastDraft(item)
         self.podcast = podcast
         podcastBase = podcast
@@ -61,11 +68,13 @@ final class ItemEditorModel {
     var hasAudio: Bool { !(item.media.tracks?.elements.isEmpty ?? true) }
     var detailsDirty: Bool { !details.isSame(as: detailsBase) }
     var chaptersDirty: Bool { chapters != chaptersBase }
+    var filesDirty: Bool { files != filesBase }
+    var hasAudioFiles: Bool { !(item.media.audioFiles?.elements.isEmpty ?? true) }
     var isPodcast: Bool { item.isPodcast }
     var podcastDirty: Bool { isPodcast && !podcast.update(from: podcastBase).isEmpty }
     var scheduleDirty: Bool { isPodcast && !schedule.isSame(as: scheduleBase) }
     /// Niezapisane zmiany w którejkolwiek zakładce (blokuje zamknięcie arkusza).
-    var anyDirty: Bool { isPodcast ? (podcastDirty || scheduleDirty) : (detailsDirty || chaptersDirty) }
+    var anyDirty: Bool { isPodcast ? (podcastDirty || scheduleDirty) : (detailsDirty || chaptersDirty || filesDirty) }
     var isBusy: Bool { busy != nil }
 
     /// Wykonuje operację z opisem w stopce; błąd trafia do stopki zamiast alertu.
@@ -85,7 +94,7 @@ final class ItemEditorModel {
     }
 
     /// Tokenem root: po oznaczeniu „dla dorosłych” konto słuchacza może już nie widzieć pozycji.
-    private func reload() async throws {
+    func reload() async throws {
         let id = item.id
         item = try await manager.run { try await $0.item(id: id, token: $1) }
     }
@@ -104,6 +113,7 @@ final class ItemEditorModel {
         guard (try? await reload()) != nil else { return }
         if !detailsDirty { resetDetails() }
         if !chaptersDirty { resetChapters() }
+        if !filesDirty { resetFiles() }
         if !podcastDirty { resetPodcast() }
         if !scheduleDirty { resetSchedule() }
     }
@@ -196,6 +206,31 @@ final class ItemEditorModel {
     func resetChapters() {
         chapters = ChapterDraft.list(item)
         chaptersBase = chapters
+    }
+
+    func resetFiles() {
+        files = FileDraft.list(item)
+        filesBase = files
+    }
+
+    // MARK: Pliki (etap 9e)
+
+    func saveFiles() async {
+        guard files.contains(where: { !$0.exclude }) else {
+            message = Message(text: "Książka musi mieć przynajmniej jeden plik audio.", isError: true)
+            return
+        }
+        // Zawsze cała lista: serwer zapisuje tylko przysłane pliki.
+        let payload = files.map { (ino: $0.ino, exclude: $0.exclude) }
+        await perform("Zapisywanie kolejności plików…", failure: "Nie udało się zapisać plików") {
+            let id = item.id
+            await listening.release(itemID: id)
+            try await manager.run { try await $0.updateTracks(itemID: id, payload, token: $1) }
+            try await reload()
+            resetFiles()
+            let included = payload.filter { !$0.exclude }.count
+            return "Zapisano: \(included) z \(payload.count) plików w książce. Rozdziały z plików nie zmieniają się same — popraw je w zakładce „Rozdziały”, jeśli trzeba."
+        }
     }
 
     // MARK: Szczegóły
@@ -340,6 +375,10 @@ struct ItemEditorSheet: View {
                             ChaptersTab(model: model).tabItem { Text("Rozdziały") }.tag(ItemEditorModel.Tab.chapters)
                         }
                         MatchTab(model: model).tabItem { Text("Dopasuj") }.tag(ItemEditorModel.Tab.match)
+                        if model.hasAudioFiles {
+                            FilesTab(model: model).tabItem { Text("Pliki") }.tag(ItemEditorModel.Tab.files)
+                            ToolsTab(model: model).tabItem { Text("Narzędzia") }.tag(ItemEditorModel.Tab.tools)
+                        }
                     }
                 }
             }
@@ -409,6 +448,7 @@ struct ItemEditorSheet: View {
         var parts: [String] = []
         if model.detailsDirty { parts.append("szczegóły") }
         if model.chaptersDirty { parts.append("rozdziały") }
+        if model.filesDirty { parts.append("kolejność plików") }
         if model.podcastDirty { parts.append("szczegóły") }
         if model.scheduleDirty { parts.append("harmonogram") }
         return "Niezapisane: \(parts.joined(separator: " i ")). Zamknięcie je odrzuci."

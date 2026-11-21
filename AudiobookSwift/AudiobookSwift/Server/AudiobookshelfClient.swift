@@ -58,6 +58,8 @@ struct AudiobookshelfClient: Sendable {
     struct ServerTask: Decodable, Sendable {
         struct Payload: Decodable, Sendable {
             let libraryId: String?
+            /// Zadania pozycji (`encode-m4b`, `embed-metadata`).
+            let libraryItemId: String?
             /// Wynik skanu albo dopasowania (`LibraryScan.scanResults`), tylko w `task_finished`.
             let scanResults: ScanResults?
         }
@@ -74,7 +76,10 @@ struct AudiobookshelfClient: Sendable {
         let action: String
         let data: Payload?
         let isFailed: Bool?
+        let isFinished: Bool?
+        /// Po anulowaniu scalania: `Task canceled by user` (`errorKey` `MessageTaskCanceledByUser`).
         let error: String?
+        let errorKey: String?
         /// Np. `Task canceled by user` po anulowaniu.
         let description: String?
     }
