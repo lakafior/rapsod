@@ -90,6 +90,7 @@ struct MetadataSettingsPage: View {
             Section("Źródła metadanych") {
                 MetadataSourcesSection(sources: models.metadataSources)
             }
+            CustomProvidersSection(account: models.account, refreshKey: models.metadataSources.registration.title)
         }
     }
 }
