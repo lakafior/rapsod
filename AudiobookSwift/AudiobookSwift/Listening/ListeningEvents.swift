@@ -30,6 +30,12 @@ final class ListeningEvents {
         case episodeDownload(AudiobookshelfClient.EpisodeDownload, EpisodeDownloads.Phase)
         /// `episode_download_queue_cleared` — kolejka jednego podcastu wyczyszczona.
         case downloadQueueCleared(itemID: String)
+        /// Postęp zadania pozycji w procentach 0–100 (`task_progress` przy scalaniu i osadzaniu).
+        /// **Tylko dla administratorów** (`SocketAuthority.adminEmitter`) — dochodzi wyłącznie
+        /// gniazdem na tokenie root (`ItemTasks`), nigdy gniazdem słuchacza.
+        case taskProgress(itemID: String, progress: Double)
+        /// Zadanie pozycji zaczęło przetwarzać plik (`track_started`, też tylko dla administratorów).
+        case trackStarted(itemID: String, ino: String)
     }
 
     private let url: URL
@@ -159,6 +165,13 @@ final class ListeningEvents {
             }
             if let data = data(payload), let download = try? decoder.decode(AudiobookshelfClient.EpisodeDownload.self, from: data) {
                 handler(.episodeDownload(download, phase))
+            }
+        case "task_progress", "track_started":
+            guard let object = payload as? [String: Any], let itemID = object["libraryItemId"] as? String else { break }
+            if name == "task_progress", let progress = (object["progress"] as? NSNumber)?.doubleValue {
+                handler(.taskProgress(itemID: itemID, progress: progress))
+            } else if name == "track_started", let ino = object["ino"] as? String {
+                handler(.trackStarted(itemID: itemID, ino: ino))
             }
         case "episode_download_queue_cleared":
             if let itemID = payload as? String { handler(.downloadQueueCleared(itemID: itemID)) }

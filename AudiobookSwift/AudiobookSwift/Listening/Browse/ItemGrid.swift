@@ -79,6 +79,10 @@ struct ItemsSection: View {
                             .accessibilityIdentifier("podcast.add")
                         SortMenu(sort: $browser.podcastSort, options: SortMenu.podcastOptions)
                     } else {
+                        Button("Wgraj książkę", systemImage: "plus") { browser.upload([]) }
+                            .disabled(!browser.manager.isAvailable)
+                            .help(browser.manager.isAvailable ? "Wgraj książkę z plików albo folderu (możesz też upuścić je na okno)" : browser.manager.unavailableReason)
+                            .accessibilityIdentifier("book.upload")
                         SortMenu(sort: $browser.itemSort, options: SortMenu.bookOptions)
                     }
                     FilterMenu(browser: browser)

@@ -249,6 +249,14 @@ struct FlowLayout: Layout {
 }
 
 enum Formats {
+    /// „1 plik”, „3 pliki”, „5 plików” (odmiana liczebnika).
+    static func files(_ count: Int) -> String {
+        let tens = count % 100, ones = count % 10
+        if count == 1 { return "1 plik" }
+        if (2...4).contains(ones), !(12...14).contains(tens) { return "\(count) pliki" }
+        return "\(count) plików"
+    }
+
     static func duration(_ seconds: Double?) -> String {
         guard let seconds, seconds.isFinite, seconds > 0 else { return "—" }
         let total = Int(seconds.rounded())

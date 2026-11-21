@@ -43,6 +43,7 @@ private struct BookPage: View {
     let item: AudiobookshelfClient.ItemDetail
     @State private var confirmReset = false
     @State private var editing: EditRequest?
+    @State private var itemAction: ItemAction?
 
     private struct EditRequest: Identifiable {
         let tab: ItemEditorModel.Tab
@@ -51,6 +52,7 @@ private struct BookPage: View {
 
     private var listening: ListeningController { browser.listening }
     private var metadata: AudiobookshelfClient.ItemDetail.Media.Metadata { item.media.metadata }
+    private var tasks: ItemTasks { browser.manager.tasks }
 
     var body: some View {
         ScrollView {
@@ -64,6 +66,16 @@ private struct BookPage: View {
                     VStack(alignment: .leading, spacing: 16) {
                         cover(180)
                         info
+                    }
+                }
+                if item.isMissing == true {
+                    Label("Plików tej książki nie ma na dysku. Przywróć je i zeskanuj pozycję ponownie albo usuń ją z biblioteki.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: 760, alignment: .leading)
+                }
+                if let job = tasks.job(item.id) {
+                    ItemTaskStatus(tasks: tasks, itemID: item.id, job: job) { ino in
+                        item.media.audioFiles?.elements.first { $0.ino == ino }?.metadata?.filename
                     }
                 }
                 if let description = HTMLText.plain(metadata.description) {
@@ -86,6 +98,10 @@ private struct BookPage: View {
         .sheet(item: $editing) { request in
             ItemEditorSheet(browser: browser, item: item, tab: request.tab)
         }
+        .itemActions(browser: browser, item: item, action: $itemAction)
+        // Postęp zadań pozycji (osadzanie, M4B) — także tych zleconych wcześniej albo z web UI.
+        .onAppear { tasks.appear() }
+        .onDisappear { tasks.disappear() }
     }
 
     private func cover(_ size: CGFloat) -> some View {
@@ -245,6 +261,11 @@ private struct BookPage: View {
                     Button("Edytuj szczegóły…") { editing = EditRequest(tab: .details) }
                     Button("Okładka…") { editing = EditRequest(tab: .cover) }
                     if hasAudio { Button("Rozdziały…") { editing = EditRequest(tab: .chapters) } }
+                    if !(item.media.audioFiles?.elements.isEmpty ?? true) {
+                        Button("Pliki audio…") { editing = EditRequest(tab: .files) }
+                        Button("Narzędzia (metadane w plikach, M4B)…") { editing = EditRequest(tab: .tools) }
+                    }
+                    Button("Skanuj ponownie") { itemAction = .scan }
                     Divider()
                 }
                 if progress != nil {
@@ -257,6 +278,10 @@ private struct BookPage: View {
                 AddToPlaylistMenu(browser: browser, entry: .init(libraryItemId: item.id, episodeId: nil), libraryID: item.libraryId)
                 if let path = item.path {
                     Button("Pokaż w Finderze") { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) }
+                }
+                if browser.manager.isAvailable {
+                    Divider()
+                    Button("Usuń…", role: .destructive) { itemAction = .delete }
                 }
             } label: {
                 Label("Więcej", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
@@ -433,6 +458,7 @@ private struct PodcastPage: View {
     @State private var checksNew = false
     @State private var confirmMatch = false
     @State private var notice: String?
+    @State private var itemAction: ItemAction?
 
     private struct EditRequest: Identifiable {
         let tab: ItemEditorModel.Tab
@@ -495,6 +521,7 @@ private struct PodcastPage: View {
         .sheet(item: $editing) { request in ItemEditorSheet(browser: browser, item: item, tab: request.tab) }
         .sheet(isPresented: $showsFeed) { EpisodeFeedSheet(browser: browser, item: item) }
         .sheet(isPresented: $checksNew) { CheckNewEpisodesSheet(browser: browser, item: item) }
+        .itemActions(browser: browser, item: item, action: $itemAction)
         .confirmationDialog("Dopasować opisy odcinków do kanału?", isPresented: $confirmMatch) {
             Button("Uzupełnij puste pola") { matchEpisodes(override: false) }
             Button("Nadpisz wszystkie z kanału", role: .destructive) { matchEpisodes(override: true) }
@@ -530,6 +557,7 @@ private struct PodcastPage: View {
                     Button("Okładka…") { editing = EditRequest(tab: .cover) }
                     Button("Harmonogram pobierania…") { editing = EditRequest(tab: .schedule) }
                     Button("Dopasuj w iTunes…") { editing = EditRequest(tab: .match) }
+                    Button("Skanuj ponownie") { itemAction = .scan }
                     Divider()
                 }
                 Button("Oznacz wszystkie jako ukończone") { markAll(true) }
@@ -537,6 +565,10 @@ private struct PodcastPage: View {
                 if let path = item.path {
                     Divider()
                     Button("Pokaż w Finderze") { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) }
+                }
+                if manager.isAvailable {
+                    Divider()
+                    Button("Usuń podcast…", role: .destructive) { itemAction = .delete }
                 }
             } label: {
                 Label("Więcej", systemImage: "ellipsis.circle").labelStyle(.iconOnly)

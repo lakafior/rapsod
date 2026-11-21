@@ -19,6 +19,7 @@ struct LibraryWindow: View {
     @State private var browser: LibraryBrowser
     @State private var showsPlayer = true
     @State private var newPlaylistName = ""
+    @State private var dropTargeted = false
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var activeState
 
@@ -50,7 +51,10 @@ struct LibraryWindow: View {
         }
         .frame(minWidth: 980, minHeight: 560)
         .navigationTitle(Self.title)
-        .onDisappear { listening.windowClosed() }
+        .onDisappear {
+            listening.windowClosed()
+            browser.manager.tasks.shutdown()
+        }
     }
 
     private var content: some View {
@@ -67,12 +71,47 @@ struct LibraryWindow: View {
                     }
             }
         }
+        // Wgrywanie (etap 9e): foldery albo pliki upuszczone na okno trafiają do arkusza wgrywania.
+        .dropDestination(for: URL.self) { urls, _ in
+            guard browser.manager.isAvailable, !browser.showsUpload, !urls.isEmpty else { return false }
+            browser.upload(urls)
+            return true
+        } isTargeted: { dropTargeted = $0 && browser.manager.isAvailable }
+        .overlay {
+            if dropTargeted {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12).fill(.tint.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 12).strokeBorder(.tint, style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
+                    Label("Upuść, żeby wgrać do biblioteki", systemImage: "square.and.arrow.down")
+                        .font(.title2.weight(.medium)).padding(16).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .padding(8)
+                .allowsHitTesting(false)
+            }
+        }
+        .sheet(isPresented: $browser.showsUpload) {
+            if let upload = browser.upload { UploadSheet(model: upload) }
+        }
         .searchable(text: $browser.searchText, placement: .toolbar, prompt: browser.isPodcastLibrary ? "Szukaj podcastów i odcinków" : "Szukaj książek, autorów, serii")
         .inspector(isPresented: $showsPlayer) {
             PlayerPanel(listening: listening)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 440)
         }
         .toolbar {
+            if let upload = browser.upload, upload.isRunning, !browser.showsUpload {
+                ToolbarItem {
+                    Button {
+                        browser.showsUpload = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            ProgressView(value: upload.overallProgress).frame(width: 60)
+                            Text("Wysyłanie…")
+                        }
+                    }
+                    .help("Wgrywanie do biblioteki — pokaż szczegóły")
+                    .accessibilityIdentifier("upload.toolbar")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button(showsPlayer ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz", systemImage: "sidebar.trailing") { showsPlayer.toggle() }
             }
