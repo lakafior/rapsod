@@ -342,45 +342,38 @@ struct ItemEditorSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Group {
-                if model.isPodcast {
-                    // Podcast: przełącznik zamiast `TabView` — w `TabView` arkusza podcastu etykiety zakładek
-                    // rysowały się ucięte („S… O… H… D…”), choć AX podawał pełne szerokości (macOS 27).
-                    VStack(spacing: 0) {
-                        Picker("Zakładka", selection: $model.tab) {
-                            Text("Szczegóły").tag(ItemEditorModel.Tab.details)
-                            Text("Okładka").tag(ItemEditorModel.Tab.cover)
-                            Text("Harmonogram").tag(ItemEditorModel.Tab.schedule)
-                            Text("Dopasuj").tag(ItemEditorModel.Tab.match)
+            // Przełącznik zamiast `TabView`: w `TabView` arkusza etykiety zakładek rysowały się ucięte
+            // („S… O… P… N…”) przy sześciu zakładkach książki i czterech podcastu (macOS 27),
+            // choć AX podawał pełne szerokości.
+            VStack(spacing: 0) {
+                Picker("Zakładka", selection: $model.tab) {
+                    ForEach(tabs, id: \.tab) { Text($0.title).tag($0.tab) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .padding(.bottom, 4)
+                .accessibilityIdentifier("editor.tabs")
+                Group {
+                    if model.isPodcast {
+                        switch model.tab {
+                        case .cover: CoverTab(model: model)
+                        case .schedule: ScheduleTab(model: model)
+                        case .match: PodcastMatchTab(model: model)
+                        default: PodcastDetailsTab(model: model)
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .fixedSize()
-                        .accessibilityIdentifier("editor.tabs")
-                        Group {
-                            switch model.tab {
-                            case .cover: CoverTab(model: model)
-                            case .schedule: ScheduleTab(model: model)
-                            case .match: PodcastMatchTab(model: model)
-                            default: PodcastDetailsTab(model: model)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    }
-                } else {
-                    TabView(selection: $model.tab) {
-                        DetailsTab(model: model).tabItem { Text("Szczegóły") }.tag(ItemEditorModel.Tab.details)
-                        CoverTab(model: model).tabItem { Text("Okładka") }.tag(ItemEditorModel.Tab.cover)
-                        if model.hasAudio {
-                            ChaptersTab(model: model).tabItem { Text("Rozdziały") }.tag(ItemEditorModel.Tab.chapters)
-                        }
-                        MatchTab(model: model).tabItem { Text("Dopasuj") }.tag(ItemEditorModel.Tab.match)
-                        if model.hasAudioFiles {
-                            FilesTab(model: model).tabItem { Text("Pliki") }.tag(ItemEditorModel.Tab.files)
-                            ToolsTab(model: model).tabItem { Text("Narzędzia") }.tag(ItemEditorModel.Tab.tools)
+                    } else {
+                        switch model.tab {
+                        case .cover: CoverTab(model: model)
+                        case .chapters: ChaptersTab(model: model)
+                        case .match: MatchTab(model: model)
+                        case .files: FilesTab(model: model)
+                        case .tools: ToolsTab(model: model)
+                        default: DetailsTab(model: model)
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .padding([.horizontal, .bottom], 16)
             Divider()
@@ -399,6 +392,20 @@ struct ItemEditorSheet: View {
         } message: {
             Text(unsavedSummary)
         }
+    }
+
+    private var tabs: [(tab: ItemEditorModel.Tab, title: String)] {
+        if model.isPodcast {
+            return [(.details, "Szczegóły"), (.cover, "Okładka"), (.schedule, "Harmonogram"), (.match, "Dopasuj")]
+        }
+        var tabs: [(tab: ItemEditorModel.Tab, title: String)] = [(.details, "Szczegóły"), (.cover, "Okładka")]
+        if model.hasAudio { tabs.append((.chapters, "Rozdziały")) }
+        tabs.append((.match, "Dopasuj"))
+        if model.hasAudioFiles {
+            tabs.append((.files, "Pliki"))
+            tabs.append((.tools, "Narzędzia"))
+        }
+        return tabs
     }
 
     private var header: some View {

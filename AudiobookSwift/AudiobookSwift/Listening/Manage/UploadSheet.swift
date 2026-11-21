@@ -392,7 +392,7 @@ private struct UploadEntryCard: View {
                 }
             }
             .disabled(locked)
-            DisclosureGroup("\(entry.files.count == 1 ? "1 plik" : "\(entry.files.count) plików") · \(Formats.size(Double(entry.size)))") {
+            DisclosureGroup("\(Formats.files(entry.files.count)) · \(Formats.size(Double(entry.size)))") {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(entry.files, id: \.self) { Text($0.lastPathComponent).font(.caption).lineLimit(1) }
                 }

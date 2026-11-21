@@ -74,9 +74,9 @@ private struct ItemActionsModifier: ViewModifier {
     private var deleteMessage: String {
         var lines: [String] = []
         if let path = item.path {
-            lines.append("„Przenieś do Kosza”: \(what.lowercased()) \(path) trafi do Kosza (da się go odzyskać), a książka zniknie z biblioteki.")
+            lines.append("„Usuń i przenieś pliki do Kosza”: \(what.lowercased()) \(path) trafi do Kosza (da się go odzyskać), a książka zniknie z biblioteki.")
         }
-        lines.append("„Tylko z biblioteki”: pliki zostają na dysku, a następny skan biblioteki doda książkę z powrotem.")
+        lines.append("„Usuń tylko z biblioteki”: pliki zostają na dysku, a następny skan biblioteki doda książkę z powrotem.")
         lines.append("Postęp słuchania tej książki zniknie z serwera — także na telefonie.")
         if isPlaying { lines.append("Odtwarzanie zostanie zatrzymane.") }
         return lines.joined(separator: "\n\n")

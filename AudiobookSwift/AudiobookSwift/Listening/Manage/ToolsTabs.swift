@@ -204,7 +204,7 @@ struct ToolsTab: View {
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Łączy \(audioFiles.count == 1 ? "plik" : "\(audioFiles.count) plików") audio w jeden plik M4B z rozdziałami, okładką i metadanymi. Oryginały serwer przenosi do folderu podręcznego (metadata/cache/items/\(model.item.id)) — nie są kasowane, ale znikają z folderu książki.")
+                        Text("Łączy \(Formats.files(audioFiles.count)) audio w jeden plik M4B z rozdziałami, okładką i metadanymi. Oryginały serwer przenosi do folderu podręcznego (metadata/cache/items/\(model.item.id)) — nie są kasowane, ale znikają z folderu książki.")
                             .font(.callout).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
@@ -284,7 +284,7 @@ struct ToolsTab: View {
 
     private func confirmMessage(_ kind: Kind) -> String {
         var text = kind == .encode
-            ? "Powstanie jeden plik M4B w folderze książki, a \(audioFiles.count == 1 ? "oryginał" : "\(audioFiles.count) oryginalnych plików") serwer przeniesie do folderu podręcznego. Zadanie można anulować."
+            ? "Powstanie jeden plik M4B w folderze książki, a oryginały (\(Formats.files(audioFiles.count))) serwer przeniesie do folderu podręcznego. Zadanie można anulować."
             : "Pliki audio zostaną przepisane" + (backup ? ", kopie trafią do folderu podręcznego serwera." : " bez kopii zapasowej.")
         if isPlaying { text += " Odtwarzanie tej książki zostanie zatrzymane." }
         return text
