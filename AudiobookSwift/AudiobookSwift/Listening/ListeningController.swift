@@ -684,7 +684,9 @@ final class ListeningController {
             id: old?.id, libraryItemId: book.itemID, episodeId: book.episodeID, duration: book.duration,
             progress: book.duration > 0 ? time / book.duration : 0, currentTime: time, isFinished: false,
             hideFromContinueListening: old?.hideFromContinueListening, lastUpdate: Date.now.timeIntervalSince1970 * 1000,
-            startedAt: old?.startedAt ?? Date.now.timeIntervalSince1970 * 1000, finishedAt: nil
+            startedAt: old?.startedAt ?? Date.now.timeIntervalSince1970 * 1000, finishedAt: nil,
+            // Postęp czytania tej samej pozycji zostaje (słuchanie go nie zmienia).
+            ebookLocation: old?.ebookLocation, ebookProgress: old?.ebookProgress
         )
     }
     // MARK: - Postęp, zakładki i kolejka (strony okna „Biblioteka”, etap 9b)

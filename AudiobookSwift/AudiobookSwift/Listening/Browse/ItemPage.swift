@@ -44,15 +44,19 @@ private struct BookPage: View {
     @State private var confirmReset = false
     @State private var editing: EditRequest?
     @State private var itemAction: ItemAction?
+    @State private var fileRequest: LibraryFileRequest?
 
     private struct EditRequest: Identifiable {
         let tab: ItemEditorModel.Tab
         var id: ItemEditorModel.Tab { tab }
     }
 
+    @Environment(\.openWindow) private var openWindow
+
     private var listening: ListeningController { browser.listening }
     private var metadata: AudiobookshelfClient.ItemDetail.Media.Metadata { item.media.metadata }
     private var tasks: ItemTasks { browser.manager.tasks }
+    private var hasEbookProgress: Bool { (listening.progress[item.id]?.ebookProgress ?? 0) > 0 || listening.progress[item.id]?.ebookLocation != nil }
 
     var body: some View {
         ScrollView {
@@ -86,10 +90,11 @@ private struct BookPage: View {
                 BookmarksSection(browser: browser, itemID: item.id)
                 ChaptersSection(browser: browser, item: item)
                 TracksSection(item: item)
-                FilesSection(item: item)
+                FilesSection(browser: browser, item: item, request: $fileRequest)
             }
             .padding(24)
         }
+        .modifier(LibraryFileActions(browser: browser, item: item, request: $fileRequest))
         .confirmationDialog("Wyzerować postęp „\(item.title)”?", isPresented: $confirmReset) {
             Button("Wyzeruj postęp", role: .destructive) { Task { await listening.resetProgress(itemID: item.id) } }
         } message: {
@@ -182,12 +187,12 @@ private struct BookPage: View {
 
     @ViewBuilder private var progressBox: some View {
         let progress = listening.progress[item.id]
-        if let progress, progress.isFinished || (progress.currentTime ?? 0) > 0 {
+        if let progress, progress.isFinished || (progress.currentTime ?? 0) > 0 || ((progress.ebookProgress ?? 0) > 0 && item.media.ebookFile != nil) {
             VStack(alignment: .leading, spacing: 4) {
                 if progress.isFinished {
                     Label("Ukończone" + (Formats.date(ms: progress.finishedAt).map { " \($0)" } ?? ""), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                } else {
+                } else if (progress.currentTime ?? 0) > 0 {
                     let duration = progress.duration ?? item.media.duration ?? 0
                     let value = progress.progress ?? 0
                     HStack {
@@ -195,6 +200,10 @@ private struct BookPage: View {
                         Text(value.formatted(.percent.precision(.fractionLength(0))))
                     }
                     Text("Zostało \(Formats.duration(duration - (progress.currentTime ?? 0)))")
+                        .foregroundStyle(.secondary)
+                }
+                if let read = progress.ebookProgress, read > 0, item.media.ebookFile != nil {
+                    Label("Przeczytano \(read.formatted(.percent.precision(.fractionLength(0))))", systemImage: "book")
                         .foregroundStyle(.secondary)
                 }
                 if let started = Formats.date(ms: progress.startedAt) {
@@ -208,27 +217,50 @@ private struct BookPage: View {
         }
     }
 
+    private var readButton: some View {
+        Button {
+            openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title))
+        } label: {
+            Label(hasEbookProgress ? "Czytaj dalej" : "Czytaj", systemImage: "book")
+        }
+        .controlSize(.large)
+        .fixedSize()
+        .accessibilityIdentifier("book.read")
+    }
+
     private var actions: some View {
         let progress = listening.progress[item.id]
         let isCurrent = listening.player.book?.key == item.id
         let hasAudio = !(item.media.tracks?.elements.isEmpty ?? true)
         return HStack(spacing: 10) {
-            Button {
-                Task { await listening.play(itemID: item.id) }
-            } label: {
-                if isCurrent, listening.player.isPlaying {
-                    Label("Pauza", systemImage: "pause.fill")
-                } else if listening.startingKey == item.id {
-                    Label { Text("Wczytywanie…") } icon: { ProgressView().controlSize(.small) }
+            // Sam e-book (bez audio): zamiast wyszarzonego „Odtwarzaj” główny przycisk to „Czytaj”.
+            if hasAudio || item.media.ebookFile == nil {
+                Button {
+                    Task { await listening.play(itemID: item.id) }
+                } label: {
+                    if isCurrent, listening.player.isPlaying {
+                        Label("Pauza", systemImage: "pause.fill")
+                    } else if listening.startingKey == item.id {
+                        Label { Text("Wczytywanie…") } icon: { ProgressView().controlSize(.small) }
+                    } else {
+                        Label((progress?.currentTime ?? 0) > 0 && progress?.isFinished != true ? "Kontynuuj" : "Odtwarzaj", systemImage: "play.fill")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .fixedSize()
+                .disabled(!hasAudio)
+                .accessibilityIdentifier("book.play")
+            }
+
+            if item.media.ebookFile != nil {
+                // Sam e-book (bez audio): „Czytaj” jest głównym przyciskiem.
+                if hasAudio {
+                    readButton.buttonStyle(.bordered)
                 } else {
-                    Label((progress?.currentTime ?? 0) > 0 && progress?.isFinished != true ? "Kontynuuj" : "Odtwarzaj", systemImage: "play.fill")
+                    readButton.buttonStyle(.borderedProminent)
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .fixedSize()
-            .disabled(!hasAudio)
-            .accessibilityIdentifier("book.play")
 
             // Jak w web UI: przełącznik z ikoną, pełna nazwa w podpowiedzi i dla VoiceOver.
             let finishedTitle = progress?.isFinished == true ? "Oznacz jako nieukończone" : "Oznacz jako ukończone"
@@ -409,8 +441,12 @@ private struct TracksSection: View {
     }
 }
 
+/// Pliki pozycji z menu „…” w wierszu (etap 9g): e-book podstawowy/dodatkowy, czytanie,
+/// informacje o pliku audio z ffprobe, usunięcie pliku.
 private struct FilesSection: View {
+    let browser: LibraryBrowser
     let item: AudiobookshelfClient.ItemDetail
+    @Binding var request: LibraryFileRequest?
 
     var body: some View {
         let files = item.libraryFiles?.elements ?? []
@@ -425,12 +461,21 @@ private struct FilesSection: View {
                         .help("Pokaż w Finderze")
                     }
                     TableColumn("Rozmiar") { Text(Formats.size($0.metadata.size)) }.width(80)
-                    TableColumn("Typ") { Text(Self.typeName($0.fileType)) }.width(80)
+                    TableColumn("Typ") { Text(typeName($0)) }.width(130)
+                    TableColumn("") { file in
+                        LibraryFileMenu(browser: browser, item: item, file: file, request: $request)
+                    }
+                    .width(28)
                 }
                 .frame(height: min(CGFloat(files.count) * 24 + 32, 300))
             }
             .frame(maxWidth: 760)
         }
+    }
+
+    private func typeName(_ file: AudiobookshelfClient.ItemDetail.LibraryFile) -> String {
+        guard file.isEbook else { return Self.typeName(file.fileType) }
+        return item.media.ebookFile?.ino == file.ino ? "e-book podstawowy" : "e-book dodatkowy"
     }
 
     static func typeName(_ type: String?) -> String {

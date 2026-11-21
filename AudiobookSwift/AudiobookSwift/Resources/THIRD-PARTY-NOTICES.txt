@@ -44,6 +44,17 @@ libwebp — koder WebP wlinkowany statycznie w bibliotekę libavcodec
   Źródła: https://chromium.googlesource.com/webm/libwebp
   Pełny tekst: Licenses/libwebp-COPYING.txt
 
+epub.js 0.3.93 — czytnik EPUB w oknie „Biblioteka” (Resources/epub.min.js)
+  Licencja: BSD-2-Clause, Copyright (c) 2013, FuturePress
+  Źródła: https://github.com/futurepress/epub.js (pakiet npm epubjs 0.3.93,
+  ta sama wersja co w kliencie web audiobookshelf)
+  Pełny tekst: Licenses/epub.js-LICENSE.txt
+
+JSZip 3.10.1 — odczyt plików EPUB (Resources/jszip.min.js)
+  Licencja: MIT albo GPL-3.0 (do wyboru; tu MIT)
+  Źródła: https://github.com/Stuk/jszip (pakiet npm jszip 3.10.1)
+  Pełny tekst: Licenses/JSZip-LICENSE.txt
+
 nunicode-sqlite (libnusqlite3) — rozszerzenie SQLite
   Licencja: MIT (nunicode); SQLite jest w domenie publicznej
   Źródła: https://github.com/mikiher/nunicode-sqlite

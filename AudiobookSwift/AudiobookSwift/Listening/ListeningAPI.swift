@@ -36,6 +36,8 @@ extension AudiobookshelfClient {
             let duration: Double?
             let numEpisodes: Int?
             let numTracks: Int?
+            /// Format podstawowego e-booka (lista pozycji, `toOldJSONMinified`).
+            var ebookFormat: String? = nil
             let size: Double?
         }
 
@@ -164,6 +166,29 @@ extension AudiobookshelfClient {
         let lastUpdate: Double
         var startedAt: Double? = nil
         var finishedAt: Double? = nil
+        /// Miejsce w e-booku (etap 9g): CFI dla EPUB, numer strony dla PDF i komiksów.
+        var ebookLocation: EbookLocation? = nil
+        /// Przeczytana część e-booka, 0…1.
+        var ebookProgress: Double? = nil
+    }
+
+    /// `ebookLocation` to w bazie tekst, ale web UI zapisuje tam liczbę (stronę PDF), a serwer ją
+    /// oddaje bez zmiany typu. Dekodujemy łagodnie — błąd tego pola nie może zgubić całego postępu.
+    struct EbookLocation: Decodable, Sendable, Hashable {
+        let value: String
+
+        init(_ value: String) { self.value = value }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let text = try? container.decode(String.self) {
+                value = text
+            } else if let number = try? container.decode(Double.self) {
+                value = number.rounded() == number ? String(Int(number)) : String(number)
+            } else {
+                value = ""
+            }
+        }
     }
 
     /// Sesja odtwarzania (`PlaybackSession.toJSONForClient`).

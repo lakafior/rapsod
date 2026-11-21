@@ -337,8 +337,13 @@ extension AudiobookshelfClient {
 
     /// Otwiera kanał dla pozycji z audio. Zajęty `slug`: HTTP 400 „Slug already in use”.
     func openFeed(itemID: String, options: FeedOptions, token: String) async throws -> Feed {
+        try await openFeed(path: "api/feeds/item/\(itemID)/open", options: options, token: token)
+    }
+
+    /// Kanał dla serii albo kolekcji (etap 9g): `POST /api/feeds/series|collection/:id/open`.
+    func openFeed(path: String, options: FeedOptions, token: String) async throws -> Feed {
         struct Response: Decodable { let feed: Feed }
-        return try decode(Response.self, from: await send("POST", "api/feeds/item/\(itemID)/open", body: options, token: token)).feed
+        return try decode(Response.self, from: await send("POST", path, body: options, token: token)).feed
     }
 
     func closeFeed(id: String, token: String) async throws {

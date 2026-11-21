@@ -9,6 +9,7 @@ struct LibrarySection: View {
     @Environment(\.openWindow) private var openWindow
     @State private var libraryToRemove: AudiobookshelfClient.Library?
     @State private var libraryToMatch: AudiobookshelfClient.Library?
+    @State private var libraryToEdit: AudiobookshelfClient.Library?
     @State private var removing = false
     @State private var removalError: String?
 
@@ -58,6 +59,12 @@ struct LibrarySection: View {
                 Spacer()
                 if let tasks {
                     taskMenu(for: library, tasks: tasks)
+                    Button("Ustawienia biblioteki „\(library.name)”", systemImage: "slider.horizontal.3") {
+                        libraryToEdit = library
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Nazwa, źródło metadanych, skaner, harmonogram skanu i inne ustawienia biblioteki")
                 }
                 Button("Usuń bibliotekę „\(library.name)”", systemImage: "trash", role: .destructive) {
                     removalError = nil
@@ -85,6 +92,9 @@ struct LibrarySection: View {
             Button("Dodaj folder z podcastami…") { add(.podcasts) }
         }
         .disabled(account.isScanning)
+        .sheet(item: $libraryToEdit) { library in
+            LibrarySettingsSheet(account: account, library: library)
+        }
         .confirmationDialog(
             "Usunąć bibliotekę „\(libraryToRemove?.name ?? "")”?",
             isPresented: Binding(

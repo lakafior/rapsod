@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Czytnik EPUB okna „Biblioteka” (etap 9g). Ładowany przez EpubReaderView ze schematu
+     absreader:, który podaje tylko te pliki i e-book z dysku — strona nie ma dostępu do sieci. -->
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' absreader: blob: data:; script-src 'self' absreader:; style-src 'self' absreader: blob: 'unsafe-inline'; img-src 'self' absreader: blob: data:; font-src 'self' absreader: blob: data:; connect-src absreader:">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg, #fff); }
+  #viewer { position: absolute; inset: 24px 48px; }
+</style>
+<script src="jszip.min.js"></script>
+<script src="epub.min.js"></script>
+</head>
+<body>
+<div id="viewer"></div>
+<script src="reader.js"></script>
+</body>
+</html>

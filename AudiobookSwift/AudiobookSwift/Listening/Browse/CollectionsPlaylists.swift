@@ -48,6 +48,7 @@ struct CollectionPage: View {
     let browser: LibraryBrowser
     let collectionID: String
     @State private var collection: AudiobookshelfClient.Collection?
+    @State private var feed: FeedTarget?
 
     var body: some View {
         ScrollView {
@@ -70,7 +71,16 @@ struct CollectionPage: View {
                 }
                 .disabled(collection?.books.elements.isEmpty ?? true)
             }
+            if browser.manager.isAvailable {
+                ToolbarItem {
+                    Button("Kanał RSS kolekcji…", systemImage: "dot.radiowaves.up.forward") {
+                        feed = FeedTarget(kind: .collection, id: collectionID, title: collection?.name ?? "Kolekcja")
+                    }
+                    .help("Kanał RSS kolekcji")
+                }
+            }
         }
+        .sheet(item: $feed) { RSSFeedSheet(manager: browser.manager, target: $0) }
         .task(id: collectionID) {
             guard let libraryID = browser.libraryID else { return }
             let all = try? await browser.listening.api { try await $0.collections(libraryID: libraryID, token: $1) }

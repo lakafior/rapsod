@@ -15,7 +15,8 @@ struct AddPodcastSheet: View {
 
     @State private var mode = Mode.search
     @State private var term = ""
-    @AppStorage("podcastSearch.country") private var country = "pl"
+    /// Domyślnie sklep z ustawień biblioteki (`podcastSearchRegion`, jak strona wyszukiwania web UI).
+    @State private var country = "us"
     @State private var rssURL = ""
     @State private var results: [AudiobookshelfClient.PodcastSearchResult] = []
     @State private var searched = false
@@ -26,6 +27,11 @@ struct AddPodcastSheet: View {
     @State private var draft: NewPodcastDraft?
     @State private var opmlFeeds: [AudiobookshelfClient.OPMLFeed]?
     @State private var listenerSeesExplicit: Bool?
+
+    /// Lista sklepów z dopisanym bieżącym, gdy go na niej nie ma (np. ustawiony w web UI).
+    static func countries(including code: String) -> [(String, String)] {
+        countries.contains { $0.0 == code } ? countries : countries + [(code, code.uppercased())]
+    }
 
     static let countries: [(String, String)] = [
         ("pl", "Polska"), ("us", "USA"), ("gb", "Wielka Brytania"), ("de", "Niemcy"), ("fr", "Francja"),
@@ -49,6 +55,9 @@ struct AddPodcastSheet: View {
         .task {
             listenerSeesExplicit = try? await browser.listening.api { try await $0.canAccessExplicitContent(token: $1) }
             if let libraryID = browser.libraryID {
+                if let region = try? await browser.manager.run({ try await $0.libraryDetails(id: libraryID, token: $1) }).settings.podcastSearchRegion {
+                    country = region
+                }
                 existing = (try? await browser.manager.run { try await $0.podcastTitles(libraryID: libraryID, token: $1) }) ?? []
             }
         }
@@ -91,7 +100,7 @@ struct AddPodcastSheet: View {
                 TextField("Nazwa podcastu albo autor", text: $term)
                     .onSubmit(search)
                     .accessibilityIdentifier("addPodcast.term")
-                Picker("Sklep", selection: $country) { ForEach(Self.countries, id: \.0) { Text($0.1).tag($0.0) } }
+                Picker("Sklep", selection: $country) { ForEach(Self.countries(including: country), id: \.0) { Text($0.1).tag($0.0) } }
                     .fixedSize()
                     .help("Sklep iTunes, w którym szukać")
                 Button("Szukaj", action: search)

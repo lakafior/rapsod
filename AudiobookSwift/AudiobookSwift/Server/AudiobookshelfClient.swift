@@ -190,14 +190,19 @@ struct AudiobookshelfClient: Sendable {
         token: String
     ) async throws -> Library {
         struct Folder: Encodable { let fullPath: String }
+        struct Settings: Encodable { let podcastSearchRegion: String }
         struct Body: Encodable {
             let name: String
             let folders: [Folder]
             let mediaType: String
             let provider: String?
             let icon: String?
+            /// Biblioteka podcastów szuka domyślnie w polskim sklepie iTunes (upstream: `us`); zmiana
+            /// w ustawieniach biblioteki (etap 9g).
+            let settings: Settings?
         }
-        let body = Body(name: name, folders: [Folder(fullPath: folderPath)], mediaType: mediaType, provider: provider, icon: icon)
+        let body = Body(name: name, folders: [Folder(fullPath: folderPath)], mediaType: mediaType, provider: provider, icon: icon,
+                        settings: mediaType == "podcast" ? Settings(podcastSearchRegion: "pl") : nil)
         return try decode(Library.self, from: await send("POST", "api/libraries", body: body, token: token))
     }
 

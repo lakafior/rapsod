@@ -1,11 +1,38 @@
 import AppKit
 import SwiftUI
 
-/// Kanał RSS pozycji (wzorzec: `components/modals/rssfeed/OpenCloseModal.vue`): otwarcie
-/// z wyborem adresu serwera, podgląd otwartego kanału z kopiowaniem i zamknięcie. Tokenem root.
+/// Czego dotyczy kanał RSS: pozycji, serii albo kolekcji (etap 9g; `Feed.entityType` upstreamu).
+struct FeedTarget: Identifiable, Hashable {
+    enum Kind: String { case item = "libraryItem", series, collection }
+    let kind: Kind
+    let id: String
+    let title: String
+
+    static func item(_ item: AudiobookshelfClient.ItemDetail) -> Self { .init(kind: .item, id: item.id, title: item.title) }
+
+    var openPath: String {
+        switch kind {
+        case .item: "api/feeds/item/\(id)/open"
+        case .series: "api/feeds/series/\(id)/open"
+        case .collection: "api/feeds/collection/\(id)/open"
+        }
+    }
+
+    /// „tej pozycji”, „tej serii”…
+    var noun: String {
+        switch kind {
+        case .item: "tej pozycji"
+        case .series: "książek tej serii"
+        case .collection: "książek tej kolekcji"
+        }
+    }
+}
+
+/// Kanał RSS pozycji, serii albo kolekcji (wzorzec: `components/modals/rssfeed/OpenCloseModal.vue`):
+/// otwarcie z wyborem adresu serwera, podgląd otwartego kanału z kopiowaniem i zamknięcie. Tokenem root.
 struct RSSFeedSheet: View {
     let manager: ItemManager
-    let item: AudiobookshelfClient.ItemDetail
+    let target: FeedTarget
     @Environment(SharingController.self) private var sharing: SharingController?
     @Environment(\.dismiss) private var dismiss
 
@@ -59,7 +86,7 @@ struct RSSFeedSheet: View {
                 } header: {
                     Text("Kanał RSS jest otwarty")
                 } footer: {
-                    Text("Każdy, kto zna ten adres, może słuchać tej pozycji w aplikacji do podcastów — bez logowania.").foregroundStyle(.secondary)
+                    Text("Każdy, kto zna ten adres, może słuchać \(target.noun) w aplikacji do podcastów — bez logowania.").foregroundStyle(.secondary)
                 }
             } else if loaded {
                 Section {
@@ -80,7 +107,7 @@ struct RSSFeedSheet: View {
                 } header: {
                     Text("Otwórz kanał RSS")
                 } footer: {
-                    Text("Kanał udostępnia „\(item.title)” jako podcast pod publicznym adresem, bez logowania. Zamkniesz go tutaj albo w Ustawieniach → Aktywność → Kanały RSS.")
+                    Text("Kanał udostępnia „\(target.title)” jako podcast pod publicznym adresem, bez logowania. Zamkniesz go tutaj albo w Ustawieniach → Aktywność → Kanały RSS.")
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -103,9 +130,9 @@ struct RSSFeedSheet: View {
 
     private func load() async {
         await status.run("Wczytywanie…", failure: "Nie udało się sprawdzić kanałów") {
-            feed = try await manager.run { try await $0.feeds(token: $1) }.first { $0.entityType == "libraryItem" && $0.entityId == item.id }
+            feed = try await manager.run { try await $0.feeds(token: $1) }.first { $0.entityType == target.kind.rawValue && $0.entityId == target.id }
         }
-        slug = item.id
+        slug = target.id
         address = addresses.first?.url ?? ""
         loaded = true
     }
@@ -120,7 +147,7 @@ struct RSSFeedSheet: View {
             options.metadataDetails.preventIndexing = preventIndexing
             options.metadataDetails.ownerName = ownerName.isEmpty ? nil : ownerName
             options.metadataDetails.ownerEmail = ownerEmail.isEmpty ? nil : ownerEmail
-            let opened = try await manager.run { try await $0.openFeed(itemID: item.id, options: options, token: $1) }
+            let opened = try await manager.run { try await $0.openFeed(path: target.openPath, options: options, token: $1) }
             // Odpowiedź (`toOldJSONMinified`) nie ma `serverAddress`, a `feedUrl` jest względny.
             feed = try await manager.run { try await $0.feeds(token: $1) }.first { $0.id == opened.id } ?? opened
         }

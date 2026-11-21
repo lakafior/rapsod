@@ -26,6 +26,16 @@ struct AudiobookSwiftApp: App {
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
+        // Czytnik e-booków (etap 9g) — osobne okno na każdy e-book; treść znika po zamknięciu.
+        WindowGroup("Czytnik", id: ReaderWindow.windowID, for: ReaderTarget.self) { $target in
+            if let target {
+                ReaderWindow(listening: appDelegate.listening, target: target)
+            }
+        }
+        .defaultSize(width: 900, height: 760)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+
         Window(WebUIWindow.title, id: WebUIWindow.windowID) {
             WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, mode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
         }
