@@ -100,12 +100,10 @@ private struct ApiKeyRow: View {
                 Text(details).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Toggle("Aktywny", isOn: Binding(get: { key.isActive }, set: { value in Task { await model.setActive(key, value) } }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
+            // Przycisk, nie przełącznik: mały przełącznik w wierszu nie reagował na akcję dostępności (AXPress).
+            Button(key.isActive ? "Wyłącz" : "Włącz") { Task { await model.setActive(key, !key.isActive) } }
                 .disabled(model.status.isBusy)
-                .help(key.isActive ? "Wyłącz klucz" : "Włącz klucz")
+                .help(key.isActive ? "Wyłącz klucz — przestanie działać od razu" : "Włącz klucz")
             Button(role: .destructive, action: delete) {
                 Image(systemName: "trash")
             }
@@ -167,7 +165,7 @@ private struct NewApiKeySheet: View {
     var body: some View {
         Form {
             Section {
-                TextField("Nazwa", text: $name, prompt: Text("np. Skrypt kopii"))
+                TextField("Nazwa", text: $name, prompt: Text(verbatim: "np. Skrypt kopii"))
                 Picker("Konto", selection: $userID) {
                     ForEach(model.users) { user in
                         Text(user.username + (user.isRoot ? " (root)" : user.type == "admin" ? " (administrator)" : "")).tag(user.id)
@@ -260,7 +258,7 @@ private struct AuthContent: View {
                 openIDSections(draft)
             }
             Section {
-                TextField("Wiadomość na stronie logowania", text: optional(draft.authLoginCustomMessage), prompt: Text("brak"), axis: .vertical)
+                TextField("Wiadomość na stronie logowania", text: optional(draft.authLoginCustomMessage), prompt: Text(verbatim: "brak"), axis: .vertical)
                     .lineLimit(2...5)
             } header: {
                 Text("Strona logowania web UI")
@@ -271,7 +269,10 @@ private struct AuthContent: View {
                 AdminStatusRows(status: model.status)
                 HStack {
                     Spacer()
-                    Button("Przywróć") { reset() }
+                    Button("Przywróć") {
+                        model.status.error = nil
+                        reset()
+                    }
                         .disabled(!hasChanges || model.status.isBusy)
                     Button("Zapisz") { Task { await save() } }
                         .keyboardShortcut(.defaultAction)
@@ -334,7 +335,7 @@ private struct AuthContent: View {
     private func openIDSections(_ draft: Binding<AudiobookshelfClient.AuthSettings>) -> some View {
         Section {
             HStack {
-                TextField("Wystawca (Issuer URL)", text: optional(draft.authOpenIDIssuerURL), prompt: Text("https://auth.example.com/application/o/abs/"))
+                TextField("Wystawca (Issuer URL)", text: optional(draft.authOpenIDIssuerURL), prompt: Text(verbatim: "https://auth.example.com/application/o/abs/"))
                 Button("Uzupełnij adresy") {
                     Task { self.draft = await model.discover(into: draft.wrappedValue) }
                 }
@@ -348,7 +349,7 @@ private struct AuthContent: View {
             TextField("Identyfikator klienta", text: optional(draft.authOpenIDClientID))
             SecureField("Sekret klienta", text: optional(draft.authOpenIDClientSecret))
             if model.signingAlgorithms.isEmpty {
-                TextField("Algorytm podpisu tokenu", text: optional(draft.authOpenIDTokenSigningAlgorithm), prompt: Text("RS256"))
+                TextField("Algorytm podpisu tokenu", text: optional(draft.authOpenIDTokenSigningAlgorithm), prompt: Text(verbatim: "RS256"))
             } else {
                 Picker("Algorytm podpisu tokenu", selection: optional(draft.authOpenIDTokenSigningAlgorithm)) {
                     ForEach(model.signingAlgorithms, id: \.self) { Text($0).tag($0) }
@@ -357,21 +358,21 @@ private struct AuthContent: View {
         } header: {
             Text("Dostawca OpenID")
         } footer: {
-            Text("Adresy przekierowania do wpisania u dostawcy: https://<adres serwera>\(draft.wrappedValue.authOpenIDSubfolderForRedirectURLs ?? "")/auth/openid/callback oraz …/auth/openid/mobile-redirect.")
+            Text("Adresy przekierowania do wpisania u dostawcy: https://<adres serwera>\(draft.wrappedValue.authOpenIDSubfolderForRedirectURLs ?? ServerEnvironment.routerBasePath)/auth/openid/callback oraz …/auth/openid/mobile-redirect.")
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
         Section {
             Picker("Podfolder w adresach przekierowania", selection: Binding(
-                get: { draft.wrappedValue.authOpenIDSubfolderForRedirectURLs ?? "" },
+                get: { draft.wrappedValue.authOpenIDSubfolderForRedirectURLs ?? ServerEnvironment.routerBasePath },
                 set: { draft.wrappedValue.authOpenIDSubfolderForRedirectURLs = $0 }
             )) {
                 Text("Brak").tag("")
                 Text(ServerEnvironment.routerBasePath).tag(ServerEnvironment.routerBasePath)
             }
-            TextField("Przekierowania aplikacji mobilnych", text: $redirectURIs, prompt: Text("audiobookshelf://oauth"), axis: .vertical)
+            TextField("Przekierowania aplikacji mobilnych", text: $redirectURIs, prompt: Text(verbatim: "audiobookshelf://oauth"), axis: .vertical)
                 .lineLimit(1...4)
-            TextField("Tekst przycisku", text: optional(draft.authOpenIDButtonText), prompt: Text("Login with OpenId"))
+            TextField("Tekst przycisku", text: optional(draft.authOpenIDButtonText), prompt: Text(verbatim: "Login with OpenId"))
             Picker("Dopasuj istniejące konta", selection: draft.authOpenIDMatchExistingBy) {
                 Text("Nie dopasowuj").tag(String?.none)
                 Text("Po adresie e-mail").tag(String?.some("email"))
@@ -379,8 +380,8 @@ private struct AuthContent: View {
             }
             Toggle("Od razu przekierowuj do dostawcy (web UI)", isOn: draft.authOpenIDAutoLaunch)
             Toggle("Zakładaj konta nowym użytkownikom", isOn: draft.authOpenIDAutoRegister)
-            TextField("Claim z grupą (typ konta)", text: optional(draft.authOpenIDGroupClaim), prompt: Text("np. groups"))
-            TextField("Claim z uprawnieniami", text: optional(draft.authOpenIDAdvancedPermsClaim), prompt: Text("np. abspermissions"))
+            TextField("Claim z grupą (typ konta)", text: optional(draft.authOpenIDGroupClaim), prompt: Text(verbatim: "np. groups"))
+            TextField("Claim z uprawnieniami", text: optional(draft.authOpenIDAdvancedPermsClaim), prompt: Text(verbatim: "np. abspermissions"))
         } header: {
             Text("Zachowanie OpenID")
         } footer: {

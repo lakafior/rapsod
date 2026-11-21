@@ -120,7 +120,7 @@ private struct ServerSettingsContent: View {
                        help: "Sortowanie po tytule pomija przedrostki, np. „The Hobbit” trafia pod H.")
                 if settings.sortingIgnorePrefix {
                     HStack {
-                        TextField("Przedrostki", text: $prefixes, prompt: Text("the, a"))
+                        TextField("Przedrostki", text: $prefixes, prompt: Text(verbatim: "the, a"))
                         Button("Zapisz") { Task { await model.saveSortingPrefixes(prefixes) } }
                             .disabled(model.status.isBusy || normalized(prefixes) == settings.sortingPrefixes)
                     }

@@ -49,7 +49,7 @@ private struct NotificationsContent: View {
     var body: some View {
         Section {
             AdminStatusRows(status: model.status)
-            TextField("Adres API Apprise", text: $url, prompt: Text("http://192.168.1.10:8000/notify"))
+            TextField("Adres API Apprise", text: $url, prompt: Text(verbatim: "http://192.168.1.10:8000/notify"))
             Stepper("Wyłącz po nieudanych próbach: \(maxFailed)", value: $maxFailed, in: 1...100)
             Stepper("Najwięcej powiadomień w kolejce: \(maxQueue)", value: $maxQueue, in: 1...1000)
             HStack {
@@ -134,12 +134,14 @@ private struct NotificationRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(NotificationEventText.title(notification.eventName)).font(.body.weight(.medium))
+                HStack {
+                    Text(NotificationEventText.title(notification.eventName)).font(.body.weight(.medium))
+                    if !notification.enabled { Text("wyłączone").font(.caption).foregroundStyle(.secondary) }
+                }
                 Text(details).font(.caption).foregroundStyle(notification.lastAttemptFailed == true ? .red : .secondary)
             }
             Spacer()
-            Toggle("Włączone", isOn: Binding(get: { notification.enabled }, set: { value in Task { await model.setEnabled(notification, value) } }))
-                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+            Button(notification.enabled ? "Wyłącz" : "Włącz") { Task { await model.setEnabled(notification, !notification.enabled) } }
                 .disabled(model.status.isBusy)
             Menu {
                 Button("Edytuj…", action: edit)
@@ -241,7 +243,7 @@ private struct NotificationEditor: View {
                         }
                     }
                 }
-                TextField("Adresy Apprise", text: $draft.urls, prompt: Text("np. ntfy://temat albo tgram://token/czat"), axis: .vertical)
+                TextField("Adresy Apprise", text: $draft.urls, prompt: Text(verbatim: "np. ntfy://temat albo tgram://token/czat"), axis: .vertical)
                     .lineLimit(2...5)
                 TextField("Tytuł", text: $draft.title)
                 TextField("Treść", text: $draft.body, axis: .vertical).lineLimit(2...6)
@@ -289,7 +291,7 @@ private struct EmailContent: View {
         if let draft = Binding($draft) {
             Section {
                 AdminStatusRows(status: model.status)
-                TextField("Serwer SMTP", text: optional(draft.host), prompt: Text("smtp.example.com"))
+                TextField("Serwer SMTP", text: optional(draft.host), prompt: Text(verbatim: "smtp.example.com"))
                 TextField("Port", value: draft.port, format: .number.grouping(.never))
                 Toggle(isOn: draft.secure) {
                     Text("Szyfrowane połączenie (TLS)")
@@ -301,14 +303,17 @@ private struct EmailContent: View {
                 }
                 TextField("Użytkownik", text: optional(draft.user))
                 SecureField("Hasło", text: optional(draft.pass))
-                TextField("Nadawca (From)", text: optional(draft.fromAddress), prompt: Text("Audiobookshelf <ksiazki@example.com>"))
+                TextField("Nadawca (From)", text: optional(draft.fromAddress), prompt: Text(verbatim: "Audiobookshelf <ksiazki@example.com>"))
                 TextField("Adres do próbnej wiadomości", text: optional(draft.testAddress))
                 HStack {
                     Button("Wyślij próbny e-mail") { Task { await model.sendTest() } }
                         .disabled(model.status.isBusy || !model.isConfigured || hasChanges)
                         .help(hasChanges ? "Najpierw zapisz zmiany." : "Serwer wyśle wiadomość na zapisany adres do próby.")
                     Spacer()
-                    Button("Przywróć") { self.draft = model.settings }
+                    Button("Przywróć") {
+                        model.status.error = nil
+                        self.draft = model.settings
+                    }
                         .disabled(!hasChanges || model.status.isBusy)
                     Button("Zapisz") {
                         Task {
@@ -409,8 +414,8 @@ private struct DeviceEditor: View {
     var body: some View {
         Form {
             Section {
-                TextField("Nazwa", text: $draft.device.name, prompt: Text("np. Kindle Ani"))
-                TextField("Adres e-mail czytnika", text: $draft.device.email, prompt: Text("nazwa@kindle.com"))
+                TextField("Nazwa", text: $draft.device.name, prompt: Text(verbatim: "np. Kindle Ani"))
+                TextField("Adres e-mail czytnika", text: $draft.device.email, prompt: Text(verbatim: "nazwa@kindle.com"))
                 Picker("Dostępny dla", selection: $draft.device.availabilityOption) {
                     Text("Administratorów").tag("adminOrUp")
                     Text("Użytkowników i administratorów").tag("userOrUp")

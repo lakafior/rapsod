@@ -610,7 +610,8 @@ extension AudiobookshelfClient {
             try c.encode(authOpenIDMobileRedirectURIs, forKey: .authOpenIDMobileRedirectURIs)
             try c.encode(authOpenIDGroupClaim, forKey: .authOpenIDGroupClaim)
             try c.encode(authOpenIDAdvancedPermsClaim, forKey: .authOpenIDAdvancedPermsClaim)
-            try c.encode(authOpenIDSubfolderForRedirectURLs ?? "", forKey: .authOpenIDSubfolderForRedirectURLs)
+            // Brak klucza web UI traktuje jak `ROUTER_BASE_PATH` (`authentication.vue`); pusty napis to „bez podfolderu”.
+            try c.encodeIfPresent(authOpenIDSubfolderForRedirectURLs, forKey: .authOpenIDSubfolderForRedirectURLs)
         }
 
         /// Blokada przed odcięciem aplikacji: hasło lokalne jest zawsze na liście metod.
