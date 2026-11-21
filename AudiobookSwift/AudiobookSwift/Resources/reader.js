@@ -146,7 +146,14 @@
           }
         })
         .catch((error) => post('error', { message: 'display: ' + String((error && error.message) || error) }))
-      rendition.on('rendered', () => applySettings())
+      rendition.on('rendered', (section, view) => {
+        applySettings()
+        // Linki obsługuje Swift (ramka nie uruchamia skryptów, więc obsługa kliknięć epub.js
+        // nie działa): bez `target` kliknięcie nawiguje ramkę, a aplikacja tę nawigację
+        // przechwytuje i przekierowuje do `reader.link` albo do przeglądarki.
+        const doc = view && view.contents && view.contents.document
+        if (doc) doc.querySelectorAll('a[target]').forEach((a) => a.removeAttribute('target'))
+      })
 
       book.ready
         .then(() => {
@@ -183,6 +190,22 @@
     },
     next() {
       if (rendition && rendition.manager) rendition.next()
+    },
+    // Link wewnętrzny książki (adres, pod który próbowała przejść ramka): rozdział ze spisu
+    // pozycji, którego ścieżka kończy adres, plus kotwica.
+    link(href) {
+      if (!rendition || !rendition.manager) return
+      let path = href
+      let hash = ''
+      try {
+        const url = new URL(href)
+        path = decodeURIComponent(url.pathname)
+        hash = url.hash
+      } catch (e) {}
+      const items = (book.spine && book.spine.spineItems) || []
+      const match = items.find((item) => item.href && (path === item.href || path.endsWith('/' + item.href)))
+      if (match) rendition.display(match.href + hash)
+      else post('log', { message: 'link bez dopasowania: ' + href })
     },
     prev() {
       if (rendition && rendition.manager) rendition.prev()

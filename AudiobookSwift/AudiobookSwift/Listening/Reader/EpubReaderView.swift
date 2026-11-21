@@ -62,6 +62,7 @@ final class EpubController {
     func left() { call("reader.left()") }
     func right() { call("reader.right()") }
     func next() { call("reader.next()") }
+    fileprivate func link(_ href: String) { call("reader.link(\(Self.json(href)))") }
     func previous() { call("reader.prev()") }
     func go(to item: TocItem) { call("reader.display(\(Self.json(item.href)))") }
     func seek(_ fraction: Double) { call("reader.seek(\(fraction))") }
@@ -207,8 +208,17 @@ struct EpubReaderView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else { return .cancel }
+            // Kliknięty link w treści książki: zewnętrzny do przeglądarki, wewnętrzny do epub.js
+            // (ramka nie może sama przejść do innego rozdziału — rozdziały są w archiwum EPUB).
+            if navigationAction.navigationType == .linkActivated {
+                if ["http", "https", "mailto"].contains(scheme) {
+                    Self.openExternally(url)
+                } else {
+                    controller.link(url.absoluteString)
+                }
+                return .cancel
+            }
             if [ReaderFiles.scheme, "about", "blob", "data"].contains(scheme) { return .allow }
-            if navigationAction.navigationType == .linkActivated { Self.openExternally(url) }
             return .cancel
         }
 
