@@ -17,6 +17,9 @@ struct AudiobookSwiftApp: App {
         Window(LibraryWindow.title, id: LibraryWindow.windowID) {
             ReleasedWhenClosed {
                 LibraryWindow(listening: appDelegate.listening, supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation)
+                    // Adresy serwera dla kanału RSS i powrót do ustawień z arkuszy pozycji.
+                    .environment(appDelegate.sharing)
+                    .environment(appDelegate.settingsNavigation)
             }
         }
         .defaultSize(width: 1100, height: 720)

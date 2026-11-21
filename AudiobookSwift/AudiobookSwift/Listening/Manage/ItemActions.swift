@@ -6,6 +6,9 @@ import SwiftUI
 enum ItemAction: Identifiable {
     case delete
     case scan
+    /// Etap 9f: kanał RSS pozycji i wysłanie e-booka na czytnik.
+    case rssFeed
+    case sendEbook
     var id: Self { self }
 }
 
@@ -22,6 +25,8 @@ private struct ItemActionsModifier: ViewModifier {
     @State private var confirmPermanent: String?
     @State private var result: (title: String, text: String)?
     @State private var busy: String?
+    @Environment(SettingsNavigation.self) private var navigation: SettingsNavigation?
+    @Environment(\.openWindow) private var openWindow
 
     private var manager: ItemManager { browser.manager }
     private var listening: ListeningController { browser.listening }
@@ -47,6 +52,14 @@ private struct ItemActionsModifier: ViewModifier {
                 if action == .scan {
                     action = nil
                     scan()
+                }
+            }
+            .sheet(isPresented: Binding(get: { action == .rssFeed }, set: { if !$0, action == .rssFeed { action = nil } })) {
+                RSSFeedSheet(manager: manager, item: item)
+            }
+            .sheet(isPresented: Binding(get: { action == .sendEbook }, set: { if !$0, action == .sendEbook { action = nil } })) {
+                SendEbookSheet(manager: manager, item: item) {
+                    if let navigation { openWindow.openSettings(.notifications, navigation: navigation) }
                 }
             }
             .confirmationDialog("Usunąć „\(item.title)”?", isPresented: Binding(get: { action == .delete }, set: { if !$0, action == .delete { action = nil } })) {
