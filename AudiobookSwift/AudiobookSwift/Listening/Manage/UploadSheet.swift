@@ -2,12 +2,6 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Prośba o arkusz wgrywania (z upuszczenia na okno albo przycisku w pasku narzędzi).
-struct UploadRequest: Identifiable {
-    let id = UUID()
-    let urls: [URL]
-}
-
 /// Wgrywanie książek do biblioteki (etap 9e, jak strona `upload` web UI): każdy upuszczony
 /// folder to osobna książka, luźne pliki razem — jedna (decyzja użytkownika). Serwer kładzie
 /// pliki w `<folder biblioteki>/<autor>/<seria>/<tytuł>` (podcast: `<tytuł>`) i niczego nie
@@ -30,14 +24,25 @@ final class UploadModel {
         var author: String
         var series: String
         var status: Status = .ready
-        var size: Int64 { files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0) } }
+        /// Liczony raz — postęp całej wysyłki odświeża się przy każdym kawałku.
+        let size: Int64
+
+        init(files: [URL], title: String) {
+            self.files = files
+            self.title = title
+            author = ""
+            series = ""
+            size = files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0) }
+        }
     }
 
     /// Rozszerzenia jak `SupportedFileTypes` w `client/plugins/constants.js`.
     static let audio: Set<String> = ["m4b", "mp3", "m4a", "flac", "opus", "ogg", "oga", "mp4", "aac", "wma", "aiff", "aif", "wav", "webm", "webma", "mka", "awb", "caf", "mpeg", "mpg"]
     static let supported: Set<String> = audio.union(["png", "jpg", "jpeg", "webp", "epub", "pdf", "mobi", "azw3", "cbr", "cbz", "nfo", "txt", "opf", "abs", "xml", "json"])
 
-    let browser: LibraryBrowser
+    // Bez odwołania do `LibraryBrowser` (to on trzyma ten model — nie robimy cyklu).
+    private let manager: ItemManager
+    private let listening: ListeningController
     var libraryID: String?
     var folderID: String?
     var entries: [Entry] = []
@@ -45,9 +50,11 @@ final class UploadModel {
     private(set) var skipped: [String] = []
     private(set) var isRunning = false
     private(set) var summary: String?
+    @ObservationIgnored private var work: Task<Void, Never>?
 
     init(browser: LibraryBrowser, urls: [URL]) {
-        self.browser = browser
+        manager = browser.manager
+        listening = browser.listening
         let current = browser.library
         libraryID = current?.id ?? libraries.first?.id
         folderID = library?.folders.first?.id
@@ -55,12 +62,28 @@ final class UploadModel {
     }
 
     /// Biblioteki dostępne do wgrania (te, które widzi okno).
-    var libraries: [AudiobookshelfClient.Library] { browser.listening.libraries }
+    var libraries: [AudiobookshelfClient.Library] { listening.libraries }
     var library: AudiobookshelfClient.Library? { libraries.first { $0.id == libraryID } }
     var folder: AudiobookshelfClient.Library.Folder? { library?.folders.first { $0.id == folderID } ?? library?.folders.first }
     var isPodcast: Bool { library?.mediaType == "podcast" }
     var pending: [Entry] { entries.filter { $0.status != .done } }
     var isFinished: Bool { !entries.isEmpty && entries.allSatisfy { $0.status == .done } }
+
+    /// Postęp całej wysyłki (bajty wysłane z bieżącej i zakończonych pozycji) — do paska narzędzi.
+    var overallProgress: Double {
+        let sizes = entries.map(\.size)
+        let total = sizes.reduce(0, +)
+        guard total > 0 else { return 0 }
+        var sent: Int64 = 0
+        for (entry, size) in zip(entries, sizes) {
+            switch entry.status {
+            case .done: sent += size
+            case .uploading(let fraction): sent += Int64(Double(size) * fraction)
+            default: break
+            }
+        }
+        return Double(sent) / Double(total)
+    }
 
     func libraryChanged() {
         folderID = library?.folders.first?.id
@@ -78,7 +101,7 @@ final class UploadModel {
                 if files.isEmpty {
                     skipped.append(url.lastPathComponent + "/ (brak obsługiwanych plików)")
                 } else {
-                    entries.append(Entry(files: files, title: url.lastPathComponent, author: "", series: ""))
+                    entries.append(Entry(files: files, title: url.lastPathComponent))
                 }
             } else if accept(url) {
                 loose.append(url)
@@ -87,7 +110,7 @@ final class UploadModel {
         if !loose.isEmpty {
             let sorted = loose.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             let first = sorted.first { Self.audio.contains($0.pathExtension.lowercased()) } ?? sorted[0]
-            entries.append(Entry(files: sorted, title: first.deletingPathExtension().lastPathComponent, author: "", series: ""))
+            entries.append(Entry(files: sorted, title: first.deletingPathExtension().lastPathComponent))
         }
     }
 
@@ -146,12 +169,25 @@ final class UploadModel {
 
     // MARK: Wysyłanie
 
-    func start() async {
+    func begin() {
+        guard work == nil else { return }
+        work = Task { [weak self] in
+            await self?.start()
+            self?.work = nil
+        }
+    }
+
+    /// Przerywa wysyłanie: zapytanie jest zrywane, serwer niczego nie przenosi (pliki trafiają
+    /// do folderu biblioteki dopiero po odebraniu całości). Już wgrane książki zostają.
+    func cancel() {
+        work?.cancel()
+    }
+
+    private func start() async {
         guard canStart, let library, let folder else { return }
         isRunning = true
         summary = nil
         defer { isRunning = false }
-        let manager = browser.manager
         var uploaded = 0
         for index in entries.indices where entries[index].status != .done {
             let entry = entries[index]
@@ -178,8 +214,10 @@ final class UploadModel {
                 if let current = entries.firstIndex(where: { $0.id == id }) { entries[current].status = .done }
                 uploaded += 1
             } catch {
-                entries[index].status = .failed(ItemManager.message(for: error, action: "Wysyłanie"))
+                let canceled = Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled
+                entries[index].status = .failed(canceled ? "Anulowano — nic nie trafiło do biblioteki." : ItemManager.message(for: error, action: "Wysyłanie"))
             }
+            if Task.isCancelled { break }
         }
         guard uploaded > 0 else { return }
         summary = await afterUpload(library: library, count: uploaded)
@@ -193,12 +231,12 @@ final class UploadModel {
     /// Obserwator plików doda książkę sam; gdy jest wyłączony (dla serwera albo biblioteki), zlecamy skan.
     private func afterUpload(library: AudiobookshelfClient.Library, count: Int) async -> String {
         let what = count == 1 ? "Wgrano książkę." : "Wgrano \(count) książki."
-        let watching = try? await browser.manager.run { try await $0.isWatcherActive(libraryID: library.id, token: $1) }
+        let watching = try? await manager.run { try await $0.isWatcherActive(libraryID: library.id, token: $1) }
         if watching == true {
             return "\(what) Serwer doda ją do biblioteki „\(library.name)”, gdy obserwator plików ją wykryje (zwykle kilka sekund)."
         }
         do {
-            try await browser.manager.run { try await $0.scanLibrary(id: library.id, force: false, token: $1) }
+            try await manager.run { try await $0.scanLibrary(id: library.id, force: false, token: $1) }
             return "\(what) Obserwator plików jest wyłączony, więc zlecono skan biblioteki „\(library.name)”."
         } catch {
             return "\(what) " + ItemManager.message(for: error, action: "Nie udało się zlecić skanu — zeskanuj bibliotekę w ustawieniach")
@@ -226,13 +264,9 @@ extension AudiobookshelfClient {
 
 /// Arkusz „Wgraj do biblioteki”.
 struct UploadSheet: View {
-    @State private var model: UploadModel
+    @Bindable var model: UploadModel
     @State private var isTargeted = false
     @Environment(\.dismiss) private var dismiss
-
-    init(browser: LibraryBrowser, request: UploadRequest) {
-        _model = State(initialValue: UploadModel(browser: browser, urls: request.urls))
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -273,11 +307,9 @@ struct UploadSheet: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard !model.isRunning else { return false }
             model.add(urls)
             return true
         } isTargeted: { isTargeted = $0 }
-        .interactiveDismissDisabled(model.isRunning)
     }
 
     private var destination: some View {
@@ -322,13 +354,22 @@ struct UploadSheet: View {
                 Button("Dodaj…") { choose() }.disabled(model.isRunning)
             }
             Spacer()
-            Button(model.isFinished ? "Zamknij" : "Anuluj") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-                .disabled(model.isRunning)
+            if model.isRunning {
+                Button("Przerwij wysyłanie") { model.cancel() }
+                    .accessibilityIdentifier("upload.cancel")
+                // Wysyłanie trwa dalej, a postęp widać w pasku narzędzi okna.
+                Button("Schowaj") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .help("Wysyłanie będzie trwało dalej — postęp w pasku narzędzi okna")
+                    .accessibilityIdentifier("upload.hide")
+            } else {
+                Button(model.isFinished ? "Zamknij" : "Anuluj") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
             if !model.isFinished {
                 Button(model.pending.count > 1 ? "Wgraj \(model.pending.count)" : "Wgraj") {
                     NSApp.keyWindow?.makeFirstResponder(nil)
-                    Task { await model.start() }
+                    model.begin()
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)

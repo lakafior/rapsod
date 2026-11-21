@@ -100,8 +100,8 @@ private struct BookPage: View {
         }
         .itemActions(browser: browser, item: item, action: $itemAction)
         // Postęp zadań pozycji (osadzanie, M4B) — także tych zleconych wcześniej albo z web UI.
-        .onAppear { if browser.manager.isAvailable { tasks.appear() } }
-        .onDisappear { if browser.manager.isAvailable { tasks.disappear() } }
+        .onAppear { tasks.appear() }
+        .onDisappear { tasks.disappear() }
     }
 
     private func cover(_ size: CGFloat) -> some View {
@@ -458,6 +458,7 @@ private struct PodcastPage: View {
     @State private var checksNew = false
     @State private var confirmMatch = false
     @State private var notice: String?
+    @State private var itemAction: ItemAction?
 
     private struct EditRequest: Identifiable {
         let tab: ItemEditorModel.Tab
@@ -520,6 +521,7 @@ private struct PodcastPage: View {
         .sheet(item: $editing) { request in ItemEditorSheet(browser: browser, item: item, tab: request.tab) }
         .sheet(isPresented: $showsFeed) { EpisodeFeedSheet(browser: browser, item: item) }
         .sheet(isPresented: $checksNew) { CheckNewEpisodesSheet(browser: browser, item: item) }
+        .itemActions(browser: browser, item: item, action: $itemAction)
         .confirmationDialog("Dopasować opisy odcinków do kanału?", isPresented: $confirmMatch) {
             Button("Uzupełnij puste pola") { matchEpisodes(override: false) }
             Button("Nadpisz wszystkie z kanału", role: .destructive) { matchEpisodes(override: true) }
@@ -555,6 +557,7 @@ private struct PodcastPage: View {
                     Button("Okładka…") { editing = EditRequest(tab: .cover) }
                     Button("Harmonogram pobierania…") { editing = EditRequest(tab: .schedule) }
                     Button("Dopasuj w iTunes…") { editing = EditRequest(tab: .match) }
+                    Button("Skanuj ponownie") { itemAction = .scan }
                     Divider()
                 }
                 Button("Oznacz wszystkie jako ukończone") { markAll(true) }
@@ -562,6 +565,10 @@ private struct PodcastPage: View {
                 if let path = item.path {
                     Divider()
                     Button("Pokaż w Finderze") { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) }
+                }
+                if manager.isAvailable {
+                    Divider()
+                    Button("Usuń podcast…", role: .destructive) { itemAction = .delete }
                 }
             } label: {
                 Label("Więcej", systemImage: "ellipsis.circle").labelStyle(.iconOnly)

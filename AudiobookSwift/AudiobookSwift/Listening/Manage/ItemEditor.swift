@@ -381,6 +381,9 @@ struct ItemEditorSheet: View {
         }
         .frame(minWidth: 820, idealWidth: 880, minHeight: 640, idealHeight: 720)
         .interactiveDismissDisabled(model.anyDirty)
+        // Zmiana pozycji na serwerze (np. po scaleniu do M4B albo osadzeniu) — świeży stan
+        // w zakładkach; szkice z niezapisanymi zmianami zostają.
+        .onChange(of: model.browser.revision) { Task { await model.refreshOnOpen() } }
         .task {
             await model.refreshOnOpen()
             await model.loadListenerPermissions()

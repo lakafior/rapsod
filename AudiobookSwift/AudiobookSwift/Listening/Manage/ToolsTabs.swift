@@ -357,6 +357,7 @@ struct ItemTaskStatus: View {
     @ViewBuilder private var icon: some View {
         switch job.phase {
         case .finished: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .ended: Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
         case .canceled: Image(systemName: "xmark.circle").foregroundStyle(.secondary)
         case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         default: ProgressView().controlSize(.small)
@@ -370,6 +371,7 @@ struct ItemTaskStatus: View {
         case .running:
             "\(job.kind.title)" + (job.progress.map { " — \($0.formatted(.percent.precision(.fractionLength(0))))" } ?? "…")
         case .finished: job.kind == .encode ? "Scalono do M4B. Oryginały są w folderze podręcznym serwera." : "Metadane osadzone w plikach."
+        case .ended: "\(job.kind.title): zakończone, ale serwer nie podał wyniku. Sprawdź pliki książki (i log serwera)."
         case .canceled: "\(job.kind.title) anulowane."
         case .failed(let message): "\(job.kind.title) nie powiodło się. \(message)"
         }

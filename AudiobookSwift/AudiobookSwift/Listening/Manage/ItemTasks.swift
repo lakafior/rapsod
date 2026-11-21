@@ -36,6 +36,9 @@ final class ItemTasks {
         case queued
         case running
         case finished
+        /// Zadanie zniknęło z listy serwera, a `task_finished` nie dotarło (np. błąd zaraz po starcie,
+        /// zanim gniazdo root się połączyło) — wyniku nie znamy, więc nie udajemy sukcesu.
+        case ended
         case canceled
         case failed(String)
     }
@@ -51,7 +54,7 @@ final class ItemTasks {
         var isActive: Bool {
             switch phase {
             case .requested, .queued, .running: true
-            case .finished, .canceled, .failed: false
+            case .finished, .ended, .canceled, .failed: false
             }
         }
     }
@@ -64,6 +67,8 @@ final class ItemTasks {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var misses: [String: Int] = [:]
+    /// Gniazdo root przeszło `auth` (serwer przysłał `init`).
+    @ObservationIgnored private var socketReady = false
 
     init(account: ServerAccount) {
         self.account = account
@@ -82,6 +87,14 @@ final class ItemTasks {
 
     func disappear() {
         viewers = max(0, viewers - 1)
+    }
+
+    /// Okno „Biblioteka” się zamyka: koniec odpytywania i gniazda root (zadanie na serwerze trwa dalej,
+    /// a po ponownym otwarciu okna wraca z listy zadań).
+    func shutdown() {
+        loop?.cancel()
+        loop = nil
+        stopEvents()
     }
 
     /// Zapomina zakończone zadanie (przycisk „OK” przy wyniku).
@@ -110,6 +123,11 @@ final class ItemTasks {
         jobs[itemID] = Job(kind: kind, phase: .requested)
         misses[itemID] = 0
         startIfNeeded()
+        // Błąd zaraz po starcie (np. folder tylko do odczytu) serwer zgłasza tylko w `task_finished`,
+        // więc najpierw czekamy chwilę, aż gniazdo root się połączy.
+        for _ in 0..<30 where !socketReady {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
         do {
             try await account.withAdminToken(request)
         } catch {
@@ -155,6 +173,7 @@ final class ItemTasks {
     private func stopEvents() {
         events?.stop()
         events = nil
+        socketReady = false
     }
 
     private func handle(_ event: ListeningEvents.Event) {
@@ -173,6 +192,8 @@ final class ItemTasks {
         case .trackStarted(let itemID, let ino):
             guard jobs[itemID]?.isActive == true else { return }
             jobs[itemID]?.currentFile = ino
+        case .connected, .reconnected:
+            socketReady = true
         default:
             break
         }
@@ -197,7 +218,7 @@ final class ItemTasks {
         } else {
             phase = .finished
         }
-        let wasActive = jobs[itemID]?.isActive ?? false
+        let wasActive = jobs[itemID].map { $0.isActive || $0.phase == .ended } ?? false
         jobs[itemID] = Job(kind: kind, phase: phase, progress: phase == .finished ? 1 : jobs[itemID]?.progress)
         if phase == .finished, wasActive { rescan(itemID) }
     }
@@ -254,7 +275,7 @@ final class ItemTasks {
             let count = (misses[itemID] ?? 0) + 1
             misses[itemID] = count
             if count >= (job.phase == .requested ? 3 : 2) {
-                jobs[itemID]?.phase = .finished
+                jobs[itemID]?.phase = .ended
                 rescan(itemID)
             }
         }

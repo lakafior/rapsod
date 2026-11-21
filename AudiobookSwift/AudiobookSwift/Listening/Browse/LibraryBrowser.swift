@@ -87,13 +87,21 @@ final class LibraryBrowser {
     private(set) var playlists: [AudiobookshelfClient.Playlist]?
     /// Pozycja, dla której okno pyta o nazwę nowej playlisty.
     var newPlaylistEntry: AudiobookshelfClient.PlaylistEntry?
-    /// Otwarty arkusz wgrywania (etap 9e).
-    var uploadRequest: UploadRequest?
+    /// Wgrywanie (etap 9e). Model żyje z oknem, nie z arkuszem: arkusz można schować w trakcie
+    /// wysyłania, a postęp zostaje w pasku narzędzi okna.
+    private(set) var upload: UploadModel?
+    var showsUpload = false
 
     /// Pliki upuszczone na okno albo wybrane przyciskiem → arkusz wgrywania (konto root).
+    /// W trakcie wysyłania dokłada je do bieżącej listy.
     func upload(_ urls: [URL]) {
-        guard manager.isAvailable, uploadRequest == nil else { return }
-        uploadRequest = UploadRequest(urls: urls)
+        guard manager.isAvailable else { return }
+        if let upload, upload.isRunning {
+            upload.add(urls)
+        } else {
+            upload = UploadModel(browser: self, urls: urls)
+        }
+        showsUpload = true
     }
 
     init(listening: ListeningController, account: ServerAccount) {
