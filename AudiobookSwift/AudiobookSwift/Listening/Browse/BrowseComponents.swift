@@ -27,6 +27,8 @@ struct ItemCard: View {
     var width: CGFloat = ItemCard.width
     /// Numer tomu (strona serii, „Kolejne w serii”).
     var sequence: String?
+    /// Siatka z trybem zaznaczania (etap 9h): w tym trybie kliknięcie zaznacza.
+    var selectable = false
     @State private var hovering = false
     @Environment(\.openWindow) private var openWindow
 
@@ -48,8 +50,25 @@ struct ItemCard: View {
             .overlay(alignment: .topLeading) {
                 if let sequence { Text("#\(sequence)").font(.caption2.weight(.semibold)).padding(.horizontal, 5).padding(.vertical, 2).background(.thinMaterial, in: Capsule()).padding(5) }
             }
+            .overlay(alignment: .topTrailing) {
+                if selecting, let item {
+                    let selected = browser.isSelected(item.id)
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2).symbolRenderingMode(.palette)
+                        .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.white.opacity(0.9)), selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.black.opacity(0.35)))
+                        .padding(6)
+                        .accessibilityHidden(true)
+                }
+            }
             .overlay {
-                if hovering, let item, item.isEbookOnly {
+                if selecting, let item, browser.isSelected(item.id) {
+                    RoundedRectangle(cornerRadius: 6).strokeBorder(.tint, lineWidth: 3)
+                }
+            }
+            .overlay {
+                if selecting {
+                    EmptyView()
+                } else if hovering, let item, item.isEbookOnly {
                     Button { openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title)) } label: {
                         Image(systemName: "book.circle.fill")
                             .font(.system(size: 40)).symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
@@ -73,12 +92,22 @@ struct ItemCard: View {
         .frame(width: width)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { if let item { browser.open(.item(item.id)) } }
-        .contextMenu { if let item { ItemMenu(browser: browser, item: item) } }
+        .onTapGesture { if let item { activate(item) } }
+        .contextMenu { if let item, !selecting { ItemMenu(browser: browser, item: item) } }
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { if let item { browser.open(.item(item.id)) } }
+        .accessibilityAddTraits(selecting && item.map { browser.isSelected($0.id) } == true ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { if let item { activate(item) } }
         .accessibilityIdentifier(item.map { "card.\($0.id)" } ?? "card.placeholder")
+    }
+
+    private var selecting: Bool { selectable && browser.isSelecting }
+
+    private func activate(_ item: AudiobookshelfClient.LibraryItem) {
+        if selecting {
+            browser.toggleSelection(item)
+        } else {
+            browser.open(.item(item.id))
+        }
     }
 
     private func isCurrent(_ item: AudiobookshelfClient.LibraryItem) -> Bool {

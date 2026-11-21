@@ -10,6 +10,8 @@ struct ItemGrid: View {
     /// Seria, której numery tomów pokazują karty.
     var seriesID: String?
     var emptyTitle = "Brak pozycji"
+    /// Karty reagują na tryb zaznaczania (`LibraryBrowser.isSelecting`, etap 9h).
+    var selectable = false
 
     @State private var list: PagedList<AudiobookshelfClient.LibraryItem>?
 
@@ -27,7 +29,7 @@ struct ItemGrid: View {
                 } else {
                     PagedGrid(count: total, cellWidth: ItemCard.width) { index in
                         let item = list.element(at: index)
-                        ItemCard(browser: browser, item: item, sequence: seriesID.flatMap { item?.sequence(in: $0) })
+                        ItemCard(browser: browser, item: item, sequence: seriesID.flatMap { item?.sequence(in: $0) }, selectable: selectable)
                             .onAppear { list.ensureLoaded(index) }
                     }
                     .accessibilityIdentifier("itemGrid")
@@ -51,6 +53,10 @@ struct ItemGrid: View {
         .onChange(of: browser.revision) {
             Task { await list?.refresh() }
         }
+        .onChange(of: browser.selectAllRequest) {
+            guard selectable, let list else { return }
+            browser.selectAll(list.loadedElements)
+        }
     }
 
     /// Kolumny siatek niestronicowanych (kolekcja).
@@ -67,7 +73,8 @@ struct ItemsSection: View {
     var body: some View {
         let podcast = browser.isPodcastLibrary
         ItemGrid(browser: browser, libraryID: libraryID, filter: browser.filter, sort: podcast ? browser.podcastSort : browser.itemSort,
-                 emptyTitle: browser.filter == nil ? "Pusta biblioteka" : "Nic nie pasuje do filtra")
+                 emptyTitle: browser.filter == nil ? "Pusta biblioteka" : "Nic nie pasuje do filtra", selectable: true)
+            .batchSelection(browser: browser)
             .navigationTitle(browser.filter?.title ?? (podcast ? "Podcasty" : "Książki"))
             .sheet(isPresented: $addsPodcast) { AddPodcastSheet(browser: browser) }
             .toolbar {

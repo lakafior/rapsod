@@ -53,6 +53,7 @@ final class LibraryBrowser {
             filterData = nil
             playlists = nil
             searchText = ""
+            isSelecting = false
             if let library, library.mediaType != "podcast", section == .downloads {
                 section = .items
             } else if let library, library.mediaType == "podcast", ![.home, .items, .latestEpisodes, .downloads, .playlists, .stats].contains(section) {
@@ -61,8 +62,44 @@ final class LibraryBrowser {
         }
     }
     var section: Section = .home {
-        didSet { if section != oldValue { path = [] } }
+        didSet {
+            if section != oldValue {
+                path = []
+                isSelecting = false
+            }
+        }
     }
+
+    // MARK: Zaznaczanie wielu pozycji (etap 9h)
+
+    /// Tryb zaznaczania w siatce: kliknięcie karty zaznacza zamiast otwierać.
+    var isSelecting = false {
+        didSet { if !isSelecting { selection = [] } }
+    }
+    /// Zaznaczone pozycje w kolejności zaznaczania (kolejka odtwarzania idzie w tej kolejności).
+    private(set) var selection: [AudiobookshelfClient.LibraryItem] = []
+
+    func isSelected(_ id: String) -> Bool { selection.contains { $0.id == id } }
+
+    func toggleSelection(_ item: AudiobookshelfClient.LibraryItem) {
+        if let index = selection.firstIndex(where: { $0.id == item.id }) {
+            selection.remove(at: index)
+        } else {
+            selection.append(item)
+        }
+    }
+
+    func selectAll(_ items: [AudiobookshelfClient.LibraryItem]) {
+        for item in items where !isSelected(item.id) { selection.append(item) }
+    }
+
+    func clearSelection() { selection = [] }
+
+    /// „Zaznacz wczytane”: siatka w trybie zaznaczania dokłada wtedy wszystkie wczytane karty.
+    var selectAllRequest = 0
+
+    /// Po usunięciu zaznaczone pozycje znikają z zaznaczenia.
+    func deselect(_ ids: Set<String>) { selection.removeAll { ids.contains($0.id) } }
     var path: [Route] = []
     /// Wyniki wyszukiwania pokazuje korzeń okna, więc zapytanie wpisane na otwartej stronie wraca do niego.
     var searchText = "" {
@@ -209,6 +246,9 @@ final class PagedList<Element: Sendable> {
         self.pageSize = pageSize
         self.fetch = fetch
     }
+
+    /// Wczytane dotąd elementy (dla „Zaznacz wczytane”).
+    var loadedElements: [Element] { pages.keys.sorted().flatMap { pages[$0] ?? [] } }
 
     func element(at index: Int) -> Element? {
         let page = pages[index / pageSize]
