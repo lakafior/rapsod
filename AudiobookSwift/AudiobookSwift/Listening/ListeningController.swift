@@ -36,6 +36,8 @@ final class ListeningController {
     /// Rośnie, gdy serwer zgłosi zmianę pozycji w bibliotece (skan, nowa książka) — widoki
     /// okna przeładowują wtedy listy.
     private(set) var libraryRevision: [String: Int] = [:]
+    /// Kolejka pobierania odcinków podcastów (zdarzenia serwera przy otwartym oknie).
+    let episodeDownloads = EpisodeDownloads()
     /// Rośnie po zmianie okładki pozycji — `AsyncCover` wczytuje ją wtedy od nowa.
     private(set) var coverRevision: [String: Int] = [:]
     /// Kolejka playlisty: po ukończeniu bieżącej pozycji gra następna.
@@ -226,6 +228,10 @@ final class ListeningController {
             // Zdarzenia z przerwy przepadły: świeży postęp i przeładowanie list.
             for library in libraries { libraryRevision[library.id, default: 0] += 1 }
             Task { await refresh() }
+        case .episodeDownload(let download, let phase):
+            episodeDownloads.apply(download, phase)
+        case .downloadQueueCleared(let itemID):
+            episodeDownloads.clear(itemID: itemID)
         case .connected, .task:
             break
         }

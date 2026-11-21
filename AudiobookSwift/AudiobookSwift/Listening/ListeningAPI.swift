@@ -82,6 +82,7 @@ extension AudiobookshelfClient {
         struct AudioFile: Decodable, Sendable, Hashable {
             struct FileMetadata: Decodable, Sendable, Hashable {
                 let filename: String?
+                let path: String?
                 let size: Double?
             }
             let duration: Double?
@@ -97,12 +98,20 @@ extension AudiobookshelfClient {
         let episode: String?
         let episodeType: String?
         let publishedAt: Double?
+        /// Data z kanału w postaci RFC 2822 (to, co edytuje web UI obok `publishedAt`).
+        let pubDate: String?
+        let guid: String?
+        let enclosure: Enclosure?
         let audioFile: AudioFile?
         let duration: Double?
         let size: Double?
         /// Tylko w „Najnowszych odcinkach”.
         let libraryItemId: String?
         let podcast: PodcastInfo?
+
+        struct Enclosure: Decodable, Sendable, Hashable {
+            let url: String?
+        }
 
         var length: Double? { duration ?? audioFile?.duration }
         var published: Date? { publishedAt.map { Date(timeIntervalSince1970: $0 / 1000) } }

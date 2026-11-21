@@ -25,6 +25,11 @@ final class ListeningEvents {
         /// Zadanie w tle serwera ruszyło albo się skończyło (`task_started`, `task_finished`):
         /// skan, dopasowanie całej biblioteki. Używa tego podstrona „Biblioteki” (token root).
         case task(AudiobookshelfClient.ServerTask, finished: Bool)
+        /// Kolejka pobierania odcinków (`PodcastManager`: `episode_download_queued|started|finished`).
+        /// Serwer wysyła je wszystkim zalogowanym, więc dochodzą też gniazdem słuchacza.
+        case episodeDownload(AudiobookshelfClient.EpisodeDownload, EpisodeDownloads.Phase)
+        /// `episode_download_queue_cleared` — kolejka jednego podcastu wyczyszczona.
+        case downloadQueueCleared(itemID: String)
     }
 
     private let url: URL
@@ -146,6 +151,17 @@ final class ListeningEvents {
             if let data = data(payload), let task = try? decoder.decode(AudiobookshelfClient.ServerTask.self, from: data) {
                 handler(.task(task, finished: name == "task_finished"))
             }
+        case "episode_download_queued", "episode_download_started", "episode_download_finished":
+            let phase: EpisodeDownloads.Phase = switch name {
+            case "episode_download_queued": .queued
+            case "episode_download_started": .started
+            default: .finished
+            }
+            if let data = data(payload), let download = try? decoder.decode(AudiobookshelfClient.EpisodeDownload.self, from: data) {
+                handler(.episodeDownload(download, phase))
+            }
+        case "episode_download_queue_cleared":
+            if let itemID = payload as? String { handler(.downloadQueueCleared(itemID: itemID)) }
         default:
             break
         }

@@ -119,6 +119,7 @@ struct LibraryWindow: View {
                 case .collections: CollectionsSection(browser: browser, libraryID: libraryID)
                 case .playlists: PlaylistsSection(browser: browser, libraryID: libraryID)
                 case .latestEpisodes: LatestEpisodesView(browser: browser, libraryID: libraryID)
+                case .downloads: DownloadsView(browser: browser, libraryID: libraryID)
                 case .stats: StatsView(listening: listening)
                 }
             }
@@ -188,6 +189,8 @@ private struct LibrarySidebar: View {
                 if podcast {
                     row("Podcasty", "mic", .items)
                     row("Najnowsze odcinki", "clock", .latestEpisodes)
+                    // Licznik przed `tag` — `.badge` na gotowym wierszu odbierał mu zaznaczanie.
+                    row("Pobieranie", "arrow.down.circle", .downloads, badge: browser.listening.episodeDownloads.activeCount(libraryID: browser.libraryID))
                 } else {
                     row("Książki", "books.vertical", .items)
                     row("Serie", "square.stack", .series)
@@ -221,8 +224,9 @@ private struct LibrarySidebar: View {
 extension LibrarySidebar {
     /// Wiersz sekcji; kliknięcie już wybranej sekcji wraca do jej korzenia (jak w Muzyce i Finderze) —
     /// zaznaczenie się wtedy nie zmienia, więc robi to gest, nie `selection`.
-    func row(_ title: String, _ symbol: String, _ section: LibraryBrowser.Section) -> some View {
+    func row(_ title: String, _ symbol: String, _ section: LibraryBrowser.Section, badge: Int = 0) -> some View {
         Label(title, systemImage: symbol)
+            .badge(badge)
             .tag(section)
             .contentShape(Rectangle())
             .simultaneousGesture(TapGesture().onEnded {

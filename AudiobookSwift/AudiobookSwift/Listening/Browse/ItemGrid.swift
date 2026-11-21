@@ -62,14 +62,21 @@ struct ItemsSection: View {
     @Bindable var browser: LibraryBrowser
     let libraryID: String
 
+    @State private var addsPodcast = false
+
     var body: some View {
         let podcast = browser.isPodcastLibrary
         ItemGrid(browser: browser, libraryID: libraryID, filter: browser.filter, sort: podcast ? browser.podcastSort : browser.itemSort,
                  emptyTitle: browser.filter == nil ? "Pusta biblioteka" : "Nic nie pasuje do filtra")
             .navigationTitle(browser.filter?.title ?? (podcast ? "Podcasty" : "Książki"))
+            .sheet(isPresented: $addsPodcast) { AddPodcastSheet(browser: browser) }
             .toolbar {
                 ToolbarItemGroup {
                     if podcast {
+                        Button("Dodaj podcast", systemImage: "plus") { addsPodcast = true }
+                            .disabled(!browser.manager.isAvailable)
+                            .help(browser.manager.isAvailable ? "Dodaj podcast z iTunes, adresu RSS albo pliku OPML" : browser.manager.unavailableReason)
+                            .accessibilityIdentifier("podcast.add")
                         SortMenu(sort: $browser.podcastSort, options: SortMenu.podcastOptions)
                     } else {
                         SortMenu(sort: $browser.itemSort, options: SortMenu.bookOptions)

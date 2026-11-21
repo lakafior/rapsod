@@ -417,8 +417,10 @@ private struct FilesSection: View {
     }
 }
 
-/// Strona podcastu: opis i odcinki z postępem, opisem, filtrem i sortowaniem — to, co słuchacz
-/// może w web UI bez uprawnień administratora (bez wyszukiwania i pobierania odcinków).
+/// Strona podcastu: opis i odcinki z postępem, opisem, filtrem i sortowaniem. Zarządzanie
+/// (etap 9d, konto root): „Edytuj” (szczegóły, okładka, harmonogram, dopasowanie), odcinki
+/// z kanału do pobrania, sprawdzanie nowych, dopasowanie opisów odcinków; w wierszu odcinka
+/// edycja i usunięcie.
 private struct PodcastPage: View {
     let browser: LibraryBrowser
     let item: AudiobookshelfClient.ItemDetail
@@ -426,6 +428,16 @@ private struct PodcastPage: View {
     @State private var sort = "publishedAt"
     @State private var query = ""
     @State private var shown: AudiobookshelfClient.PodcastEpisode?
+    @State private var editing: EditRequest?
+    @State private var showsFeed = false
+    @State private var checksNew = false
+    @State private var confirmMatch = false
+    @State private var notice: String?
+
+    private struct EditRequest: Identifiable {
+        let tab: ItemEditorModel.Tab
+        var id: ItemEditorModel.Tab { tab }
+    }
 
     enum EpisodeFilter: String, CaseIterable {
         case incomplete = "Nieukończone", inProgress = "W trakcie", complete = "Ukończone", all = "Wszystkie"
@@ -448,12 +460,11 @@ private struct PodcastPage: View {
                             LinkList(values: genres.map { g in (g, { browser.open(.filtered(.genre(g))) }) })
                         }
                         if let description = HTMLText.plain(metadata.description) { ExpandableText(text: description, lines: 5) }
-                        Menu("Wszystkie odcinki") {
-                            Button("Oznacz jako ukończone") { markAll(true) }
-                            Button("Oznacz jako nieukończone") { markAll(false) }
+                        actions
+                        if let notice {
+                            Label(notice, systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("podcast.notice")
                         }
-                        .fixedSize()
-                        .controlSize(.small)
                     }
                 }
                 .padding(.vertical, 8)
@@ -481,6 +492,78 @@ private struct PodcastPage: View {
             }
         }
         .sheet(item: $shown) { episode in EpisodeDetails(podcast: item.title, author: metadata.author, episode: episode) }
+        .sheet(item: $editing) { request in ItemEditorSheet(browser: browser, item: item, tab: request.tab) }
+        .sheet(isPresented: $showsFeed) { EpisodeFeedSheet(browser: browser, item: item) }
+        .sheet(isPresented: $checksNew) { CheckNewEpisodesSheet(browser: browser, item: item) }
+        .confirmationDialog("Dopasować opisy odcinków do kanału?", isPresented: $confirmMatch) {
+            Button("Uzupełnij puste pola") { matchEpisodes(override: false) }
+            Button("Nadpisz wszystkie z kanału", role: .destructive) { matchEpisodes(override: true) }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Serwer porówna pobrane odcinki z kanałem RSS i przepisze z niego tytuły, opisy, daty i numery. Pliki audio się nie zmieniają.")
+        }
+    }
+
+    private var actions: some View {
+        let manager = browser.manager
+        let hasFeed = !(item.media.metadata.feedUrl ?? "").isEmpty
+        return HStack(spacing: 8) {
+            Button("Odcinki z kanału…", systemImage: "arrow.down.circle") { showsFeed = true }
+                .disabled(!manager.isAvailable || !hasFeed)
+                .help(!manager.isAvailable ? manager.unavailableReason : hasFeed ? "Wybierz odcinki z kanału RSS do pobrania" : "Podcast nie ma adresu kanału RSS")
+                .accessibilityIdentifier("podcast.feed")
+            Button {
+                editing = EditRequest(tab: .details)
+            } label: {
+                Label("Edytuj", systemImage: "pencil").labelStyle(.iconOnly)
+            }
+            .disabled(!manager.isAvailable)
+            .help(manager.isAvailable ? "Edytuj szczegóły, okładkę i harmonogram pobierania" : manager.unavailableReason)
+            .accessibilityLabel("Edytuj")
+            .accessibilityIdentifier("podcast.edit")
+            Menu {
+                if manager.isAvailable {
+                    Button("Sprawdź nowe odcinki…") { checksNew = true }.disabled(!hasFeed)
+                    Button("Dopasuj opisy odcinków…") { confirmMatch = true }.disabled(!hasFeed)
+                    Divider()
+                    Button("Edytuj szczegóły…") { editing = EditRequest(tab: .details) }
+                    Button("Okładka…") { editing = EditRequest(tab: .cover) }
+                    Button("Harmonogram pobierania…") { editing = EditRequest(tab: .schedule) }
+                    Button("Dopasuj w iTunes…") { editing = EditRequest(tab: .match) }
+                    Divider()
+                }
+                Button("Oznacz wszystkie jako ukończone") { markAll(true) }
+                Button("Oznacz wszystkie jako nieukończone") { markAll(false) }
+                if let path = item.path {
+                    Divider()
+                    Button("Pokaż w Finderze") { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)]) }
+                }
+            } label: {
+                Label("Więcej", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Więcej")
+            .accessibilityIdentifier("podcast.more")
+            if item.media.autoDownloadEpisodes == true {
+                Label("Pobiera nowe automatycznie", systemImage: "clock.arrow.circlepath").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .controlSize(.regular)
+        .padding(.top, 4)
+    }
+
+    private func matchEpisodes(override: Bool) {
+        let id = item.id
+        notice = "Dopasowywanie odcinków…"
+        Task {
+            do {
+                let count = try await browser.manager.run { try await $0.quickMatchEpisodes(itemID: id, override: override, token: $1) }
+                notice = count == 0 ? "Żaden odcinek nie wymagał zmian." : "Zaktualizowano odcinki: \(count)."
+            } catch {
+                notice = ItemManager.message(for: error, action: "Nie udało się dopasować odcinków")
+            }
+        }
     }
 
     private var visibleEpisodes: [AudiobookshelfClient.PodcastEpisode] {
@@ -519,6 +602,8 @@ struct EpisodeRow: View {
     let episode: AudiobookshelfClient.PodcastEpisode
     var podcastTitle: String?
     let showDetails: () -> Void
+    @State private var editing = false
+    @State private var removing = false
 
     var body: some View {
         let listening = browser.listening
@@ -573,7 +658,9 @@ struct EpisodeRow: View {
                 Button("Wyzeruj postęp") { Task { await listening.resetProgress(itemID: itemID, episodeID: episode.id) } }
             }
             AddToPlaylistMenu(browser: browser, entry: .init(libraryItemId: itemID, episodeId: episode.id), libraryID: libraryID)
+            EpisodeManageMenu(browser: browser, episode: episode, editing: $editing, removing: $removing)
         }
+        .episodeManagement(browser: browser, itemID: itemID, episode: episode, editing: $editing, removing: $removing)
         .accessibilityIdentifier("episode.\(episode.id)")
     }
 }
