@@ -95,18 +95,33 @@ final class LibraryBrowser {
 
     func clearSelection() { selection = [] }
 
-    /// „Zaznacz wczytane”: siatka w trybie zaznaczania dokłada wtedy wszystkie wczytane karty.
-    var selectAllRequest = 0
+    /// „Zaznacz wczytane” dla jednej siatki (`scope`: sekcja pozycji albo strona serii) — siatka
+    /// pod spodem stosu nawigacji nie może dołożyć swoich kart.
+    struct SelectAllRequest: Equatable {
+        let scope: String
+        let serial: Int
+    }
+    var selectAllRequest: SelectAllRequest?
+
+    func requestSelectAll(scope: String) {
+        selectAllRequest = .init(scope: scope, serial: (selectAllRequest?.serial ?? 0) + 1)
+    }
 
     /// Po usunięciu zaznaczone pozycje znikają z zaznaczenia.
     func deselect(_ ids: Set<String>) { selection.removeAll { ids.contains($0.id) } }
-    var path: [Route] = []
+    /// Każda zmiana strony albo filtra kończy zaznaczanie — inaczej działanie (np. „Usuń…”)
+    /// dotyczyłoby pozycji z poprzedniej, niewidocznej już listy.
+    var path: [Route] = [] {
+        didSet { if path != oldValue { isSelecting = false } }
+    }
     /// Wyniki wyszukiwania pokazuje korzeń okna, więc zapytanie wpisane na otwartej stronie wraca do niego.
     var searchText = "" {
         didSet { if !searchText.isEmpty, oldValue.isEmpty, !path.isEmpty { path = [] } }
     }
     /// Filtr siatki „Książki” (nie dotyczy stron serii, autora i list z filtrem w ścieżce).
-    var filter: ItemFilter?
+    var filter: ItemFilter? {
+        didSet { if filter != oldValue { isSelecting = false } }
+    }
     var itemSort = Sort(key: "media.metadata.title", descending: false) {
         didSet { save(itemSort, "items") }
     }

@@ -6,13 +6,14 @@ import SwiftUI
 /// Zmiany pozycji idą tokenem root (`ItemManager`), playlisty i postęp — kontem słuchacza.
 extension View {
     /// Przycisk „Zaznacz” w pasku narzędzi i pasek działań na dole w trybie zaznaczania.
-    func batchSelection(browser: LibraryBrowser) -> some View {
-        modifier(BatchSelection(browser: browser))
+    func batchSelection(browser: LibraryBrowser, scope: String) -> some View {
+        modifier(BatchSelection(browser: browser, scope: scope))
     }
 }
 
 private struct BatchSelection: ViewModifier {
     let browser: LibraryBrowser
+    let scope: String
     @State private var sheet: BatchSheet?
     @State private var confirm: BatchConfirm?
     @State private var busy: String?
@@ -95,7 +96,7 @@ private struct BatchSelection: ViewModifier {
                 Text(busy).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Zaznacz wczytane") { browser.selectAllRequest += 1 }
+            Button("Zaznacz wczytane") { browser.requestSelectAll(scope: scope) }
                 .disabled(busy != nil)
                 .help("Zaznacz wszystkie pozycje wczytane dotąd w siatce")
             Button("Wyczyść") { browser.clearSelection() }.disabled(selection.isEmpty || busy != nil)
