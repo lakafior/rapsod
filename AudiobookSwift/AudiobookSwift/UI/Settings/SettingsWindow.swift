@@ -15,14 +15,20 @@ struct AppModels {
 /// Podstrony okna „Ustawienia aplikacji” — jedyna lista. Nowa podstrona to nowy
 /// przypadek z tytułem, symbolem i widokiem w `content(models:)`.
 enum SettingsPage: String, CaseIterable, Identifiable {
+    // Aplikacja
     case general
-    case libraries
-    case accounts
-    case users
-    case backups
     case sharing
     case metadata
     case log
+    // Serwer
+    case libraries
+    case accounts
+    case users
+    case serverSettings
+    case access
+    case activity
+    case notifications
+    case backups
 
     var id: Self { self }
 
@@ -36,6 +42,18 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .sharing: "Udostępnianie"
         case .metadata: "Źródła metadanych"
         case .log: "Log serwera"
+        case .serverSettings: "Ustawienia serwera"
+        case .access: "Dostęp"
+        case .activity: "Aktywność"
+        case .notifications: "Powiadomienia i e-mail"
+        }
+    }
+
+    /// Grupa na pasku bocznym.
+    var isServerPage: Bool {
+        switch self {
+        case .general, .sharing, .metadata, .log: false
+        default: true
         }
     }
 
@@ -49,6 +67,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .sharing: "iphone.and.arrow.forward"
         case .metadata: "text.book.closed"
         case .log: "doc.text.magnifyingglass"
+        case .serverSettings: "server.rack"
+        case .access: "key"
+        case .activity: "waveform"
+        case .notifications: "bell.badge"
         }
     }
 
@@ -63,6 +85,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .sharing: SharingSettingsPage(models: models)
         case .metadata: MetadataSettingsPage(models: models)
         case .log: LogSettingsPage(models: models)
+        case .serverSettings: ServerSettingsPage(models: models)
+        case .access: AccessSettingsPage(models: models)
+        case .activity: ActivitySettingsPage(models: models)
+        case .notifications: NotificationsSettingsPage(models: models)
         }
     }
 
@@ -83,7 +109,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             case .missing, .invalid: return true
             case .unknown, .ready: return false
             }
-        case .users, .backups:
+        case .users, .backups, .serverSettings, .access, .activity, .notifications:
             return false
         case .sharing:
             return models.sharing.lastError != nil
@@ -127,22 +153,15 @@ struct SettingsWindow: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SettingsPage.allCases, selection: Binding(
+            List(selection: Binding<SettingsPage?>(
                 get: { navigation.page },
                 set: { if let page = $0 { navigation.page = page } }
-            )) { page in
-                Label {
-                    HStack {
-                        Text(page.title)
-                        if page.needsAttention(models: models) {
-                            Spacer()
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundStyle(.orange)
-                                .accessibilityLabel("Wymaga uwagi")
-                        }
-                    }
-                } icon: {
-                    Image(systemName: page.symbolName)
+            )) {
+                Section("Aplikacja") {
+                    ForEach(SettingsPage.allCases.filter { !$0.isServerPage }) { row($0) }
+                }
+                Section("Serwer audiobookshelf") {
+                    ForEach(SettingsPage.allCases.filter(\.isServerPage)) { row($0) }
                 }
             }
             // Sama szerokość kolumny nie wystarcza: podział pamięta poprzednią szerokość.
@@ -157,6 +176,23 @@ struct SettingsWindow: View {
         }
         .frame(minWidth: 760, minHeight: 520)
         .onAppear { models.loginItem.refresh() }
+    }
+
+    private func row(_ page: SettingsPage) -> some View {
+        Label {
+            HStack {
+                Text(page.title)
+                if page.needsAttention(models: models) {
+                    Spacer()
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel("Wymaga uwagi")
+                }
+            }
+        } icon: {
+            Image(systemName: page.symbolName)
+        }
+        .tag(page)
     }
 }
 

@@ -5,7 +5,7 @@ struct LogSettingsPage: View {
     let models: AppModels
 
     var body: some View {
-        LogView(lines: models.supervisor.recentLog, dataRoot: models.supervisor.dataRoot)
+        LogView(lines: models.supervisor.recentLog, dataRoot: models.supervisor.dataRoot, account: models.account)
     }
 }
 
@@ -13,11 +13,13 @@ struct LogSettingsPage: View {
 private struct LogView: View {
     let lines: [String]
     let dataRoot: URL?
+    let account: ServerAccount
     @State private var followTail = true
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                ServerLogLevelPicker(account: account)
                 Spacer()
                 Toggle("Przewijaj automatycznie", isOn: $followTail)
                     .toggleStyle(.checkbox)

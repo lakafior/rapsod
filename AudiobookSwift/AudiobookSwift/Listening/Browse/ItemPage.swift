@@ -267,6 +267,9 @@ private struct BookPage: View {
                     }
                     Button("Skanuj ponownie") { itemAction = .scan }
                     Divider()
+                    if hasAudio { Button("Kanał RSS…") { itemAction = .rssFeed } }
+                    if item.media.ebookFile != nil { Button("Wyślij e-book na czytnik…") { itemAction = .sendEbook } }
+                    if hasAudio || item.media.ebookFile != nil { Divider() }
                 }
                 if progress != nil {
                     Button("Wyzeruj postęp…", role: .destructive) { confirmReset = true }

@@ -196,6 +196,10 @@ extension AudiobookshelfClient {
                 let relPath: String?
                 let size: Double?
             }
+            struct EbookFile: Decodable, Sendable, Hashable {
+                let ebookFormat: String?
+                let metadata: FileMetadata?
+            }
             struct Track: Decodable, Sendable, Identifiable, Hashable {
                 let index: Int
                 let ino: String?
@@ -213,6 +217,8 @@ extension AudiobookshelfClient {
             let duration: Double?
             let size: Double?
             let chapters: [Chapter]?
+            /// Podstawowy e-book książki (`Book.ebookFile`).
+            let ebookFile: EbookFile?
             let tracks: LenientList<Track>?
             /// Wszystkie pliki audio, także wykluczone (zakładka „Pliki”, etap 9e).
             let audioFiles: LenientList<AudiobookshelfClient.AudioFileEntry>?
