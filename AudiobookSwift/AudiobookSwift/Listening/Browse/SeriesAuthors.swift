@@ -96,6 +96,7 @@ struct SeriesPage: View {
     let seriesID: String
     let name: String
     @State private var series: AudiobookshelfClient.Series?
+    @State private var feed: FeedTarget?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -113,10 +114,15 @@ struct SeriesPage: View {
                 Menu {
                     Button("Oznacz serię jako ukończoną") { Task { await mark(true) } }
                     Button("Oznacz serię jako nieukończoną") { Task { await mark(false) } }
+                    if browser.manager.isAvailable {
+                        Divider()
+                        Button("Kanał RSS serii…") { feed = FeedTarget(kind: .series, id: seriesID, title: name) }
+                    }
                 } label: { Label("Seria", systemImage: "checkmark.circle") }
-                .help("Postęp całej serii")
+                .help("Postęp całej serii i kanał RSS")
             }
         }
+        .sheet(item: $feed) { RSSFeedSheet(manager: browser.manager, target: $0) }
         .task(id: seriesID) {
             guard let libraryID = browser.libraryID else { return }
             series = try? await browser.listening.api { try await $0.series(libraryID: libraryID, seriesID: seriesID, token: $1) }
