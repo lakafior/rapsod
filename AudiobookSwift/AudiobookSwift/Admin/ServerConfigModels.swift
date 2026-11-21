@@ -391,7 +391,7 @@ final class NotificationsModel {
     }
 
     func setEnabled(_ notification: AudiobookshelfClient.AppNotification, _ enabled: Bool) async {
-        _ = await save(id: notification.id, .init(libraryId: notification.libraryId, eventName: notification.eventName, urls: notification.urls,
+        _ = await save(id: notification.id, .init(id: notification.id, libraryId: notification.libraryId, eventName: notification.eventName, urls: notification.urls,
                                                    titleTemplate: notification.titleTemplate, bodyTemplate: notification.bodyTemplate,
                                                    enabled: enabled, type: notification.type))
     }

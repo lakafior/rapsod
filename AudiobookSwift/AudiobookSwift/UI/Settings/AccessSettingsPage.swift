@@ -123,7 +123,8 @@ private struct ApiKeyRow: View {
         } else {
             parts.append("bez wygasania")
         }
-        parts.append("ostatnio użyty: " + (key.lastUsedAt.map(Formats.dateTime) ?? "nigdy"))
+        if let used = key.lastUsedAt { parts.append("ostatnio użyty: " + Formats.dateTime(used)) }
+        if let created = key.createdAt { parts.append("utworzony " + Formats.dateTime(created)) }
         return parts.joined(separator: " · ")
     }
 }

@@ -123,6 +123,7 @@ extension AudiobookshelfClient {
         let name: String
         let description: String?
         let expiresAt: Date?
+        /// Upstream v2.38.0 ma kolumnę, ale jej nie uzupełnia — zwykle `nil`.
         let lastUsedAt: Date?
         let isActive: Bool
         let userId: String?
@@ -401,6 +402,9 @@ extension AudiobookshelfClient {
 
     /// Pola wysyłane przy tworzeniu i zmianie powiadomienia (jak `NotificationEditModal.vue`).
     struct NotificationChanges: Encodable, Sendable {
+        /// Przy zmianie: `NotificationSettings.updateNotification` szuka powiadomienia po `id`
+        /// z treści żądania, nie z adresu.
+        var id: String?
         var libraryId: String?
         var eventName: String
         var urls: [String]
@@ -415,7 +419,9 @@ extension AudiobookshelfClient {
     }
 
     func updateNotification(id: String, _ changes: NotificationChanges, token: String) async throws -> NotificationSettings {
-        try decode(NotificationSettings.self, from: await send("PATCH", "api/notifications/\(id)", body: changes, token: token))
+        var changes = changes
+        changes.id = id
+        return try decode(NotificationSettings.self, from: await send("PATCH", "api/notifications/\(id)", body: changes, token: token))
     }
 
     func deleteNotification(id: String, token: String) async throws -> NotificationSettings {

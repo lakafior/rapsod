@@ -202,7 +202,7 @@ private struct NotificationDraft: Identifiable {
     }
 
     var changes: AudiobookshelfClient.NotificationChanges {
-        .init(libraryId: libraryID, eventName: eventName,
+        .init(id: id, libraryId: libraryID, eventName: eventName,
               urls: urls.split(whereSeparator: { $0.isNewline || $0 == " " || $0 == "," }).map(String.init),
               titleTemplate: title, bodyTemplate: body, enabled: enabled, type: type)
     }
