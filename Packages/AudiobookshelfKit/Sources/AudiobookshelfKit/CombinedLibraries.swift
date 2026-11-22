@@ -81,11 +81,13 @@ public final class CombinedLibraries {
         sort: ItemSort,
         descending: Bool,
         progress filter: ProgressFilter? = nil,
+        serverFilter: String? = nil,
         libraryID: String? = nil,
         lastUpdate: [String: Double] = [:],
         pageSize: Int = 40
     ) -> SortedMerge<Client.LibraryItem> {
-        let filterText = filter.map { Client.filter("progress", $0.rawValue) }
+        // Serwer przyjmuje jeden filtr naraz: postęp albo inny (np. lektor `narrators.*`).
+        let filterText = filter.map { Client.filter("progress", $0.rawValue) } ?? serverFilter
         let sources = scope(libraryID).map { library in
             MergeSource<Client.LibraryItem>(libraryID: library.id, libraryName: library.name) { [auth] page, limit in
                 try await auth.perform {
@@ -261,6 +263,41 @@ public final class CombinedLibraries {
         let primary = details.first { $0.description?.isEmpty == false || $0.imagePath != nil } ?? details.first
         let page = AuthorPage(name: primary?.name ?? author.first.name, description: primary?.description, imageAuthorID: primary?.imagePath != nil ? primary?.id : nil, books: books, series: series)
         return Partial(value: page, failures: parts.failures)
+    }
+
+    /// Seria albo autor znani z jednej biblioteki (np. ze strony pozycji) razem z tymi
+    /// o tej samej nazwie w pozostałych bibliotekach — szukanych wyszukiwarką serwera.
+    /// Gdy wyszukiwanie zawiedzie, zostaje sama znana encja.
+    public func seriesEntity(_ seed: Tagged<Client.Series>) async -> MergedEntity<Client.Series> {
+        let key = ServerCollation.key(seed.value.name)
+        var members = [seed]
+        for (libraryID, found) in await searchOthers(than: seed.libraryID, for: seed.value.name) {
+            for hit in found.series?.elements ?? [] where ServerCollation.key(hit.series.name) == key {
+                members.append(Tagged(libraryID: libraryID, value: Client.Series(id: hit.series.id, name: hit.series.name, description: nil, books: nil)))
+            }
+        }
+        return MergedEntity(id: key, members: members)
+    }
+
+    public func authorEntity(_ seed: Tagged<Client.Author>) async -> MergedEntity<Client.Author> {
+        let key = ServerCollation.key(seed.value.name)
+        var members = [seed]
+        for (libraryID, found) in await searchOthers(than: seed.libraryID, for: seed.value.name) {
+            for author in found.authors?.elements ?? [] where ServerCollation.key(author.name) == key {
+                members.append(Tagged(libraryID: libraryID, value: author))
+            }
+        }
+        return MergedEntity(id: key, members: members)
+    }
+
+    private func searchOthers(than libraryID: String, for name: String) async -> [(String, Client.SearchResults)] {
+        let others = libraries.filter { $0.id != libraryID }
+        guard !others.isEmpty, let parts = try? await fanOut(others.map { library in
+            (library.id, { @MainActor [auth] () async throws -> Client.SearchResults in
+                try await auth.perform { try await $0.search(libraryID: library.id, query: name, token: $1) }
+            })
+        }) else { return [] }
+        return Array(zip(parts.libraryIDs, parts.value))
     }
 
     // MARK: Strona startowa

@@ -6,190 +6,119 @@ import SwiftUI
 import AudiobookshelfKit
 import AudiobookshelfPlayback
 
-/// Po sparowaniu: „Słuchaj dalej”, biblioteki z kilkoma ostatnio dodanymi pozycjami i serwer.
-/// Pozycja otwiera prostą stronę z „Odtwarzaj”; pełne przeglądanie to następny etap.
+/// Zakładka „Start”: półki ze wszystkich bibliotek książek naraz — „Słuchaj dalej”,
+/// „Kolejne w serii”, „Ostatnio dodane”, „Odkrywaj”.
 struct HomeView: View {
     let model: AppModel
     let session: ServerSession
 
-    @State private var libraries: [AudiobookshelfClient.Library] = []
-    @State private var items: [String: [AudiobookshelfClient.LibraryItem]] = [:]
-    @State private var loadError: String?
-    @State private var isLoading = true
-    @State private var confirmsDisconnect = false
-    @State private var inProgress: [AudiobookshelfClient.LibraryItem] = []
-    @State private var showsPlayer = false
-    @State private var showsScanner = false
-    @State private var scanned: String?
+    @State private var shelves: CombinedLibraries.Shelves?
+    @State private var error: String?
 
     var body: some View {
         NavigationStack {
-            List {
+            Group {
+                switch session.library.state {
+                case .loading:
+                    ProgressView()
+                case .failed(let message):
+                    LoadFailureView(message: message) { Task { await session.library.load() } }
+                case .ready(let combined):
+                    content(combined)
+                }
+            }
+            .navigationTitle("Start")
+            .browseDestinations(model: model, session: session)
+        }
+    }
+
+    private func content(_ combined: CombinedLibraries) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
                 if model.isOffline {
-                    Section {
-                        Label("Brak połączenia z serwerem. Telefon spróbuje ponownie po zmianie sieci.", systemImage: "wifi.slash")
-                            .foregroundStyle(.secondary)
-                    }
+                    Label("Brak połączenia z serwerem. Telefon spróbuje ponownie po zmianie sieci.", systemImage: "wifi.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
                 }
-
-                if !inProgress.isEmpty {
-                    Section("Słuchaj dalej") {
-                        ForEach(inProgress) { item in
-                            NavigationLink(value: item.id) {
-                                ItemRow(item: item, session: session)
-                            }
-                        }
-                    }
-                }
-
-                Section("Serwer") {
-                    LabeledContent("Nazwa", value: session.server.serverName)
-                    LabeledContent("Konto", value: session.server.username)
-                    LabeledContent("Adres", value: session.baseURL.absoluteString)
-                    if let device = session.server.deviceName {
-                        LabeledContent("Ten telefon", value: device)
-                    }
-                }
-
-                if let loadError {
-                    Section {
-                        Text(loadError).foregroundStyle(.red)
-                    }
-                } else if isLoading {
-                    Section { ProgressView() }
-                } else if libraries.isEmpty {
-                    Section { Text("Na serwerze nie ma jeszcze bibliotek dostępnych dla tego konta.") }
-                }
-
-                ForEach(libraries) { library in
-                    Section(library.name) {
-                        let entries = items[library.id] ?? []
-                        if entries.isEmpty {
-                            Text(library.mediaType == "podcast" ? "Brak podcastów" : "Brak pozycji")
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(entries) { item in
-                            NavigationLink(value: item.id) {
-                                ItemRow(item: item, session: session)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    Button("Zeskanuj kod z adresami", systemImage: "qrcode.viewfinder") { showsScanner = true }
-                } footer: {
-                    Text("Gdy na Macu włączysz dostęp spoza domu albo zmienią się jego adresy: Ustawienia aplikacji → Udostępnianie → „Kod z adresami…”. Telefon nie musi być parowany od nowa.")
-                }
-
-                Section {
-                    Button("Rozłącz", role: .destructive) { confirmsDisconnect = true }
-                } footer: {
-                    Text("Rozłączenie usuwa klucz tylko z tego telefonu. Żeby unieważnić go na serwerze, usuń telefon z listy sparowanych na Macu.")
+                if let shelves {
+                    FailureNotice(failures: shelves.failures).padding(.horizontal)
+                    Shelf(title: "Słuchaj dalej", items: shelves.continueListening, combined: combined, session: session)
+                    Shelf(title: "Kolejne w serii", items: shelves.continueSeries, combined: combined, session: session)
+                    Shelf(title: "Ostatnio dodane", items: shelves.recentlyAdded, combined: combined, session: session)
+                    Shelf(title: "Odkrywaj", items: shelves.discover, combined: combined, session: session)
                 }
             }
-            .navigationTitle(session.server.serverName)
-            .navigationDestination(for: String.self) { itemID in
-                ItemDetailView(itemID: itemID, model: model, session: session)
-            }
-            .task(id: model.playback.progressRevision) { await loadInProgress() }
-            .refreshable {
-                await model.reconnect()
-                await load()
-            }
-            .task(id: session.id) {
-                await load()
-                await loadInProgress()
-            }
-            .confirmationDialog("Rozłączyć ten telefon?", isPresented: $confirmsDisconnect, titleVisibility: .visible) {
-                Button("Rozłącz", role: .destructive) { model.disconnect() }
-            } message: {
-                Text("Klucz dostępu zostanie usunięty z telefonu.")
+            .padding(.vertical)
+        }
+        .overlay {
+            if let shelves, shelves.isEmpty {
+                ContentUnavailableView("Pusto", systemImage: "books.vertical",
+                                       description: Text(combined.libraries.isEmpty ? "Na serwerze nie ma bibliotek książek dostępnych dla tego konta." : "W bibliotekach nie ma jeszcze książek."))
+            } else if shelves == nil {
+                if let error {
+                    LoadFailureView(message: error) { Task { await load(combined) } }
+                } else {
+                    ProgressView()
+                }
             }
         }
-        // Na stosie nawigacji, nie na liście: pasek zostaje też na stronie pozycji.
-        .safeAreaInset(edge: .bottom) {
-            MiniPlayerBar(model: model, showsPlayer: $showsPlayer)
+        .refreshable {
+            await model.reconnect()
+            await session.library.refreshProgress()
+            await load(combined)
         }
-        .sheet(isPresented: $showsPlayer) {
-            PlayerScreen(model: model)
-        }
-        // Kod obsługujemy po zamknięciu arkusza (alert w trakcie zamykania mógłby przepaść).
-        .sheet(isPresented: $showsScanner, onDismiss: {
-            if let scanned {
-                self.scanned = nil
-                model.handle(scanned: scanned)
-            }
-        }) {
-            ScannerSheet { text in
-                scanned = text
-                showsScanner = false
-            }
+        // Po zdarzeniach serwera (nowe pozycje, wczytany od nowa postęp) i po włączeniu innej książki.
+        // Nie po każdej synchronizacji postępu (co 15 s) — paski postępu odświeżają się same.
+        .task(id: Trigger(items: session.library.itemsRevision, progress: session.library.progressRevision, playing: model.playback.nowPlayingKey)) {
+            await load(combined)
         }
     }
 
-    /// „Słuchaj dalej” ze wszystkich bibliotek (bez podcastów — odcinki pokazuje strona podcastu).
-    private func loadInProgress() async {
-        guard let items = try? await session.auth.perform({ try await $0.itemsInProgress(token: $1) }) else { return }
-        inProgress = items.filter { !$0.isPodcast }.prefix(10).map(\.self)
+    private struct Trigger: Hashable {
+        let items: Int
+        let progress: Int
+        let playing: String?
     }
 
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
+    private func load(_ combined: CombinedLibraries) async {
         do {
-            let libraries = try await session.auth.perform { try await $0.libraries(token: $1) }
-            var items: [String: [AudiobookshelfClient.LibraryItem]] = [:]
-            for library in libraries {
-                let page = try await session.auth.perform {
-                    try await $0.itemsPage(libraryID: library.id, page: 0, limit: 6, sort: "addedAt", descending: true, filter: nil, token: $1)
-                }
-                items[library.id] = page.results.elements
-            }
-            self.libraries = libraries
-            self.items = items
-            loadError = nil
-        } catch AudiobookshelfClient.APIError.unauthorized {
-            loadError = Connector.ConnectError.keyRejected.localizedDescription
+            shelves = try await combined.shelves(lastUpdate: session.library.progress.lastUpdate)
+            error = nil
+        } catch is CancellationError {
         } catch {
-            loadError = error.localizedDescription
+            self.error = LibraryStore.message(error)
             if AddressSelection.isConnectionError(error) { model.connectionTroubled() }
         }
     }
 }
 
-private struct ItemRow: View {
-    let item: AudiobookshelfClient.LibraryItem
+/// Pozioma półka okładek.
+private struct Shelf: View {
+    let title: String
+    let items: [Client.LibraryItem]
+    let combined: CombinedLibraries
     let session: ServerSession
-    @Environment(\.displayScale) private var displayScale
-    @State private var cover: UIImage?
-
-    private static let size: CGFloat = 56
+    @ScaledMetric(relativeTo: .body) private var cardWidth: CGFloat = 120
 
     var body: some View {
-        HStack(spacing: 12) {
-            Group {
-                if let cover {
-                    Image(uiImage: cover).resizable().scaledToFill()
-                } else {
-                    Image(systemName: item.isPodcast ? "dot.radiowaves.left.and.right" : "book.closed")
-                        .foregroundStyle(.secondary)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.title3.bold())
+                    .padding(.horizontal)
+                    .accessibilityAddTraits(.isHeader)
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 14) {
+                        ForEach(items) { item in
+                            BookCard(item: item, session: session, libraryName: combined.hasSeveralLibraries ? combined.libraryName(item.libraryId) : nil)
+                                .frame(width: cardWidth)
+                        }
+                    }
+                    .padding(.horizontal)
                 }
+                .scrollIndicators(.hidden)
             }
-            .frame(width: Self.size, height: Self.size)
-            .background(.quaternary)
-            .clipShape(.rect(cornerRadius: 6))
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading) {
-                Text(item.title).lineLimit(2)
-                if let author = item.author {
-                    Text(author).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-        .task(id: item.id) {
-            cover = await session.cover(itemID: item.id, path: nil, size: Self.size, scale: displayScale)
         }
     }
 }

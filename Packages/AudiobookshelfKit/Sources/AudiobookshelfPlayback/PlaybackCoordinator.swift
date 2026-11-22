@@ -76,12 +76,18 @@ public final class PlaybackCoordinator {
 
     // MARK: - Odtwarzanie
 
-    /// Zaczyna słuchać pozycji (albo odcinka) od miejsca zapisanego na serwerze.
-    /// Gdy to już bieżąca książka — wznawia albo zatrzymuje.
-    public func play(itemID: String, episodeID: String? = nil) async {
+    /// Zaczyna słuchać pozycji (albo odcinka) od miejsca zapisanego na serwerze, a z `position`
+    /// — od tego miejsca osi czasu książki (np. początek rozdziału ze strony pozycji).
+    /// Gdy to już bieżąca książka — wznawia albo zatrzymuje (z `position`: przewija i gra).
+    public func play(itemID: String, episodeID: String? = nil, from position: Double? = nil) async {
         let key = PlaybackTimeline.key(itemID, episodeID)
         if player.book?.key == key {
-            player.togglePlayPause()
+            if let position {
+                player.seek(to: position)
+                if !player.isPlaying { player.play() }
+            } else {
+                player.togglePlayPause()
+            }
             return
         }
         guard let auth = authProvider(), startingKey == nil else { return }
@@ -134,10 +140,13 @@ public final class PlaybackCoordinator {
                 chapters: PlaybackTimeline.chapters(from: playback, tracks: tracks),
                 coverPath: playback.coverPath
             )
+            // Wybrane miejsce (rozdział) zamiast zapisanego — wysyłane jak zmiana z tego urządzenia.
+            if let position { start = position }
+            let chosen = adoptedLocal || position != nil
             session = (playback.id, key)
-            lastAgreed = adoptedLocal ? nil : playback.currentTime
+            lastAgreed = chosen ? nil : playback.currentTime
             player.start(book, at: start)
-            if adoptedLocal { player.isDirty = true }
+            if chosen { player.isDirty = true }
             startSyncLoop()
             loadArtwork(book)
         } catch {

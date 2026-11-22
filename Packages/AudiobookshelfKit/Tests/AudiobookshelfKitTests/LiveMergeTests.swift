@@ -67,4 +67,43 @@ struct LiveMergeTests {
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: out.appending(path: "merged.json"))
     }
+
+    /// Gniazdo zdarzeń z kluczem API słuchacza: zmiana postępu przez REST dochodzi jako `user_updated`.
+    @Test func eventsWithAPIKey() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        let url = try #require(environment["ABS_LIVE_URL"].flatMap(URL.init(string:)))
+        let secrets = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(filePath: try #require(environment["ABS_LIVE_KEY_FILE"])))) as? [String: Any]
+        let key = try #require(secrets?["key"] as? String)
+        let auth = ListeningAuth(client: AudiobookshelfClient(baseURL: url), apiKey: key)
+        let combined = try await CombinedLibraries.load(auth: auth)
+        let item = try #require(try await combined.items(sort: .title, descending: true).next(1).elements.first?.value)
+
+        var connected = false
+        var received: AudiobookshelfClient.MediaProgress?
+        let events = ListeningEvents(baseURL: url, token: { _ in key }) { event in
+            switch event {
+            case .connected: connected = true
+            case .progress(let progress) where progress.libraryItemId == item.id: received = progress
+            // Zapis przez REST serwer ogłasza jako `user_updated` z całym postępem konta.
+            case .user(let me): received = me.mediaProgress.elements.first { $0.libraryItemId == item.id } ?? received
+            default: break
+            }
+        }
+        events.start()
+        defer { events.stop() }
+        for _ in 0..<50 where !connected { try await Task.sleep(for: .milliseconds(100)) }
+        #expect(connected)
+        try await auth.perform { try await $0.updateProgress(itemID: item.id, episodeID: nil, currentTime: 1, duration: item.media.duration ?? 10, token: $1) }
+        for _ in 0..<50 where received == nil { try await Task.sleep(for: .milliseconds(100)) }
+        #expect(received?.currentTime == 1)
+        try await auth.perform { try await $0.deleteProgressIfPresent(itemID: item.id, token: $1) }
+    }
+}
+
+extension AudiobookshelfClient {
+    fileprivate func deleteProgressIfPresent(itemID: String, token: String) async throws {
+        if let id = try await progress(itemID: itemID, episodeID: nil, token: token)?.id {
+            try await deleteProgress(id: id, token: token)
+        }
+    }
 }

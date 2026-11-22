@@ -9,11 +9,13 @@ import AudiobookshelfPlayback
 // Pozycja zmienia się dwa razy na sekundę, więc czytają ją tylko małe widoki z czasem
 // (`ChapterScrubber`, `MiniProgress`) — reszta ekranu odświeża się przy zmianie rozdziału i stanu.
 
-/// Pasek na dole ekranu, gdy coś jest załadowane: okładka, tytuł, rozdział, pauza i +30 s.
+/// Mini-odtwarzacz w miejscu na akcesorium paska zakładek: okładka, tytuł, rozdział, pauza i +30 s.
+/// Tło i kształt daje system; gdy pasek zakładek się zwinie (`inline`), zostaje skrócona wersja.
 struct MiniPlayerBar: View {
     let model: AppModel
     @Binding var showsPlayer: Bool
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
     @State private var cover: UIImage?
 
     var body: some View {
@@ -25,12 +27,14 @@ struct MiniPlayerBar: View {
                 } label: {
                     HStack(spacing: 12) {
                         CoverImage(image: cover)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 32, height: 32)
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 0) {
                             Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            Text(player.currentChapter?.title ?? book.author ?? "")
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if placement != .inline {
+                                Text(player.currentChapter?.title ?? book.author ?? "")
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
                         }
                         Spacer(minLength: 0)
                     }
@@ -40,20 +44,18 @@ struct MiniPlayerBar: View {
                 .accessibilityLabel(Text("Odtwarzacz: \(book.title)"))
                 .accessibilityHint(Text("Otwiera pełny ekran odtwarzacza"))
 
-                PlayPauseButton(player: player, size: .title2)
-                Button {
-                    player.skip(by: AudiobookPlayer.skipForward)
-                } label: {
-                    Image(systemName: "goforward.30").font(.title3)
+                PlayPauseButton(player: player, size: .title3)
+                if placement != .inline {
+                    Button {
+                        player.skip(by: AudiobookPlayer.skipForward)
+                    } label: {
+                        Image(systemName: "goforward.30").font(.title3)
+                    }
+                    .accessibilityLabel(Text("30 sekund do przodu"))
                 }
-                .accessibilityLabel(Text("30 sekund do przodu"))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
             .overlay(alignment: .bottom) { MiniProgress(player: player) }
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
-            .padding(.horizontal, 8)
-            .padding(.bottom, 4)
             .task(id: book.key) {
                 cover = await model.currentSession?.cover(itemID: book.itemID, path: nil, size: 44, scale: displayScale)
             }

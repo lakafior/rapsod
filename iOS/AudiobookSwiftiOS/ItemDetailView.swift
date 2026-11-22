@@ -6,18 +6,24 @@ import SwiftUI
 import AudiobookshelfKit
 import AudiobookshelfPlayback
 
-/// Prosta strona pozycji: okładka, tytuł, autor, postęp, „Odtwarzaj”/„Kontynuuj” i opis.
-/// Podcast — lista odcinków z serwera. Pełne przeglądanie to następny etap.
+/// Strona pozycji: okładka, tytuł, autorzy, seria i lektorzy jako odnośniki, czas, postęp
+/// z „Oznacz jako ukończone” i „Usuń postęp”, opis, rozdziały (dotknięcie zaczyna od rozdziału)
+/// i odtwarzanie. Podcast — lista pobranych odcinków. Bez edycji metadanych.
 struct ItemDetailView: View {
     let itemID: String
     let model: AppModel
     let session: ServerSession
 
     @State private var item: AudiobookshelfClient.ItemDetail?
-    @State private var progress: [String: AudiobookshelfClient.MediaProgress] = [:]
+    /// Postęp odcinków podcastu (książki mają postęp w `ProgressStore`).
+    @State private var episodeProgress: [String: AudiobookshelfClient.MediaProgress] = [:]
     @State private var loadError: String?
+    @State private var actionError: String?
+    @State private var confirmsRemoval = false
+    @State private var isWorking = false
     @Environment(\.displayScale) private var displayScale
     @State private var cover: UIImage?
+    @ScaledMetric(relativeTo: .title) private var coverSize: CGFloat = 220
 
     private var playback: PlaybackCoordinator { model.playback }
 
@@ -25,24 +31,48 @@ struct ItemDetailView: View {
         List {
             if let item {
                 header(item)
-                if item.isPodcast {
-                    episodes(item)
-                } else if let text = HTMLText.plain(item.media.metadata.description), !text.isEmpty {
+                if !item.isPodcast {
+                    details(item)
+                }
+                if let text = HTMLText.plain(item.media.metadata.description), !text.isEmpty {
                     Section("Opis") {
-                        Text(text).font(.callout)
+                        ExpandableText(text: text, lineLimit: 5)
                     }
                 }
+                if item.isPodcast {
+                    episodes(item)
+                } else if let chapters = item.media.chapters, chapters.count > 1 {
+                    chapterList(item, chapters)
+                }
             } else if let loadError {
-                Text(loadError).foregroundStyle(.red)
+                LoadFailureView(message: loadError) { Task { await load() } }
+                    .listRowBackground(Color.clear)
             } else {
                 ProgressView().frame(maxWidth: .infinity)
             }
         }
         .navigationTitle(item?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let item, !item.isPodcast {
+                ToolbarItem(placement: .topBarTrailing) { progressMenu(item) }
+            }
+        }
         .task(id: session.id) { await load() }
-        .task(id: playback.progressRevision) { await loadProgress() }
-        .refreshable { await load() }
+        .refreshable {
+            await session.library.refreshProgress()
+            await load()
+        }
+        .alert("Nie udało się", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
+        .confirmationDialog("Usunąć postęp tej książki?", isPresented: $confirmsRemoval, titleVisibility: .visible) {
+            Button("Usuń postęp", role: .destructive) { Task { await removeProgress() } }
+        } message: {
+            Text("Miejsce słuchania zniknie na wszystkich urządzeniach.")
+        }
     }
 
     @ViewBuilder
@@ -50,25 +80,93 @@ struct ItemDetailView: View {
         Section {
             VStack(spacing: 12) {
                 CoverImage(image: cover, isPodcast: item.isPodcast)
-                    .frame(width: 220, height: 220)
+                    .frame(width: min(coverSize, 320), height: min(coverSize, 320))
                     .accessibilityHidden(true)
                     .task(id: item.id) {
-                        cover = await session.cover(itemID: item.id, path: nil, size: 220, scale: displayScale)
+                        cover = await session.cover(itemID: item.id, path: nil, size: 320, scale: displayScale)
                     }
                 Text(item.title)
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)
-                if let author = authorLine(item) {
+                    .accessibilityAddTraits(.isHeader)
+                if let subtitle = item.media.metadata.subtitle, !subtitle.isEmpty {
+                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                if item.isPodcast, let author = item.media.metadata.author {
                     Text(author).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 if !item.isPodcast {
-                    ProgressSummary(progress: progress[item.id], duration: item.media.duration)
-                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: progress[item.id])
+                    BookProgress(entry: session.library.progress.entry(item.id), duration: item.media.duration)
+                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
                 }
             }
             .frame(maxWidth: .infinity)
             .listRowBackground(Color.clear)
         }
+    }
+
+    @ViewBuilder
+    private func details(_ item: AudiobookshelfClient.ItemDetail) -> some View {
+        let metadata = item.media.metadata
+        Section {
+            ForEach(metadata.authors ?? []) { author in
+                NavigationLink(value: Route.authorSeed(libraryID: item.libraryId, id: author.id, name: author.name)) {
+                    LabeledContent("Autor", value: author.name)
+                }
+            }
+            ForEach(metadata.series?.values ?? []) { series in
+                NavigationLink(value: Route.seriesSeed(libraryID: item.libraryId, id: series.id, name: series.name)) {
+                    LabeledContent("Seria", value: series.sequence.map { "\(series.name) · tom \($0)" } ?? series.name)
+                }
+            }
+            ForEach(metadata.narrators ?? [], id: \.self) { narrator in
+                NavigationLink(value: Route.narrator(narrator)) {
+                    LabeledContent("Lektor", value: narrator)
+                }
+            }
+            if let duration = item.media.duration, duration > 0 {
+                LabeledContent("Czas", value: TimeText.long(duration))
+            }
+            if let year = metadata.publishedYear, !year.isEmpty {
+                LabeledContent("Rok wydania", value: year)
+            }
+            if let combined = session.library.combined, combined.hasSeveralLibraries, let library = combined.libraryName(item.libraryId) {
+                LabeledContent("Biblioteka", value: library)
+            }
+        }
+    }
+
+    private func chapterList(_ item: AudiobookshelfClient.ItemDetail, _ chapters: [AudiobookshelfClient.ItemDetail.Media.Chapter]) -> some View {
+        Section("Rozdziały (\(chapters.count))") {
+            ForEach(chapters) { chapter in
+                Button {
+                    Task { await play(item, from: chapter) }
+                } label: {
+                    ChapterRow(chapter: chapter, itemID: item.id, player: playback.player)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Zaczyna odtwarzanie od tego rozdziału"))
+            }
+        }
+    }
+
+    private func progressMenu(_ item: AudiobookshelfClient.ItemDetail) -> some View {
+        let progress = session.library.progress.entry(item.id).value
+        return Menu {
+            if progress?.isFinished == true {
+                Button("Oznacz jako nieukończone", systemImage: "arrow.uturn.backward") { Task { await setFinished(item, false) } }
+            } else {
+                Button("Oznacz jako ukończone", systemImage: "checkmark.circle") { Task { await setFinished(item, true) } }
+            }
+            if progress != nil {
+                Button("Usuń postęp", systemImage: "trash", role: .destructive) { confirmsRemoval = true }
+                    .disabled(playback.isLoaded(itemID: item.id))
+            }
+        } label: {
+            Label("Postęp", systemImage: isWorking ? "hourglass" : "ellipsis.circle")
+        }
+        .disabled(isWorking)
     }
 
     @ViewBuilder
@@ -90,7 +188,7 @@ struct ItemDetailView: View {
                                 Text(published, format: .dateTime.day().month().year())
                                     .font(.footnote).foregroundStyle(.secondary)
                             }
-                            ProgressSummary(progress: progress[key], duration: episode.length, compact: true)
+                            ProgressSummary(progress: episodeProgress[key], duration: episode.length, compact: true)
                         }
                         Spacer()
                         Image(systemName: playback.nowPlayingKey == key && playback.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -103,32 +201,98 @@ struct ItemDetailView: View {
         }
     }
 
-    private func authorLine(_ item: AudiobookshelfClient.ItemDetail) -> String? {
-        let names = item.media.metadata.authors?.map(\.name) ?? []
-        if !names.isEmpty { return names.joined(separator: ", ") }
-        return item.media.metadata.author
+    // MARK: Działania
+
+    /// Od początku rozdziału: bieżąca książka — przeskok; inna — start i przeskok po wczytaniu.
+    private func play(_ item: AudiobookshelfClient.ItemDetail, from chapter: AudiobookshelfClient.ItemDetail.Media.Chapter) async {
+        await playback.play(itemID: item.id, from: chapter.start)
+    }
+
+    private func setFinished(_ item: AudiobookshelfClient.ItemDetail, _ finished: Bool) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            if finished, playback.isLoaded(itemID: item.id) {
+                await playback.markFinished()
+            } else {
+                try await session.auth.perform { try await $0.setFinished(itemID: item.id, episodeID: nil, finished: finished, token: $1) }
+            }
+            await session.library.refreshProgress()
+        } catch {
+            actionError = LibraryStore.message(error)
+        }
+    }
+
+    private func removeProgress() async {
+        guard let id = session.library.progress.value(itemID)?.id else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await session.auth.perform { try await $0.deleteProgress(id: id, token: $1) }
+            session.library.progress.remove(itemID)
+            await session.library.refreshProgress()
+        } catch {
+            actionError = LibraryStore.message(error)
+        }
     }
 
     private func load() async {
         do {
             item = try await session.auth.perform { try await $0.item(id: itemID, token: $1) }
             loadError = nil
+        } catch is CancellationError {
+            return
         } catch {
-            if item == nil { loadError = error.localizedDescription }
+            if item == nil { loadError = LibraryStore.message(error) }
             if AddressSelection.isConnectionError(error) { model.connectionTroubled() }
         }
-        await loadProgress()
+        if item?.isPodcast == true { await loadEpisodeProgress() }
     }
 
-    /// Postęp z serwera (ten sam, który widzi Mac).
-    private func loadProgress() async {
+    /// Postęp odcinków z serwera (ten sam, który widzi Mac).
+    private func loadEpisodeProgress() async {
         let state: AudiobookshelfClient.MeState? = try? await session.auth.perform { try await $0.me(token: $1) }
         guard let me = state else { return }
         var entries: [String: AudiobookshelfClient.MediaProgress] = [:]
         for entry in me.mediaProgress.elements where entry.libraryItemId == itemID {
             entries[PlaybackTimeline.key(itemID, entry.episodeId)] = entry
         }
-        progress = entries
+        episodeProgress = entries
+    }
+}
+
+/// Postęp książki pod okładką — obserwuje tylko swój wpis.
+private struct BookProgress: View {
+    let entry: ProgressStore.Entry
+    let duration: Double?
+
+    var body: some View {
+        ProgressSummary(progress: entry.value, duration: duration)
+    }
+}
+
+/// Rozdział z czasem; bieżący rozdział odtwarzanej książki wyróżniony.
+private struct ChapterRow: View {
+    let chapter: AudiobookshelfClient.ItemDetail.Media.Chapter
+    let itemID: String
+    let player: AudiobookPlayer
+
+    var body: some View {
+        let isCurrent = player.book?.itemID == itemID && player.currentChapterID == chapter.id
+        HStack {
+            Image(systemName: isCurrent ? "speaker.wave.2.fill" : "play.circle")
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text(chapter.title)
+                .foregroundStyle(.primary)
+                .fontWeight(isCurrent ? .semibold : .regular)
+            Spacer()
+            Text(TimeText.clock(chapter.start))
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(chapter.title), od \(TimeText.long(chapter.start))\(isCurrent ? ", teraz odtwarzany" : "")"))
     }
 }
 
@@ -230,7 +394,10 @@ enum TimeText {
     }
 
     static func long(_ seconds: Double) -> String {
-        let duration = Duration.seconds(max(0, seconds.isFinite ? seconds : 0))
-        return duration.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated, maximumUnitCount: 2))
+        let value = max(0, seconds.isFinite ? seconds : 0)
+        let duration = Duration.seconds(value)
+        // Krótsze niż minuta: sekundy zamiast „0 min”.
+        let units: Set<Duration.UnitsFormatStyle.Unit> = value < 60 ? [.seconds] : [.hours, .minutes]
+        return duration.formatted(.units(allowed: units, width: .abbreviated, maximumUnitCount: 2))
     }
 }

@@ -35,7 +35,7 @@ struct RootView: View {
             case .unpaired:
                 WelcomeView(model: model)
             case .paired(let session):
-                HomeView(model: model, session: session)
+                MainTabs(model: model, session: session)
             }
         }
         .overlay {
