@@ -69,6 +69,19 @@ Decyzja z 2026-11-22: własny klient iOS na własnej bazie — wspólny pakiet S
 - **10g. Czytnik** (e-book pobierany przez HTTP zamiast czytania z dysku).
 - **10h. Dystrybucja.**
 
+### Tekst zsynchronizowany z audio (etap 11)
+
+Audiobook z dołączonym EPUB-em (plik obok audio w folderze pozycji, serwer bierze go jako e-book podstawowy) dostaje mapę: zdanie z EPUB-a → czas w nagraniu. Liczy ją Mac (pliki na dysku), telefon tylko ją pobiera. Wyświetlany tekst pochodzi z EPUB-a, rozpoznawanie mowy służy wyłącznie do czasów, więc błędy transkrypcji mało szkodzą.
+
+- **Próba — zrobiona (2026-11-22)** na „Polskich morderczyniach” (K. Bonda; m4b 13 h 18 min, EPUB z calibre, ok. 100 tys. słów). Skrypty: `scripts/textsync-spike/`.
+  - Silnik: Apple `SpeechTranscriber` nie ma polskiego (macOS 27), ale `DictationTranscriber(locale: pl-PL, preset: .timeIndexedLongDictation)` ma i podaje czasy słów (`audioTimeRange`). Cała książka: 588 s (ok. 81× szybciej niż nagranie), 80 MB pamięci, bez pobierania modelu (zasoby systemowe instaluje `AssetInventory`). Transkrypcja bez interpunkcji, dobra jakość. Parakeet TDT v3 (CoreML, polski, CC-BY-4.0) zostaje w odwodzie — na tej książce niepotrzebny.
+  - Wyrównanie: normalizacja słów, unikalne n-gramy (5→2) jako kotwice, najdłuższy rosnący podciąg, programowanie dynamiczne z rozmytym podobieństwem słów (odmiana, liczby) między kotwicami. Czas zdania = pierwsze i ostatnie dopasowane słowo; luki interpolowane tylko, gdy ich czas pasuje do tempa lektora (tu 15,5 znaku/s). Wynik: 95,7% słów książki dopasowanych, 97,1% zdań z czasem wprost, 0,7% z interpolacji, 2,2% bez czasu — to przypisy, notka calibre i okładka, czyli to, czego lektor nie czyta. Zero odwróceń kolejności, wyrywkowe zdania zgodne co do słowa. Liczenie poniżej sekundy.
+  - Rozdziały audio były tylko ponumerowane — wyrównanie ich nie potrzebuje.
+- **Do ustalenia przy wdrożeniu:** lokalizator zdania jako zakres CFI liczony przez epub.js (zgodny z czytnikiem i podświetlaniem `rendition.annotations`), nie własnym parserem; nazwa i rozszerzenie pliku mapy w folderze pozycji (`.json` serwer traktuje jako plik metadanych — sprawdzić skaner; plik pozycji pobiera konto słuchacza przez `GET /api/items/:id/file/:ino`); język rozpoznawania z metadanych książki; próg „to nie to samo wydanie” (niskie pokrycie).
+- **11a. Mapa na Macu:** kolejka w tle (ustawienie biblioteki „synchronizuj tekst z audio”, pozycje z audio i EPUB-em), postęp i wynik na stronie książki, ponowne liczenie po zmianie plików.
+- **11b. Tekst w odtwarzaczu** (Mac i iOS, wspólny model w pakiecie): bieżące zdanie podświetlone i przewijane, dotknięcie zdania przewija audio. Nie wymaga czytnika, więc działa na iOS przed 10g.
+- **11c. Czytnik:** podświetlanie zdania w EPUB-ie i przeliczanie pozycji audio ↔ `ebookLocation` („czytaj od miejsca, gdzie skończyłem słuchać”); na iOS razem z 10g.
+
 ### Bardziej natywna aplikacja
 
 - Angielska wersja językowa (dziś interfejs jest tylko po polsku).
