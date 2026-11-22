@@ -4,14 +4,16 @@
 
 import SwiftUI
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 
-/// Zakładka „Szukaj”: wszystkie biblioteki książek naraz, wyniki w grupach.
+/// Zakładka „Szukaj”: wszystkie biblioteki książek i podcastów naraz, wyniki w grupach.
 struct SearchView: View {
     let model: AppModel
     let session: ServerSession
 
     @State private var text = ""
     @State private var results: CombinedLibraries.SearchResults?
+    @State private var podcastResults: CombinedLibraries.PodcastSearchResults?
     @State private var error: String?
     @State private var isSearching = false
 
@@ -47,6 +49,29 @@ struct SearchView: View {
                             }
                         }
                     }
+                    if let podcastResults {
+                        if !podcastResults.podcasts.isEmpty {
+                            Section("Podcasty") {
+                                ForEach(podcastResults.podcasts) { podcast in
+                                    NavigationLink(value: Route.item(podcast.id)) {
+                                        BookRow(book: podcast, session: session)
+                                    }
+                                }
+                            }
+                        }
+                        if !podcastResults.episodes.isEmpty {
+                            Section("Odcinki na serwerze") {
+                                ForEach(podcastResults.episodes, id: \.recentEpisode?.id) { item in
+                                    if let episode = item.recentEpisode {
+                                        CompactEpisodeRow(itemID: item.id, title: episode.title ?? "Odcinek", podcastTitle: item.title,
+                                                          keys: [PlaybackTimeline.key(item.id, episode.id)], localOnly: false, session: session, playback: model.playback) {
+                                            Task { await model.playback.play(itemID: item.id, episodeID: episode.id) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if !results.narrators.isEmpty {
                         Section("Lektorzy") {
                             ForEach(results.narrators, id: \.name) { narrator in
@@ -65,17 +90,17 @@ struct SearchView: View {
             .overlay {
                 if text.trimmingCharacters(in: .whitespaces).isEmpty {
                     ContentUnavailableView("Szukaj we wszystkich bibliotekach", systemImage: "magnifyingglass",
-                                           description: Text("Tytuł, autor, seria albo lektor."))
+                                           description: Text("Tytuł, autor, seria, lektor albo podcast."))
                 } else if let error, results == nil {
                     LoadFailureView(message: error) { Task { await search(text, debounce: false) } }
-                } else if let results, results.isEmpty {
+                } else if let results, results.isEmpty, podcastResults?.isEmpty ?? true {
                     ContentUnavailableView.search(text: text)
                 } else if results == nil, isSearching {
                     ProgressView()
                 }
             }
             .navigationTitle("Szukaj")
-            .searchable(text: $text, prompt: "Książki, serie, autorzy")
+            .searchable(text: $text, prompt: "Książki, autorzy, podcasty")
             .autocorrectionDisabled()
             // Nowe litery anulują poprzednie zapytania do wszystkich bibliotek.
             .task(id: text) { await search(text, debounce: true) }
@@ -87,6 +112,7 @@ struct SearchView: View {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, let combined = session.library.combined else {
             results = nil
+            podcastResults = nil
             error = nil
             return
         }
@@ -96,12 +122,15 @@ struct SearchView: View {
         }
         isSearching = true
         defer { isSearching = false }
+        async let podcasts = try? combined.searchPodcasts(query)
         do {
             results = try await combined.search(query)
+            podcastResults = await podcasts
             error = nil
         } catch is CancellationError {
         } catch {
             results = nil
+            podcastResults = nil
             self.error = LibraryStore.message(error)
         }
     }

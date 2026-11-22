@@ -20,10 +20,17 @@ i sterowanie z ekranu blokady, synchronizacja postępu z serwerem (wspólny z Ma
 adresu zawsze od sieci lokalnej, ponawiany przy zmianie sieci i po błędzie połączenia.
 Szczegóły w głównym `README.md` („Odtwarzacz na iOS”).
 
-Etap 10d: docelowy układ z zakładkami (Start, Audiobooki, Podcasty — na razie zaślepka, Szukaj,
+Etap 10d: docelowy układ z zakładkami (Start, Audiobooki, Podcasty, Szukaj,
 Ustawienia; na iPadzie także pasek boczny) i mini-odtwarzaczem nad paskiem zakładek. Zakładka
 „Audiobooki” łączy wszystkie biblioteki książek w jedną listę (scalanie stron w pakiecie,
 `CombinedLibraries`), z sortowaniem, filtrem, seriami i autorami bez powtórzeń; wspólne półki
 Startu, wyszukiwanie we wszystkich bibliotekach, strony serii, autora i lektora oraz rozbudowana
 strona pozycji z rozdziałami. Szczegóły w głównym `README.md` („Zakładki i wspólna biblioteka
 książek na iOS”).
+
+Etap 10e: zakładka „Podcasty” ze wszystkich bibliotek podcastów i strona podcastu, która obok
+odcinków z serwera pokazuje odcinki z kanału RSS (czytanego przez telefon) ze stanem: na serwerze,
+tylko w kanale, pobierany, w kolejce. Odcinek spoza serwera gra od razu ze strumienia wydawcy,
+a serwer może go w tym czasie pobrać (wymaga typu administratora i „Edycji pozycji” dla konta
+telefonu); postęp takiego odcinka zostaje na telefonie i przechodzi na serwer po pobraniu.
+Szczegóły w głównym `README.md` („Podcasty na iOS”).

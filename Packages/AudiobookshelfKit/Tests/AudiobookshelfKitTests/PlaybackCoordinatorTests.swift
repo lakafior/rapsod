@@ -109,3 +109,107 @@ extension Stubbed {
 @MainActor private final class ConnectionErrors {
     var count = 0
 }
+
+/// Odcinek prosto z kanału: postęp na telefonie, a po pobraniu przez serwer — na serwer.
+extension Stubbed {
+@Suite @MainActor struct ExternalEpisodeTests {
+    init() { StubServer.reset() }
+
+    private func makeCoordinator(_ store: LocalEpisodeStore) -> PlaybackCoordinator {
+        let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
+        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
+        let coordinator = PlaybackCoordinator(device: device) { auth }
+        coordinator.localEpisodes = store
+        coordinator.streamProbe = { url in (url, 600) }
+        return coordinator
+    }
+
+    private let episode = PlaybackCoordinator.ExternalEpisode(
+        itemID: "li", feedKey: "g:ep1", title: "Odcinek", podcastTitle: "Podcast", guid: "ep1",
+        enclosureURL: "https://wydawca.invalid/ep1.mp3", published: nil, feedDuration: 590
+    )
+
+    private var serverCalls: [String] {
+        StubServer.requests.map { "\($0.request.httpMethod ?? "") \($0.request.url!.path())" }
+    }
+
+    @Test func progressStaysOnPhone() async throws {
+        let store = LocalEpisodeStore(fileURL: nil)
+        let coordinator = makeCoordinator(store)
+        await coordinator.play(external: episode)
+        #expect(coordinator.player.book?.key == "li/feed:g:ep1")
+        #expect(coordinator.player.duration == 600, "długość z pliku, nie z kanału")
+        #expect(coordinator.isProgressLocal)
+        #expect(store.record(itemID: "li", feedKey: "g:ep1") != nil, "wpis od razu po starcie")
+
+        coordinator.player.seek(to: 200)
+        await coordinator.sync()
+        #expect(store.record(itemID: "li", feedKey: "g:ep1")?.currentTime == 200)
+        #expect(serverCalls.isEmpty, "żadnego zapytania do serwera: \(serverCalls)")
+
+        // Ponowny start po „zamknięciu aplikacji”: od zapisanej pozycji minus 3 s.
+        coordinator.player.stop()
+        let again = makeCoordinator(store)
+        await again.play(external: episode)
+        #expect(again.player.currentTime == 197)
+        again.player.stop()
+    }
+
+    @Test func switchesTargetWhenServerHasEpisode() async throws {
+        StubServer.on("PATCH api/me/progress/li/se1", .json("{}"))
+        let store = LocalEpisodeStore(fileURL: nil)
+        let coordinator = makeCoordinator(store)
+        await coordinator.play(external: episode)
+        coordinator.player.seek(to: 321)
+        let handled = await coordinator.serverEpisodeAvailable(itemID: "li", feedKey: "g:ep1", episodeID: "se1")
+        #expect(handled)
+        let patch = try #require(StubServer.requests.last { $0.request.url!.path().hasSuffix("api/me/progress/li/se1") }?.body)
+        let json = try #require(try JSONSerialization.jsonObject(with: patch) as? [String: Any])
+        #expect(json["currentTime"] as? Double == 321)
+        #expect(store.record(itemID: "li", feedKey: "g:ep1") == nil, "lokalny wpis zbędny po zapisie na serwerze")
+        #expect(!coordinator.isProgressLocal)
+        // Źródło dźwięku bez zmian, odcinek serwera rozpoznawany jako bieżący.
+        #expect(coordinator.player.book?.tracks.first?.source == .remote(URL(string: "https://wydawca.invalid/ep1.mp3")!))
+        #expect(coordinator.isLoaded(itemID: "li", episodeID: "se1"))
+        #expect(coordinator.nowPlayingKeys == ["li/feed:g:ep1", "li/se1"])
+        // Nikt nie otworzył sesji odtwarzania na podcaście.
+        #expect(!serverCalls.contains { $0.contains("/play") })
+        coordinator.player.stop()
+    }
+
+    @Test func mapsPositionToShorterServerFile() async throws {
+        StubServer.on("PATCH api/me/progress/li/se1", .json("{}"))
+        let store = LocalEpisodeStore(fileURL: nil)
+        let coordinator = makeCoordinator(store)
+        await coordinator.play(external: episode)
+        coordinator.player.seek(to: 300)
+        // Serwer pobrał wersję z innymi reklamami: 540 s zamiast 600.
+        await coordinator.serverEpisodeAvailable(itemID: "li", feedKey: "g:ep1", episodeID: "se1", serverDuration: 540)
+        let patch = try #require(StubServer.requests.last { $0.request.url!.path().hasSuffix("api/me/progress/li/se1") }?.body)
+        let json = try #require(try JSONSerialization.jsonObject(with: patch) as? [String: Any])
+        #expect(json["currentTime"] as? Double == 270)
+        #expect(json["duration"] as? Double == 540)
+        coordinator.player.stop()
+    }
+
+    @Test func finishingLocallyMarksRecordFinished() async throws {
+        let store = LocalEpisodeStore(fileURL: nil)
+        let coordinator = makeCoordinator(store)
+        await coordinator.play(external: episode)
+        await coordinator.markFinished()
+        let record = try #require(store.record(itemID: "li", feedKey: "g:ep1"))
+        #expect(record.isFinished)
+        #expect(serverCalls.isEmpty)
+    }
+
+    @Test func streamErrorsReadable() {
+        let ats = URLError(.appTransportSecurityRequiresSecureConnection)
+        #expect(PlaybackCoordinator.StreamError.insecureOnly.errorDescription?.contains("HTTP") == true)
+        let wrapped = NSError(domain: "AVFoundationErrorDomain", code: -11800, userInfo: [NSUnderlyingErrorKey: ats as NSError])
+        #expect(PlaybackCoordinator.streamError(wrapped) == .insecureOnly)
+        let ranges = NSError(domain: "AVFoundationErrorDomain", code: -11850)
+        #expect(PlaybackCoordinator.streamError(ranges) == .noRangeSupport)
+        #expect(PlaybackCoordinator.streamError(URLError(.fileDoesNotExist)) == .notFound)
+    }
+}
+}

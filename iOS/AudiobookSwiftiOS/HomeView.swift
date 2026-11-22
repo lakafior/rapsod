@@ -7,12 +7,13 @@ import AudiobookshelfKit
 import AudiobookshelfPlayback
 
 /// Zakładka „Start”: półki ze wszystkich bibliotek książek naraz — „Słuchaj dalej”,
-/// „Kolejne w serii”, „Ostatnio dodane”, „Odkrywaj”.
+/// „Kolejne w serii”, „Ostatnio dodane”, „Odkrywaj” — i nowe odcinki ze wszystkich bibliotek podcastów.
 struct HomeView: View {
     let model: AppModel
     let session: ServerSession
 
     @State private var shelves: CombinedLibraries.Shelves?
+    @State private var recentEpisodes: [Client.PodcastEpisode] = []
     @State private var error: String?
 
     var body: some View {
@@ -44,6 +45,9 @@ struct HomeView: View {
                 if let shelves {
                     FailureNotice(failures: shelves.failures).padding(.horizontal)
                     Shelf(title: "Słuchaj dalej", items: shelves.continueListening, combined: combined, session: session)
+                    if !recentEpisodes.isEmpty {
+                        EpisodeShelf(title: "Nowe odcinki podcastów", episodes: recentEpisodes, combined: combined, model: model, session: session)
+                    }
                     Shelf(title: "Kolejne w serii", items: shelves.continueSeries, combined: combined, session: session)
                     Shelf(title: "Ostatnio dodane", items: shelves.recentlyAdded, combined: combined, session: session)
                     Shelf(title: "Odkrywaj", items: shelves.discover, combined: combined, session: session)
@@ -52,7 +56,7 @@ struct HomeView: View {
             .padding(.vertical)
         }
         .overlay {
-            if let shelves, shelves.isEmpty {
+            if let shelves, shelves.isEmpty, recentEpisodes.isEmpty {
                 ContentUnavailableView("Pusto", systemImage: "books.vertical",
                                        description: Text(combined.libraries.isEmpty ? "Na serwerze nie ma bibliotek książek dostępnych dla tego konta." : "W bibliotekach nie ma jeszcze książek."))
             } else if shelves == nil {
@@ -82,8 +86,10 @@ struct HomeView: View {
     }
 
     private func load(_ combined: CombinedLibraries) async {
+        async let episodes = try? combined.recentEpisodes(limit: 5)
         do {
             shelves = try await combined.shelves(lastUpdate: session.library.progress.lastUpdate)
+            recentEpisodes = await episodes?.value ?? []
             error = nil
         } catch is CancellationError {
         } catch {

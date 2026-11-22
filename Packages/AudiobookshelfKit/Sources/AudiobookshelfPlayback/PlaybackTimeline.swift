@@ -20,6 +20,17 @@ public struct PlaybackTrack: Sendable, Hashable {
         case sessionTrack(index: Int)
         /// Transkodowanie (HLS): `hls/<sesja>/output.m3u8`, też bez uwierzytelniania.
         case sessionStream
+        /// Plik wprost od wydawcy podcastu (adres `enclosure` z kanału RSS, etap 10e) —
+        /// bez serwera, bez sesji i bez żadnego klucza w adresie.
+        case remote(URL)
+
+        /// Plik przez sesję serwera audiobookshelf (adres zależy od bieżącego adresu serwera).
+        public var isServer: Bool {
+            switch self {
+            case .sessionTrack, .sessionStream: true
+            case .file, .remote: false
+            }
+        }
     }
 
     /// Początek pliku na osi czasu książki — z serwera, nie z AVFoundation
@@ -65,10 +76,15 @@ public struct PlaybackBook: Sendable, Equatable {
     public var tracks: [PlaybackTrack]
     public var chapters: [PlaybackChapter]
     public var coverPath: String?
+    /// Odcinek z kanału RSS, którego (jeszcze) nie ma na serwerze: `RSSEpisode.id`.
+    /// Wtedy `episodeID == nil`, a `itemID` to podcast na serwerze.
+    public var feedKey: String?
 
-    public var key: String { PlaybackTimeline.key(itemID, episodeID) }
+    public var key: String {
+        feedKey.map { PlaybackTimeline.feedKey(itemID, $0) } ?? PlaybackTimeline.key(itemID, episodeID)
+    }
 
-    public init(itemID: String, episodeID: String?, title: String, author: String?, duration: Double, tracks: [PlaybackTrack], chapters: [PlaybackChapter], coverPath: String? = nil) {
+    public init(itemID: String, episodeID: String?, title: String, author: String?, duration: Double, tracks: [PlaybackTrack], chapters: [PlaybackChapter], coverPath: String? = nil, feedKey: String? = nil) {
         self.itemID = itemID
         self.episodeID = episodeID
         self.title = title
@@ -77,6 +93,7 @@ public struct PlaybackBook: Sendable, Equatable {
         self.tracks = tracks
         self.chapters = chapters
         self.coverPath = coverPath
+        self.feedKey = feedKey
     }
 }
 
@@ -118,6 +135,11 @@ public struct ChapterPosition: Sendable, Equatable {
 public enum PlaybackTimeline {
     public static func key(_ itemID: String, _ episodeID: String?) -> String {
         episodeID.map { "\(itemID)/\($0)" } ?? itemID
+    }
+
+    /// Klucz odcinka słuchanego wprost z kanału (nie myli się z identyfikatorem odcinka serwera).
+    public static func feedKey(_ itemID: String, _ feedKey: String) -> String {
+        "\(itemID)/feed:\(feedKey)"
     }
 
     // MARK: Pliki

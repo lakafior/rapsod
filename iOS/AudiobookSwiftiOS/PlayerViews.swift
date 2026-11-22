@@ -32,7 +32,8 @@ struct MiniPlayerBar: View {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                             if placement != .inline {
-                                Text(player.currentChapter?.title ?? book.author ?? "")
+                                // Jeden rozdział (zwykle odcinek podcastu) ma tytuł całości — wtedy autor.
+                                Text((player.chapters.count > 1 ? player.currentChapter?.title : nil) ?? book.author ?? "")
                                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         }
@@ -126,6 +127,13 @@ struct PlayerScreen: View {
                             Text(book.title).font(.title3.bold()).multilineTextAlignment(.center)
                             if let author = book.author {
                                 Text(author).foregroundStyle(.secondary)
+                            }
+                            if model.playback.isProgressLocal {
+                                // Odcinek ze strumienia, którego nie ma na serwerze (etap 10e).
+                                Label("Ze strumienia wydawcy · postęp tylko na tym telefonie", systemImage: "iphone")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
                             }
                             if let chapter = player.currentChapter, player.chapters.count > 1 {
                                 Button {

@@ -294,6 +294,20 @@ extension AudiobookshelfClient {
     public struct MeState: Decodable, Sendable {
         public let mediaProgress: LenientList<MediaProgress>
         public let bookmarks: LenientList<Bookmark>?
+        /// `root`, `admin`, `user`, `guest` — od tego zależy np. zlecanie pobrań odcinków (etap 10e).
+        public var type: String? = nil
+        public var permissions: Permissions? = nil
+
+        public struct Permissions: Decodable, Sendable {
+            /// „Edycja pozycji” — serwer wymaga jej (obok typu administratora) przy zmianach
+            /// podcastu, w tym `download-episodes` (`PodcastController.middleware`).
+            public let update: Bool?
+        }
+
+        /// Konto może zarządzać serwerem (`isAdminOrUp` w upstreamie).
+        public var isAdmin: Bool { type == "root" || type == "admin" }
+        /// Konto może zlecać pobieranie odcinków: administrator z „Edycją pozycji”.
+        public var canOrderEpisodeDownloads: Bool { isAdmin && permissions?.update == true }
     }
 
     /// Statystyki słuchania (`GET /api/me/listening-stats`).
