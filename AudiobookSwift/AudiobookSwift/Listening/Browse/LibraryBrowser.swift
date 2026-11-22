@@ -256,6 +256,10 @@ final class PagedList<Element: Sendable> {
     private(set) var error: String?
     private var pages: [Int: [Element]] = [:]
     @ObservationIgnored private var loading: Set<Int> = []
+    /// Ostatnio oglądane strony (najnowsza na końcu) — tylko one są odświeżane po zmianie na serwerze.
+    @ObservationIgnored private var recent: [Int] = []
+    @ObservationIgnored private var isRefreshing = false
+    @ObservationIgnored private var refreshAgain = false
     @ObservationIgnored let pageSize: Int
     @ObservationIgnored private let fetch: (_ page: Int, _ limit: Int) async throws -> (items: [Element], total: Int?)
 
@@ -277,6 +281,11 @@ final class PagedList<Element: Sendable> {
     /// stronę też, żeby przy przewijaniu nie było widać pustych kart.
     func ensureLoaded(_ index: Int) {
         let page = index / pageSize
+        if recent.last != page {
+            recent.removeAll { $0 == page }
+            recent.append(page)
+            if recent.count > 3 { recent.removeFirst() }
+        }
         load(page)
         if index % pageSize > pageSize * 2 / 3, let total, (page + 1) * pageSize < total { load(page + 1) }
     }
@@ -285,10 +294,24 @@ final class PagedList<Element: Sendable> {
         if total == nil { await loadPage(0) }
     }
 
-    /// Ponownie pobiera wczytane strony (zmiana na serwerze); stare dane widać do czasu odpowiedzi.
+    /// Zmiana na serwerze: ponownie pobiera ostatnio oglądane strony (równolegle; stare dane widać
+    /// do czasu odpowiedzi), a pozostałe zwalnia — wczytają się od nowa, gdy wrócą na ekran.
+    /// Wołania w trakcie odświeżania (skan zgłasza zmiany co sekundę) łączą się w jedno następne.
     func refresh() async {
-        let loaded = pages.keys.sorted()
-        for page in loaded.isEmpty ? [0] : loaded { await loadPage(page) }
+        guard !isRefreshing else {
+            refreshAgain = true
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        repeat {
+            refreshAgain = false
+            let keep = Set(recent.isEmpty ? [0] : recent)
+            for page in pages.keys where !keep.contains(page) { pages[page] = nil }
+            await withTaskGroup(of: Void.self) { group in
+                for page in keep { group.addTask { await self.loadPage(page) } }
+            }
+        } while refreshAgain && !Task.isCancelled
     }
 
     private func load(_ page: Int) {

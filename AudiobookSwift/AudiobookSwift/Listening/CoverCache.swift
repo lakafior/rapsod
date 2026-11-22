@@ -18,10 +18,13 @@ final class CoverCache {
         cache.totalCostLimit = memoryLimit
         return cache
     }()
-    /// Pozycje bez okładki — żeby nie pytać serwera przy każdym przewinięciu listy.
-    private var missing: Set<String> = []
-    /// Trwające wczytania, żeby ta sama okładka nie była dekodowana dwa razy naraz.
-    private var loading: [String: Task<NSImage?, Never>] = [:]
+    /// Pozycje bez okładki — żeby nie pytać serwera przy każdym przewinięciu listy. Wpis wygasa
+    /// po minucie: chwilowy błąd sieci nie zostawia pustej okładki do zamknięcia okna.
+    private var missing: [String: ContinuousClock.Instant] = [:]
+    private static let missingLifetime = Duration.seconds(60)
+    /// Trwające wczytania, żeby ta sama okładka nie była dekodowana dwa razy naraz. Licznik
+    /// czekających: wczytanie jest przerywane dopiero, gdy zniknie ostatnia komórka, która go chce.
+    private var loading: [String: (task: Task<NSImage?, Never>, waiters: Int)] = [:]
     /// Wersja okładki pozycji (rośnie po zmianie): stare wpisy wypadają z `NSCache` same.
     private var versions: [String: Int] = [:]
 
@@ -30,28 +33,54 @@ final class CoverCache {
         // nie może podsunąć starego obrazka widokowi, który ma już nową.
         let key = "\(itemID)#\(versions[itemID] ?? 0)@\(pixels)|\(path ?? "")"
         if let image = images.object(forKey: key as NSString) { return image }
-        if missing.contains(key) { return nil }
-        if let task = loading[key] { return await task.value }
-        let task = Task<NSImage?, Never> {
-            var image: NSImage?
-            if let path, FileManager.default.isReadableFile(atPath: path) {
-                image = await Self.thumbnail(url: URL(filePath: path), pixels: pixels)
-            }
-            if image == nil, !Task.isCancelled, let data = await fetch(pixels) {
-                image = await Self.thumbnail(data: data, pixels: pixels)
-            }
-            return image
+        if let since = missing[key] {
+            if ContinuousClock.now - since < Self.missingLifetime { return nil }
+            missing[key] = nil
         }
-        loading[key] = task
-        let image = await task.value
-        loading[key] = nil
+        let task: Task<NSImage?, Never>
+        if let current = loading[key] {
+            task = current.task
+            loading[key]?.waiters += 1
+        } else {
+            task = Task<NSImage?, Never> {
+                guard !Task.isCancelled else { return nil }
+                var image: NSImage?
+                if let path, FileManager.default.isReadableFile(atPath: path) {
+                    image = await Self.thumbnail(url: URL(filePath: path), pixels: pixels)
+                }
+                if image == nil, !Task.isCancelled, let data = await fetch(pixels) {
+                    image = await Self.thumbnail(data: data, pixels: pixels)
+                }
+                return image
+            }
+            loading[key] = (task, 1)
+        }
+        // Komórka zniknęła z ekranu (szybkie przewijanie): przestaje czekać, a wczytanie bez
+        // czekających jest przerywane, zanim zacznie dekodować.
+        let image = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            Task { @MainActor in self.abandon(key, task) }
+        }
+        if Task.isCancelled { return nil }
+        if loading[key]?.task == task { loading[key] = nil }
         if let image {
             let cost = Int(image.size.width * image.size.height) * 4 * 4
             images.setObject(image, forKey: key as NSString, cost: cost)
-        } else {
-            missing.insert(key)
+        } else if !task.isCancelled {
+            missing[key] = .now
         }
         return image
+    }
+
+    private func abandon(_ key: String, _ task: Task<NSImage?, Never>) {
+        guard let current = loading[key], current.task == task else { return }
+        if current.waiters <= 1 {
+            task.cancel()
+            loading[key] = nil
+        } else {
+            loading[key]?.waiters = current.waiters - 1
+        }
     }
 
     /// Okładka pozycji się zmieniła (zapis z edycji albo zdarzenie serwera) — następne pytanie czyta ją od nowa.
@@ -62,7 +91,7 @@ final class CoverCache {
     /// Zwalnia wszystko (okładka bieżącej książki żyje dalej w odtwarzaczu — `AudiobookPlayer.artwork`).
     func purge() {
         images.removeAllObjects()
-        missing = []
+        missing = [:]
     }
 
     nonisolated private static func thumbnail(url: URL, pixels: Int) async -> NSImage? {

@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import PDFKit
 import SwiftUI
 
@@ -257,9 +258,53 @@ enum ComicArchive {
     }
 }
 
+/// Strony komiksu zdekodowane poza głównym wątkiem, w rozmiarze ekranu (skan 6000 px nie trafia
+/// do pamięci w całości). Trzyma kilka ostatnich stron i z wyprzedzeniem czyta następną.
+@MainActor
+final class ComicPageCache {
+    /// Dłuższy bok strony w pikselach — wystarcza na ekran 5K.
+    nonisolated static let maxPixels = 4096
+
+    private let images: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 6
+        return cache
+    }()
+    private var loading: [URL: Task<NSImage?, Never>] = [:]
+
+    func image(for url: URL) async -> NSImage? {
+        if let image = images.object(forKey: url as NSURL) { return image }
+        if let task = loading[url] { return await task.value }
+        let task = Task<NSImage?, Never> { await Self.decode(url) }
+        loading[url] = task
+        let image = await task.value
+        loading[url] = nil
+        if let image { images.setObject(image, forKey: url as NSURL) }
+        return image
+    }
+
+    func prefetch(_ url: URL) {
+        guard images.object(forKey: url as NSURL) == nil, loading[url] == nil else { return }
+        Task { _ = await image(for: url) }
+    }
+
+    nonisolated private static func decode(_ url: URL) async -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    }
+}
+
 struct ComicReaderView: View {
     let controller: PageController
     @State private var image: NSImage?
+    @State private var cache = ComicPageCache()
 
     var body: some View {
         ZStack {
@@ -276,12 +321,24 @@ struct ComicReaderView: View {
             }
         }
         .task(id: controller.page) {
-            guard controller.images.indices.contains(controller.page - 1) else { image = nil; return }
-            let url = controller.images[controller.page - 1]
-            let data = await Task.detached { try? Data(contentsOf: url) }.value
-            image = data.flatMap(NSImage.init(data:))
+            let index = controller.page - 1
+            guard controller.images.indices.contains(index) else { image = nil; return }
+            let loaded = await cache.image(for: controller.images[index])
+            // Szybkie przewracanie: wczytanie starej strony nie nadpisuje nowszej.
+            guard !Task.isCancelled else { return }
+            image = loaded
+            if controller.images.indices.contains(index + 1) { cache.prefetch(controller.images[index + 1]) }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Strona \(controller.page) z \(controller.pageCount)")
+        .accessibilityLabel("Strona komiksu")
+        .accessibilityValue("\(controller.page) z \(controller.pageCount)")
+        // VoiceOver: strony przewraca się gestem zwiększania i zmniejszania wartości.
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: controller.next()
+            case .decrement: controller.previous()
+            @unknown default: break
+            }
+        }
     }
 }

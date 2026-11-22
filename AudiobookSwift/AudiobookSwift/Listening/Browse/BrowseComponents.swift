@@ -9,10 +9,16 @@ struct AsyncCover: View {
     let size: CGFloat
     var symbol = "book.closed"
     @State private var image: NSImage?
+    /// Pozycja, której okładkę widać — komórka użyta ponownie dla innej pozycji nie pokazuje cudzej.
+    @State private var shownID: String?
 
     var body: some View {
         CoverView(image: image, symbol: symbol)
             .task(id: "\(itemID)#\(listening.coverRevision[itemID] ?? 0)|\(path ?? "")") {
+                if shownID != itemID {
+                    image = nil
+                    shownID = itemID
+                }
                 let loaded = await listening.cover(for: itemID, path: path, size: size)
                 // Po zmianie okładki starsze wczytanie może skończyć się później — nie nadpisuje nowszego.
                 if !Task.isCancelled { image = loaded }
