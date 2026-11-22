@@ -19,3 +19,11 @@ sesja audio iOS z odtwarzaniem w tle, przerwaniami i odłączaniem słuchawek, �
 i sterowanie z ekranu blokady, synchronizacja postępu z serwerem (wspólny z Makiem). Wybór
 adresu zawsze od sieci lokalnej, ponawiany przy zmianie sieci i po błędzie połączenia.
 Szczegóły w głównym `README.md` („Odtwarzacz na iOS”).
+
+Etap 10d: docelowy układ z zakładkami (Start, Audiobooki, Podcasty — na razie zaślepka, Szukaj,
+Ustawienia; na iPadzie także pasek boczny) i mini-odtwarzaczem nad paskiem zakładek. Zakładka
+„Audiobooki” łączy wszystkie biblioteki książek w jedną listę (scalanie stron w pakiecie,
+`CombinedLibraries`), z sortowaniem, filtrem, seriami i autorami bez powtórzeń; wspólne półki
+Startu, wyszukiwanie we wszystkich bibliotekach, strony serii, autora i lektora oraz rozbudowana
+strona pozycji z rozdziałami. Szczegóły w głównym `README.md` („Zakładki i wspólna biblioteka
+książek na iOS”).

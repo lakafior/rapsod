@@ -41,8 +41,12 @@ struct MainTabs: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        // Przewijanie w dół zwija pasek zakładek; mini-odtwarzacz przechodzi wtedy do niego (`inline`).
+        .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory(isEnabled: model.playback.player.book != nil) {
+            // Wysokość akcesorium ustala system — największe rozmiary tekstu by się w nim nie zmieściły.
             MiniPlayerBar(model: model, showsPlayer: $showsPlayer)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         }
         .sheet(isPresented: $showsPlayer) {
             PlayerScreen(model: model)

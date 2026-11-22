@@ -192,8 +192,11 @@ struct FailureNotice: View {
 /// Kolumny siatki okładek: tyle, ile się zmieści (iPhone w pionie — 3, iPad — więcej).
 /// Większy tekst (Dynamic Type) — szersze karty, czyli mniej kolumn.
 /// `minimum` z `@ScaledMetric` widoku (domyślnie 104 pt).
+/// Przy największych rozmiarach tekstu karta nie rośnie ponad 150 pt — na iPhonie zostają
+/// dwie kolumny zamiast jednej ogromnej okładki (tekst i tak się zawija).
 func coverColumns(minimum: CGFloat) -> [GridItem] {
-    [GridItem(.adaptive(minimum: minimum, maximum: minimum * 1.8), spacing: 14, alignment: .top)]
+    let width = min(minimum, 150)
+    return [GridItem(.adaptive(minimum: width, maximum: width * 1.8), spacing: 14, alignment: .top)]
 }
 
 /// Stan pusty / błąd z przyciskiem ponowienia.
