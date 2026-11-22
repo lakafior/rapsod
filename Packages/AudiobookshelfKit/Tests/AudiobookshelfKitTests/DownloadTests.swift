@@ -161,6 +161,43 @@ extension Stubbed {
         manager.removeAll()
     }
 
+    @Test func unreadableIndexKeepsFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "pobrane-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let folder = directory.appending(path: "abc123")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: folder.appending(path: "001-1.m4a"))
+        try Data("{nie json".utf8).write(to: directory.appending(path: "indeks.json"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubServer.self]
+        let reopened = DownloadManager(configuration: configuration, directory: directory, indexURL: directory.appending(path: "indeks.json"))
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(reopened.items.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: folder.appending(path: "001-1.m4a").path), "pliki zostają, gdy indeks jest nieczytelny")
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(names.contains { $0.hasPrefix("indeks.json.nieczytelny-") }, "nieczytelny indeks odłożony na bok: \(names)")
+    }
+
+    @Test func atMostTwoFilesAtOnce() async throws {
+        let (manager, directory) = makeManager()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for ino in ["1", "2", "3", "4"] {
+            StubServer.on("GET api/items/li/file/\(ino)/download", .init(status: 200, body: Data(repeating: 1, count: 100)))
+        }
+        try manager.enqueue(book([file("1", 1), file("2", 2), file("3", 3), file("4", 4)]))
+        manager.setGate(.open(baseURL: URL(string: "http://abs.test/audiobookshelf")!, allowsCellular: false))
+        // Najwięcej plików „w trakcie” naraz, próbkowane do końca pobierania.
+        var most = 0
+        await waitUntil {
+            let downloading = manager.item(itemID: "li", episodeID: nil)?.files.count { $0.state == .downloading } ?? 0
+            most = max(most, downloading)
+            return manager.completeItem(itemID: "li", episodeID: nil) != nil
+        }
+        #expect(most <= 2, "najwyżej dwa pliki naraz, było \(most)")
+        #expect(manager.completeItem(itemID: "li", episodeID: nil) != nil, "kolejne startują po zakończeniu poprzednich")
+        manager.removeAll()
+    }
+
     @Test func refusesWithoutSpace() throws {
         let (manager, directory) = makeManager()
         defer { try? FileManager.default.removeItem(at: directory) }

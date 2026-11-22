@@ -261,6 +261,38 @@ private struct DownloadRow: View {
     let session: ServerSession
     @State private var error: String?
     @ScaledMetric(relativeTo: .body) private var coverSize: CGFloat = 52
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var cover: some View {
+        ItemCover(itemID: item.itemID, session: session, points: 60)
+            .frame(width: min(coverSize, 90))
+    }
+
+    private func texts(entry: DownloadManager.Entry, lineLimit: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(item.title).font(.body.weight(.medium)).lineLimit(lineLimit)
+            if let author = item.author, !author.isEmpty {
+                Text(author).font(.footnote).foregroundStyle(.secondary).lineLimit(lineLimit == nil ? nil : 1)
+            }
+            if item.isComplete {
+                PositionLine(entry: session.journal.positionEntry(itemID: item.itemID, episodeID: item.episodeID), duration: item.duration)
+            } else {
+                DownloadStatusLine(entry: entry)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func trailing(entry: DownloadManager.Entry, isCurrent: Bool) -> some View {
+        if item.isComplete {
+            Image(systemName: isCurrent && model.playback.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+        } else {
+            DownloadEntryBadge(entry: entry)
+        }
+    }
 
     var body: some View {
         let entry = session.downloads.manager.entry(itemID: item.itemID, episodeID: item.episodeID)
@@ -270,34 +302,31 @@ private struct DownloadRow: View {
             guard item.isComplete else { return }
             Task { await model.playback.play(itemID: item.itemID, episodeID: item.episodeID) }
         } label: {
-            HStack(spacing: 12) {
-                ItemCover(itemID: item.itemID, session: session, points: 60)
-                    .frame(width: min(coverSize, 90))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title).font(.body.weight(.medium)).lineLimit(2)
-                    if let author = item.author, !author.isEmpty {
-                        Text(author).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            Group {
+                if typeSize.isAccessibilitySize {
+                    // Największy tekst: okładka i przycisk w jednym rzędzie, tekst pod nimi bez ucinania.
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            cover
+                            Spacer(minLength: 0)
+                            trailing(entry: entry, isCurrent: isCurrent)
+                        }
+                        texts(entry: entry, lineLimit: nil)
                     }
-                    if item.isComplete {
-                        PositionLine(entry: session.journal.positionEntry(itemID: item.itemID, episodeID: item.episodeID), duration: item.duration)
-                    } else {
-                        DownloadStatusLine(entry: entry)
-                    }
-                }
-                Spacer(minLength: 0)
-                if item.isComplete {
-                    Image(systemName: isCurrent && model.playback.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
                 } else {
-                    DownloadEntryBadge(entry: entry)
+                    HStack(spacing: 12) {
+                        cover
+                        texts(entry: entry, lineLimit: 2)
+                        Spacer(minLength: 0)
+                        trailing(entry: entry, isCurrent: isCurrent)
+                    }
                 }
             }
             .contentShape(.rect)
+            // Na zawartości przycisku, nie na nim — inaczej VoiceOver widzi dwa elementy (etap 10d).
+            .accessibilityElement(children: .combine)
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
         .accessibilityHint(item.isComplete ? (isCurrent && model.playback.player.isPlaying ? "Zatrzymuje" : "Odtwarza z telefonu") : "")
         .contextMenu {
             DownloadMenuItems(target: target, session: session) { error = $0 }
@@ -339,17 +368,26 @@ private struct PositionLine: View {
         if let value = entry.value, value.isFinished {
             Label("Ukończone", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
         } else if let value = entry.value, value.currentTime > 0 {
-            HStack(spacing: 6) {
-                ProgressView(value: duration > 0 ? min(1, value.currentTime / duration) : 0)
-                    .frame(maxWidth: 120)
-                Text("zostało \(TimeText.long(max(0, duration - value.currentTime)))")
-                    .font(.caption).foregroundStyle(.secondary)
+            // Wąsko (duży tekst): pasek nad podpisem zamiast obok — bez łamania słów.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { bar(value); remaining(value).fixedSize() }
+                VStack(alignment: .leading, spacing: 4) { bar(value); remaining(value) }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Przesłuchane \(Int((duration > 0 ? value.currentTime / duration : 0) * 100)) procent")
         } else {
             Text(TimeText.long(duration)).font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private func bar(_ value: PositionRecord) -> some View {
+        ProgressView(value: duration > 0 ? min(1, value.currentTime / duration) : 0)
+            .frame(maxWidth: 120)
+    }
+
+    private func remaining(_ value: PositionRecord) -> some View {
+        Text("zostało \(TimeText.long(max(0, duration - value.currentTime)))")
+            .font(.caption).foregroundStyle(.secondary)
     }
 }
 

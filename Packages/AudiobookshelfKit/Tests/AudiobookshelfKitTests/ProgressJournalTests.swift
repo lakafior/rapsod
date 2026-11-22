@@ -85,6 +85,11 @@ private func local(_ time: Double, at seconds: Double, finished: Bool = false, u
         #expect(session.timeListening == 30, "suma sekund od początku sesji")
         #expect(session.currentTime == 40)
         #expect(reopened.unsentCount == 2)
+        #expect(session.isOpen == false, "sesja z poprzedniego uruchomienia jest zamknięta")
+
+        // Wysłana sesja, która została „otwarta” przy zamknięciu aplikacji, znika przy starcie.
+        reopened.markUploaded(id: session.id, upTo: session.updatedAt)
+        #expect(ProgressJournal(fileURL: file).sessions.isEmpty)
     }
 
     @Test func serverCopyDoesNotOverwriteNewerUnsent() {
@@ -117,6 +122,18 @@ private func local(_ time: Double, at seconds: Double, finished: Bool = false, u
         #expect(journal.session(id: session.id) != nil, "otwarta zostaje")
         journal.closeSession(id: session.id)
         #expect(journal.session(id: session.id) == nil)
+    }
+
+    @Test func unreadableJournalIsSetAside() throws {
+        let file = tempFile()
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("{uszkodzony".utf8).write(to: file)
+        let journal = ProgressJournal(fileURL: file)
+        journal.recordLocal(itemID: "li", episodeID: nil, currentTime: 5, duration: 100)
+        let folder = file.deletingLastPathComponent()
+        let aside = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix(file.lastPathComponent + ".nieczytelny-") }
+        #expect(aside.count == 1, "stary plik nie został nadpisany")
+        for name in aside { try? FileManager.default.removeItem(at: folder.appending(path: name)) }
     }
 
     @Test func migratesEpisodesFromStage10e() throws {

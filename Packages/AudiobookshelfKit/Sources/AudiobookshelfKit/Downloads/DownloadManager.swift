@@ -86,6 +86,11 @@ public final class DownloadManager: NSObject {
     @ObservationIgnored private var retryAt: [DownloadTaskID: Date] = [:]
     @ObservationIgnored private var retryTimer: Task<Void, Never>?
     @ObservationIgnored private var attached = false
+    @ObservationIgnored private var indexUnreadable = false
+    /// Najwyżej tyle plików naraz. Limit połączeń sesji nie wystarcza: przez tunel (HTTP/2) wszystkie
+    /// pliki szłyby jednym połączeniem równocześnie. Kolejny plik startuje po zakończeniu poprzedniego
+    /// (także w tle — system budzi aplikację zdarzeniem sesji).
+    @ObservationIgnored public var maximumConcurrent = 2
     private static let progressInterval: TimeInterval = 0.5
 
     /// Konfiguracja sesji tła dla aplikacji (testy używają zwykłej).
@@ -118,7 +123,11 @@ public final class DownloadManager: NSObject {
                 let list = try JSONDecoder().decode([DownloadedItem].self, from: data)
                 items = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             } catch {
+                // Nieczytelny indeks (np. po zmianie formatu) nie może skasować pobranych plików:
+                // odkładamy go na bok i nie sprzątamy „plików bez wpisu”.
                 logger.error("Indeks pobranych nieczytelny: \(error.localizedDescription, privacy: .public)")
+                indexUnreadable = true
+                try? FileManager.default.moveItem(at: indexURL, to: indexURL.appendingPathExtension("nieczytelny-\(Int(Date.now.timeIntervalSince1970))"))
             }
         }
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
@@ -275,10 +284,12 @@ public final class DownloadManager: NSObject {
         guard attached, case .open(let base, let allowsCellular) = gate, let scope = activeScope, let token = authorization?() else { return }
         let now = Date.now
         var nextRetry: Date?
+        var running = tasks.count
         for item in items.values.sorted(by: { $0.addedAt < $1.addedAt }) where item.scope == scope && !item.isPaused {
-            for file in item.files where file.state == .queued {
+            for file in item.files.sorted(by: { $0.index < $1.index }) where file.state == .queued {
                 let id = DownloadTaskID(itemKey: item.id, ino: file.ino)
                 guard tasks[id] == nil else { continue }
+                guard running < maximumConcurrent else { break }
                 if let due = retryAt[id], due > now {
                     nextRetry = min(nextRetry ?? due, due)
                     continue
@@ -299,6 +310,7 @@ public final class DownloadManager: NSObject {
                 taskBases[id] = base
                 setFileState(id, .downloading)
                 task.resume()
+                running += 1
             }
         }
         scheduleRetry(at: nextRetry)
@@ -394,7 +406,7 @@ public final class DownloadManager: NSObject {
             disk[folder.lastPathComponent] = files
         }
         let result = DownloadIndex.reconcile(Array(items.values), disk: disk, runningFiles: running)
-        for orphan in result.orphans {
+        for orphan in result.orphans where !indexUnreadable {
             logger.notice("Usuwam plik bez wpisu w indeksie")
             try? fm.removeItem(at: directory.appending(path: orphan))
         }
@@ -450,6 +462,7 @@ public final class DownloadManager: NSObject {
         } catch {
             setFileState(id, .failed("Nie udało się zapisać pliku: \(error.localizedDescription)"))
         }
+        pump()
     }
 
     private func completed(_ id: DownloadTaskID, error: (any Error)?) {

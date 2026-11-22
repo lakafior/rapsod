@@ -215,8 +215,16 @@ public final class ProgressJournal {
                 records = Dictionary(snapshot.episodes.map { ($0.id, $0) }, uniquingKeysWith: Self.newer)
                 positions = Dictionary(snapshot.positions.map { ($0.key, $0) }, uniquingKeysWith: { $0.updatedAt > $1.updatedAt ? $0 : $1 })
                 sessions = Dictionary(snapshot.sessions.map { ($0.id, $0) }, uniquingKeysWith: { $0.updatedAt > $1.updatedAt ? $0 : $1 })
+                // Sesje „otwarte” z poprzedniego uruchomienia (aplikację zamknięto w trakcie słuchania):
+                // odtwarzacz zacznie nową — te kończymy, a już wysłane usuwamy.
+                for (id, var session) in sessions where session.isOpen {
+                    session.isOpen = false
+                    sessions[id] = session.needsUpload ? session : nil
+                }
             } catch {
+                // Nie nadpisujemy go przy następnym zapisie — niewysłany postęp mógłby przepaść.
                 logger.error("Dziennik postępu nieczytelny: \(error.localizedDescription, privacy: .public)")
+                try? FileManager.default.moveItem(at: fileURL, to: fileURL.appendingPathExtension("nieczytelny-\(Int(Date.now.timeIntervalSince1970))"))
             }
         }
         if let legacyEpisodesURL, let data = try? Data(contentsOf: legacyEpisodesURL) {

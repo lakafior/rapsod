@@ -101,6 +101,8 @@ final class AppModel {
     let downloads = DownloadsController()
     /// Adres, którym telefon ostatnio na pewno połączył się z serwerem (`nil` — brak połączenia).
     @ObservationIgnored private var connectedURL: URL?
+    /// Klucz bieżącego serwera w pamięci — pobieranie nie czyta pęku kluczy przy każdym zadaniu.
+    @ObservationIgnored private var apiKey: String?
     @ObservationIgnored private let feeds = PodcastFeedLoader(
         directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appending(path: "PodcastFeeds")
     )
@@ -139,10 +141,7 @@ final class AppModel {
         }
         playback.isReachable = { [weak self] in self?.isOffline != true }
         playback.offlineBook = { [weak self] itemID, episodeID in self?.downloads.playbackBook(itemID: itemID, episodeID: episodeID) }
-        downloads.manager.authorization = {
-            if case .apiKey(let key)? = try? PairedServer.secretStore.load() { return key }
-            return nil
-        }
+        downloads.manager.authorization = { [weak self] in self?.apiKey }
         downloads.manager.onConnectionError = { [weak self] in self?.connectionTroubled() }
         downloads.backgroundWake = { [weak self] in
             guard let self, connectedURL == nil else { return }
@@ -185,6 +184,8 @@ final class AppModel {
 
     func start() async {
         restoreIfNeeded()
+        // Pęk kluczy nadal niedostępny (rzadkie — na pierwszym planie telefon jest odblokowany).
+        if case .loading = phase { phase = .unpaired }
         // Z pobranymi na telefonie brak serwera to nie błąd: zamiast alertu — „Pobrane” i pasek.
         let hasDownloads = currentSession.map { !downloads.manager.items(scope: $0.scope).isEmpty } ?? false
         await reconnect(silent: hasDownloads)
@@ -196,8 +197,20 @@ final class AppModel {
     /// musi już wiedzieć, że telefon jest sparowany.
     private func restoreIfNeeded() {
         guard case .loading = phase else { return }
-        guard let server = PairedServer.load(), !server.addresses.isEmpty,
-              case .apiKey(let key)? = try? PairedServer.secretStore.load() else {
+        guard let server = PairedServer.load(), !server.addresses.isEmpty else {
+            phase = .unpaired
+            return
+        }
+        let secret: AccountSecret?
+        do {
+            secret = try PairedServer.secretStore.load()
+        } catch {
+            // Np. budzenie w tle po restarcie telefonu, przed pierwszym odblokowaniem: klucz jest,
+            // tylko jeszcze niedostępny. Nie „rozparowujemy” — `start()` spróbuje ponownie.
+            logger.error("Pęk kluczy niedostępny: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        guard case .apiKey(let key)? = secret else {
             phase = .unpaired
             return
         }
@@ -389,6 +402,7 @@ final class AppModel {
             journals[scope] = journal
         }
         playback.journal = journal
+        apiKey = key
         let context = PodcastContext(playback: playback, journal: journal, feeds: feeds, downloads: downloads, scope: scope)
         return ServerSession(server: server, baseURL: baseURL, key: key, podcasts: context)
     }
@@ -568,6 +582,7 @@ final class AppModel {
         PairedServer.forget()
         offersDisconnect = false
         connectedURL = nil
+        apiKey = nil
         phase = .unpaired
         updateDownloadGate()
     }

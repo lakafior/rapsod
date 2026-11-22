@@ -255,7 +255,7 @@ struct PodcastPage: View {
             page.rebuild(local: podcasts.localEpisodes)
         }
         .sheet(item: $detail) { row in
-            EpisodeDetailSheet(row: row, podcastTitle: item.title)
+            EpisodeDetailSheet(row: row, podcastTitle: item.title, libraryID: item.libraryId, session: session)
         }
         .alert("Nie udało się odtworzyć", isPresented: Binding(get: { streamFailure != nil }, set: { if !$0 { streamFailure = nil } }), presenting: streamFailure) { failure in
             // Plik zniknął u wydawcy — serwer też go nie pobierze.
@@ -489,6 +489,16 @@ private struct EpisodeRowView: View {
                 Button("Pobierz na serwer", systemImage: "arrow.down.circle", action: order).tint(.accentColor)
             }
         }
+        .swipeActions(edge: .leading) {
+            if let phoneDownload, session.downloads.manager.entry(itemID: row.itemID, episodeID: phoneDownload.episodeID).status == .notDownloaded {
+                Button("Pobierz na telefon", systemImage: "arrow.down.circle") {
+                    Task {
+                        do { try await phoneDownload.start(in: session) } catch { downloadError = error.localizedDescription }
+                    }
+                }
+                .tint(.green)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Opis odcinka", info)
         .accessibilityActions {
@@ -669,6 +679,8 @@ private struct PlayEpisodeButton: View {
 private struct EpisodeDetailSheet: View {
     let row: PodcastEpisodeRow
     let podcastTitle: String
+    let libraryID: String?
+    let session: ServerSession
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -679,6 +691,12 @@ private struct EpisodeDetailSheet: View {
                     Text(podcastTitle).foregroundStyle(.secondary)
                     if let published = row.published {
                         Text(published, format: .dateTime.day().month(.wide).year()).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    // Odcinek na serwerze: pobranie na telefon (stan, procent, wstrzymanie, usunięcie).
+                    if let server = row.server {
+                        VStack(alignment: .leading, spacing: 4) {
+                            DownloadButton(target: .episode(server, itemID: row.itemID, podcastTitle: podcastTitle, libraryID: libraryID), session: session)
+                        }
                     }
                     if let summary = row.summary, !summary.isEmpty {
                         Text(summary).textSelection(.enabled)
