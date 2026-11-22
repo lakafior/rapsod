@@ -8,6 +8,7 @@ struct AppModels {
     let account: ServerAccount
     let loginItem: LoginItem
     let sharing: SharingController
+    let pairing: PhonePairing
     let metadataSources: MetadataSourcesController
     let libraryTasks: LibraryTasks
 }

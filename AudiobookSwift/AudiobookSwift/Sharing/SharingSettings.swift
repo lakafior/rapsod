@@ -20,6 +20,10 @@ struct SharingSettings: Codable, Sendable, Equatable {
     /// niczego pod nim nie zestawia — to adres własnego tunelu albo VPN użytkownika.
     /// Używany tylko w trybie `.custom`, ale zachowywany przy zmianie trybu.
     var externalURL = ""
+    /// Stały identyfikator tej instalacji serwera w kodach parowania telefonu (etap 10b) —
+    /// audiobookshelf nie ma własnego. Nadawany przy pierwszym parowaniu; leży w folderze
+    /// danych, więc przenosi się razem z nim (kopia zapasowa, przeprowadzka na inny Mac).
+    var serverID: String?
 
     init() {}
 
@@ -31,6 +35,7 @@ struct SharingSettings: Codable, Sendable, Equatable {
         externalURL = try container.decodeIfPresent(String.self, forKey: .externalURL) ?? ""
         externalAccess = (try? container.decodeIfPresent(ExternalAccessMode.self, forKey: .externalAccess))
             ?? (externalURL.isEmpty ? .none : .custom)
+        serverID = try container.decodeIfPresent(String.self, forKey: .serverID)
     }
 
     /// Brak pliku albo plik nieczytelny daje ustawienia domyślne (udostępnianie wyłączone).

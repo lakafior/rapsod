@@ -122,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let webMode = WebUIMode()
     let settingsNavigation = SettingsNavigation()
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
+    private(set) lazy var pairing = PhonePairing(account: account, sharing: sharing, supervisor: supervisor)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
     private(set) lazy var listening = ListeningController(supervisor: supervisor, account: account)
     private(set) lazy var libraryTasks = LibraryTasks(account: account)
@@ -130,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         account: account,
         loginItem: loginItem,
         sharing: sharing,
+        pairing: pairing,
         metadataSources: metadataSources,
         libraryTasks: libraryTasks
     )

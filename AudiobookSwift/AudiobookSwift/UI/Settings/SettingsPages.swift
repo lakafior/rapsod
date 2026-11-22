@@ -77,6 +77,9 @@ struct SharingSettingsPage: View {
             Section("Połącz telefon") {
                 ConnectPhoneSection(sharing: models.sharing, supervisor: models.supervisor, account: models.account)
             }
+            Section("Aplikacja AudiobookSwift na telefonie") {
+                PhonePairingSection(pairing: models.pairing)
+            }
         }
     }
 }
