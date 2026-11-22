@@ -60,15 +60,24 @@ final class AppModel {
     // MARK: - Start
 
     func start() async {
+        restoreIfNeeded()
+        await reconnect()
+    }
+
+    /// Odtwarza zapisane parowanie (synchronicznie). Wołane też przed obsługą adresu
+    /// `abswift://`, bo system może uruchomić aplikację od zera właśnie tym adresem —
+    /// wtedy `onOpenURL` przychodzi przed `start()`, a pytanie o zastąpienie parowania
+    /// musi już wiedzieć, że telefon jest sparowany.
+    private func restoreIfNeeded() {
         guard case .loading = phase else { return }
-        guard let server = PairedServer.load(), case .apiKey(let key)? = try? PairedServer.secretStore.load() else {
+        guard let server = PairedServer.load(), !server.addresses.isEmpty,
+              case .apiKey(let key)? = try? PairedServer.secretStore.load() else {
             phase = .unpaired
             return
         }
         // Ekran serwera od razu z ostatnim adresem; połączenie sprawdzamy w tle.
-        let url = server.lastWorkingURL ?? server.addressesToTry.first ?? server.addresses[0].url
+        let url = server.addressesToTry.first ?? server.addresses[0].url
         phase = .paired(ServerSession(server: server, baseURL: url, key: key))
-        await reconnect()
     }
 
     /// Ponowny wybór adresu (np. po wyjściu z domu albo powrocie do sieci domowej).
@@ -76,6 +85,8 @@ final class AppModel {
         guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else { return }
         do {
             let connection = try await Connector.connect(urls: session.server.addressesToTry, key: key)
+            // W trakcie prób użytkownik mógł się rozłączyć albo sparować telefon od nowa.
+            guard isCurrent(session) else { return }
             var server = session.server
             server.lastWorkingURL = connection.url
             server.save()
@@ -83,6 +94,7 @@ final class AppModel {
                 phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
             }
         } catch {
+            guard isCurrent(session) else { return }
             logger.error("Ponowne połączenie: \(error.localizedDescription, privacy: .public)")
             self.error = error.localizedDescription
             if case Connector.ConnectError.keyRejected = error {
@@ -96,9 +108,15 @@ final class AppModel {
         }
     }
 
+    private func isCurrent(_ session: ServerSession) -> Bool {
+        if case .paired(let current) = phase { return current.id == session.id }
+        return false
+    }
+
     // MARK: - Parowanie
 
     func handle(url: URL) {
+        restoreIfNeeded()
         do {
             accept(try PairingPayload(url: url))
         } catch {
@@ -108,6 +126,7 @@ final class AppModel {
     }
 
     func handle(scanned text: String) {
+        restoreIfNeeded()
         do {
             accept(try PairingPayload(string: text))
         } catch {
@@ -143,15 +162,14 @@ final class AppModel {
         await connect(server: server, key: payload.key) { [weak self] in await self?.pair(payload) }
     }
 
-    /// Droga zapasowa: adres serwera i klucz API wpisane ręcznie.
-    func pairManually(address: String, key: String) async {
+    /// Droga zapasowa: adres serwera i klucz API wpisane ręcznie. Zwraca komunikat błędu
+    /// (pokazywany w formularzu, który zostaje otwarty) albo `nil` po udanym połączeniu.
+    func pairManually(address: String, key: String) async -> String? {
         var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.contains("://") { text = "http://" + text }
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: text), PairingPayload.Address(url: url, kind: .local).isHTTP, !key.isEmpty else {
-            error = "Podaj pełny adres serwera (np. http://mac-mini.local:13378) i klucz API."
-            canRetry = false
-            return
+            return "Podaj pełny adres serwera (np. http://mac-mini.local:13378) i klucz API."
         }
         let host = url.host() ?? text
         let kind: PairingPayload.Address.Kind = Connector.isAllowedByATS(url) && url.scheme == "http" ? .local : .remote
@@ -164,10 +182,34 @@ final class AppModel {
             deviceName: nil,
             keyID: nil
         )
-        await connect(server: server, key: key) { [weak self] in await self?.pairManually(address: address, key: key) }
+        do {
+            try await connect(server: server, key: key)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
+    /// Parowanie z kodu: błąd trafia do alertu, z możliwością ponowienia.
     private func connect(server: PairedServer, key: String, retry: @escaping @MainActor () async -> Void) async {
+        do {
+            try await connect(server: server, key: key)
+            canRetry = false
+            lastAttempt = nil
+        } catch {
+            self.error = error.localizedDescription
+            if case Connector.ConnectError.keyRejected = error {
+                canRetry = false
+            } else {
+                // Pierwsze zapytanie w sieci lokalnej bywa odrzucone, zanim użytkownik odpowie
+                // na systemowe pytanie o dostęp do sieci lokalnej — stąd „Spróbuj ponownie”.
+                canRetry = true
+                lastAttempt = retry
+            }
+        }
+    }
+
+    private func connect(server: PairedServer, key: String) async throws {
         isConnecting = true
         defer { isConnecting = false }
         do {
@@ -180,20 +222,10 @@ final class AppModel {
             try PairedServer.secretStore.save(.apiKey(key))
             server.save()
             phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
-            canRetry = false
             offersDisconnect = false
-            lastAttempt = nil
         } catch {
             logger.error("Parowanie nieudane: \(error.localizedDescription, privacy: .public)")
-            self.error = error.localizedDescription
-            if case Connector.ConnectError.keyRejected = error {
-                canRetry = false
-            } else {
-                // Pierwsze zapytanie w sieci lokalnej bywa odrzucone, zanim użytkownik odpowie
-                // na systemowe pytanie o dostęp do sieci lokalnej — stąd „Spróbuj ponownie”.
-                canRetry = true
-                lastAttempt = retry
-            }
+            throw error
         }
     }
 

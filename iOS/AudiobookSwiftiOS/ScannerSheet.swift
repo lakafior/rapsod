@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import AVFoundation
 import SwiftUI
 import UIKit
 import VisionKit
@@ -11,6 +12,9 @@ import VisionKit
 struct ScannerSheet: View {
     let onCode: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    /// Stan zgody na aparat. `isAvailable` skanera jest fałszywe także wtedy, gdy użytkownik
+    /// jeszcze nie odpowiedział — dlatego o zgodę pytamy sami, zanim pokażemy skaner.
+    @State private var camera = AVCaptureDevice.authorizationStatus(for: .video)
 
     var body: some View {
         NavigationStack {
@@ -21,7 +25,13 @@ struct ScannerSheet: View {
                         systemImage: "camera.metering.unknown",
                         description: Text("To urządzenie nie obsługuje skanowania kodów. Zeskanuj kod systemowym aparatem albo wpisz adres i klucz ręcznie.")
                     )
-                } else if !DataScannerViewController.isAvailable {
+                } else if camera == .notDetermined {
+                    ProgressView("Prośba o dostęp do aparatu…")
+                        .task {
+                            _ = await AVCaptureDevice.requestAccess(for: .video)
+                            camera = AVCaptureDevice.authorizationStatus(for: .video)
+                        }
+                } else if camera != .authorized || !DataScannerViewController.isAvailable {
                     ContentUnavailableView {
                         Label("Brak dostępu do aparatu", systemImage: "camera.badge.ellipsis")
                     } description: {

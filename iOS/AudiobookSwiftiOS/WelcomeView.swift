@@ -9,6 +9,7 @@ struct WelcomeView: View {
     let model: AppModel
     @State private var showsScanner = false
     @State private var showsManualEntry = false
+    @State private var scanned: String?
 
     var body: some View {
         NavigationStack {
@@ -42,10 +43,17 @@ struct WelcomeView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(24)
-            .sheet(isPresented: $showsScanner) {
+            // Kod obsługujemy dopiero po zamknięciu arkusza: alert pokazany w trakcie
+            // zamykania mógłby przepaść.
+            .sheet(isPresented: $showsScanner, onDismiss: {
+                if let scanned {
+                    self.scanned = nil
+                    model.handle(scanned: scanned)
+                }
+            }) {
                 ScannerSheet { text in
+                    scanned = text
                     showsScanner = false
-                    model.handle(scanned: text)
                 }
             }
             .sheet(isPresented: $showsManualEntry) {
@@ -61,6 +69,8 @@ struct ManualEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
     @State private var key = ""
+    @State private var isConnecting = false
+    @State private var error: String?
 
     var body: some View {
         NavigationStack {
@@ -78,6 +88,15 @@ struct ManualEntryView: View {
                     Text("Adres Maca w sieci domowej znajdziesz na Macu w Ustawieniach → Udostępnianie. Poza siecią lokalną potrzebny jest adres https. Klucz API konta do słuchania (nie konta root) utworzysz na Macu na podstronie „Dostęp”.")
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                if let error {
+                    Text(error)
+                        .foregroundStyle(.red)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.bar)
+                }
+            }
             .navigationTitle("Połącz ręcznie")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -85,13 +104,28 @@ struct ManualEntryView: View {
                     Button("Anuluj") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Połącz") {
-                        let address = address, key = key
-                        dismiss()
-                        Task { await model.pairManually(address: address, key: key) }
+                    if isConnecting {
+                        ProgressView()
+                    } else {
+                        Button("Połącz") { connect() }
+                            .disabled(address.isEmpty || key.isEmpty)
                     }
-                    .disabled(address.isEmpty || key.isEmpty)
                 }
+            }
+        }
+    }
+
+    /// Formularz zostaje otwarty do końca próby, żeby błąd był widoczny przy polach.
+    private func connect() {
+        isConnecting = true
+        error = nil
+        Task {
+            let failure = await model.pairManually(address: address, key: key)
+            isConnecting = false
+            if let failure {
+                error = failure
+            } else {
+                dismiss()
             }
         }
     }
