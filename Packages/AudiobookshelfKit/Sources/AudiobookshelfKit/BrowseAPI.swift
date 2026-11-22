@@ -218,6 +218,8 @@ extension AudiobookshelfClient {
                 public let path: String?
                 public let relPath: String?
                 public let size: Double?
+                /// Czas zmiany pliku (ms) — do unieważniania pamięci podręcznej (np. mapy tekstu).
+                public var mtimeMs: Double? = nil
             }
             public struct EbookFile: Decodable, Sendable, Hashable {
                 public let ino: String?
