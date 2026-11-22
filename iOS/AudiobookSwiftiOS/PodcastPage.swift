@@ -241,6 +241,13 @@ struct PodcastPage: View {
             }
         }
         .environment(\.editMode, $editMode)
+        .scrollContentBackground(.hidden)
+        .background(alignment: .top) {
+            ArtworkBackdrop(image: cover, base: Color(.systemGroupedBackground))
+                .frame(height: 560)
+                .ignoresSafeArea(edges: .top)
+        }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
@@ -266,7 +273,7 @@ struct PodcastPage: View {
         } message: { failure in
             Text(failure.message)
         }
-        .alert("Pobieranie na serwer", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+        .alert("Pobieranie", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(notice ?? "")
@@ -275,12 +282,14 @@ struct PodcastPage: View {
 
     // MARK: Nagłówek
 
+    @ViewBuilder
     private var header: some View {
         Section {
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 CoverImage(image: cover, isPodcast: true)
-                    .frame(width: min(coverSize, 300), height: min(coverSize, 300))
+                    .frame(width: min(coverSize, 280))
                     .accessibilityHidden(true)
+                    .padding(.top, 8)
                     .task(id: item.id) {
                         cover = await session.cover(itemID: item.id, path: nil, size: 300, scale: displayScale)
                     }
@@ -294,10 +303,29 @@ struct PodcastPage: View {
                 if let combined = session.library.combined, combined.hasSeveralPodcastLibraries, let name = combined.libraryName(item.libraryId) {
                     LibraryBadge(name: name)
                 }
+                if let latest = page.rows.first {
+                    // Najnowszy odcinek jednym dotknięciem, jak w aplikacjach podcastowych.
+                    Button {
+                        play(latest)
+                    } label: {
+                        Label(latest.server == nil ? "Najnowszy odcinek (ze strumienia)" : "Najnowszy odcinek", systemImage: "play.fill")
+                            .foregroundStyle(.white)
+                            .font(.headline)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 320)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.roundedRectangle(radius: 22))
+                    .controlSize(.large)
+                    .accessibilityHint(Text(latest.title))
+                }
             }
             .frame(maxWidth: .infinity)
             .listRowBackground(Color.clear)
-            if let text = HTMLText.plain(item.media.metadata.description) ?? page.feed?.summary, !text.isEmpty {
+        }
+        if let text = HTMLText.plain(item.media.metadata.description) ?? page.feed?.summary, !text.isEmpty {
+            Section {
                 ExpandableText(text: text, lineLimit: 4)
             }
         }
@@ -333,8 +361,28 @@ struct PodcastPage: View {
         }
     }
 
+    /// Odcinki z serwera do pobrania na telefon, od najnowszych (`nil` — wszystkie).
+    private func downloadLatest(_ count: Int?) {
+        let server = page.rows.compactMap(\.server)
+        let chosen = count.map { Array(server.prefix($0)) } ?? server
+        Task {
+            notice = await BulkDownload.start(chosen.map { .episode($0, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId) }, session: session).message
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if page.rows.contains(where: { $0.server != nil }) {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("Pobierz na telefon", systemImage: "arrow.down.circle") {
+                    Section("Odcinki z serwera") {
+                        Button("3 najnowsze") { downloadLatest(3) }
+                        Button("10 najnowszych") { downloadLatest(10) }
+                        Button("Wszystkie (\(page.rows.count { $0.server != nil }))") { downloadLatest(nil) }
+                    }
+                }
+            }
+        }
         // Bez uprawnień zaznaczanie nic by nie dało — przycisk znika (wyjaśnienie jest pod listą).
         if podcasts.permission.canOrder, page.rows.contains(where: \.canOrder) {
             ToolbarItem(placement: .topBarTrailing) {
@@ -387,7 +435,7 @@ struct PodcastPage: View {
     private func play(_ row: PodcastEpisodeRow) {
         Task {
             if let server = row.server {
-                await model.playback.play(itemID: item.id, episodeID: server.id)
+                await podcasts.play(itemID: item.id, episode: server, weakLocal: podcasts.weakLocal(itemID: item.id, feedKey: row.feedKey, match: row.match))
                 return
             }
             guard let url = row.enclosureURL, let feedKey = row.feedKey else { return }

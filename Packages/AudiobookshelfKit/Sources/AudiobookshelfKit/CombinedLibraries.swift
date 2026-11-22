@@ -307,9 +307,18 @@ public final class CombinedLibraries {
         public var continueSeries: [Client.LibraryItem] = []
         public var recentlyAdded: [Client.LibraryItem] = []
         public var discover: [Client.LibraryItem] = []
+        /// Ukończone, od ostatnio słuchanych (`listen-again`).
+        public var listenAgain: [Client.LibraryItem] = []
+        /// Ostatnio dodane serie (`recent-series`), połączone po nazwie z kilku bibliotek.
+        public var recentSeries: [MergedEntity<Client.Series>] = []
+        /// Nowi autorzy (`newest-authors`), połączeni po nazwie.
+        public var newestAuthors: [MergedEntity<Client.Author>] = []
         public var failures: [LibraryFailure] = []
 
-        public var isEmpty: Bool { continueListening.isEmpty && continueSeries.isEmpty && recentlyAdded.isEmpty && discover.isEmpty }
+        public var isEmpty: Bool {
+            continueListening.isEmpty && continueSeries.isEmpty && recentlyAdded.isEmpty && discover.isEmpty
+                && listenAgain.isEmpty && recentSeries.isEmpty && newestAuthors.isEmpty
+        }
     }
 
     /// Półki z `personalized` każdej biblioteki (równolegle), scalone:
@@ -337,6 +346,37 @@ public final class CombinedLibraries {
         result.continueSeries = Array(Self.unique(Self.interleave(items("continue-series"))).prefix(limit))
         let shown = Set((result.continueListening + result.recentlyAdded + result.continueSeries).map(\.id))
         result.discover = Array(Self.unique(Self.interleave(items("discover"))).filter { !shown.contains($0.id) }.prefix(limit))
+        result.listenAgain = Array(Self.unique(items("listen-again").flatMap(\.self)).sorted {
+            (lastUpdate[$0.id] ?? 0) > (lastUpdate[$1.id] ?? 0)
+        }.prefix(limit))
+        result.recentSeries = Array(Self.mergedByName(zip(parts.libraryIDs, parts.value).map { libraryID, shelves in
+            shelves.first { $0.id == "recent-series" }.flatMap { shelf -> [Tagged<Client.Series>]? in
+                guard case .series(let list) = shelf.entities else { return nil }
+                return list.map { Tagged(libraryID: libraryID, value: $0) }
+            } ?? []
+        }, name: \.name).prefix(limit))
+        result.newestAuthors = Array(Self.mergedByName(zip(parts.libraryIDs, parts.value).map { libraryID, shelves in
+            shelves.first { $0.id == "newest-authors" }.flatMap { shelf -> [Tagged<Client.Author>]? in
+                guard case .authors(let list) = shelf.entities else { return nil }
+                return list.map { Tagged(libraryID: libraryID, value: $0) }
+            } ?? []
+        }, name: \.name).prefix(limit))
+        return result
+    }
+
+    /// Encje z kilku bibliotek na przemian, połączone po nazwie (jak w wyszukiwaniu).
+    nonisolated static func mergedByName<Element: Sendable>(_ lists: [[Tagged<Element>]], name: (Element) -> String) -> [MergedEntity<Element>] {
+        var result: [MergedEntity<Element>] = []
+        var index: [String: Int] = [:]
+        for tagged in interleave(lists) {
+            let key = ServerCollation.key(name(tagged.value))
+            if let position = index[key] {
+                result[position].members.append(tagged)
+            } else {
+                index[key] = result.count
+                result.append(MergedEntity(id: key, members: [tagged]))
+            }
+        }
         return result
     }
 

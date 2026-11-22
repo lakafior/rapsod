@@ -27,6 +27,8 @@ final class ServerSession: Identifiable {
     /// Trwały postęp na telefonie (etap 10f) — ten sam obiekt dla wszystkich połączeń z tym serwerem.
     let journal: ProgressJournal
     let downloads: DownloadsController
+    /// Półki Startu (etap 10i).
+    let home = HomeFeed()
 
     init(server: PairedServer, baseURL: URL, key: String, podcasts: PodcastContext) {
         self.server = server

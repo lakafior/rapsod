@@ -18,6 +18,7 @@ struct MainTabs: View {
 
     @State private var tab: AppTab = .home
     @State private var showsPlayer = false
+    @Namespace private var playerTransition
 
     var body: some View {
         TabView(selection: $tab) {
@@ -47,9 +48,12 @@ struct MainTabs: View {
             // Wysokość akcesorium ustala system — największe rozmiary tekstu by się w nim nie zmieściły.
             MiniPlayerBar(model: model, showsPlayer: $showsPlayer)
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .matchedTransitionSource(id: "player", in: playerTransition)
         }
-        .sheet(isPresented: $showsPlayer) {
+        // Pełny ekran wyrasta z mini-odtwarzacza i wraca do niego (także gestem w dół).
+        .fullScreenCover(isPresented: $showsPlayer) {
             PlayerScreen(model: model)
+                .navigationTransition(.zoom(sourceID: "player", in: playerTransition))
         }
         // Biblioteki, postęp i gniazdo zdarzeń żyją tyle, co to połączenie.
         .task(id: session.id) { await session.library.run() }

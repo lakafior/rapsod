@@ -18,6 +18,8 @@ private let logger = Logger(subsystem: "net.smigi.abswift.ios", category: "Downl
 /// może ją obudzić w tle tylko po to, żeby oddać pobrane pliki.
 @MainActor
 final class DownloadsController {
+    /// Ustawienie „Usuwaj pobrane po wysłuchaniu” (etap 10i).
+    static let removeFinishedKey = "downloads.removeFinished"
     static let sessionIdentifier = "net.smigi.abswift.ios.downloads"
     /// Zakończenie od systemu, gdy obudził aplikację dla sesji pobierania, zanim powstał kontroler.
     static var pendingBackgroundCompletion: (() -> Void)?

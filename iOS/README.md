@@ -41,3 +41,11 @@ pobrane grają z plików, a bez połączenia Start i zakładki pokazują to, co 
 Postęp zapisuje się w trwałym dzienniku na telefonie i po powrocie połączenia idzie na serwer
 (sesje lokalne do statystyk; nowszy zapis z innego urządzenia wygrywa). Szczegóły w głównym
 `README.md` („Pobieranie na telefon i słuchanie bez sieci”).
+
+Etap 10i: porządki i nowy wygląd pod iOS 27 (Liquid Glass) — wspólne komponenty
+(`DesignSystem.swift`), Start z jedną półką „Słuchaj dalej” (książki i odcinki razem, bez
+powtórzeń — naprawiony błąd z dwa razy tym samym odcinkiem) i półkami poziomymi z pełnymi
+listami, strona pozycji i podcastu z tłem z okładki (na iPadzie dwie kolumny), Audiobooki z
+kategoriami (serie, autorzy, lektorzy, kolekcje, playlisty, pobrane) i widokiem siatka/lista,
+pełnoekranowy odtwarzacz wysuwany z mini-odtwarzacza. Kolor akcentu z ikony. Szczegóły w głównym
+`README.md` („Wygląd klienta iOS”).

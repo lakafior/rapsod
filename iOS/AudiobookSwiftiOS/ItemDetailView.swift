@@ -33,25 +33,50 @@ struct ItemDetailView: View {
         }
     }
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     private var bookPage: some View {
-        List {
+        Group {
             if let item {
-                header(item)
-                details(item)
-                if let text = HTMLText.plain(item.media.metadata.description), !text.isEmpty {
-                    Section("Opis") {
-                        ExpandableText(text: text, lineLimit: 5)
+                if sizeClass == .regular || verticalSizeClass == .compact {
+                    // iPad i iPhone w poziomie: okładka i główne akcje w lewej kolumnie, reszta przewija się obok.
+                    HStack(alignment: .top, spacing: 0) {
+                        ScrollView {
+                            heroContent(item).padding(24)
+                        }
+                        .frame(width: verticalSizeClass == .compact ? 340 : 380)
+                        .background { ArtworkBackdrop(image: cover, base: Color(.systemGroupedBackground)).ignoresSafeArea() }
+                        List { detailSections(item) }
                     }
-                }
-                if let chapters = item.media.chapters, chapters.count > 1 {
-                    chapterList(item, chapters)
+                } else {
+                    List {
+                        Section {
+                            heroContent(item)
+                                .frame(maxWidth: .infinity)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        }
+                        detailSections(item)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(alignment: .top) {
+                        ArtworkBackdrop(image: cover, base: Color(.systemGroupedBackground))
+                            .frame(height: 560)
+                            .ignoresSafeArea(edges: .top)
+                    }
+                    .background(Color(.systemGroupedBackground))
                 }
             } else if let loadError {
                 LoadFailureView(message: loadError) { Task { await load() } }
-                    .listRowBackground(Color.clear)
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                ProgressView()
             }
+        }
+        .task(id: item?.id) {
+            guard let id = item?.id else { return }
+            cover = await session.cover(itemID: id, path: nil, size: 360, scale: displayScale)
         }
         .navigationTitle(item?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
@@ -78,15 +103,26 @@ struct ItemDetailView: View {
     }
 
     @ViewBuilder
-    private func header(_ item: AudiobookshelfClient.ItemDetail) -> some View {
-        Section {
-            VStack(spacing: 12) {
-                CoverImage(image: cover, isPodcast: item.isPodcast)
-                    .frame(width: min(coverSize, 320), height: min(coverSize, 320))
-                    .accessibilityHidden(true)
-                    .task(id: item.id) {
-                        cover = await session.cover(itemID: item.id, path: nil, size: 320, scale: displayScale)
-                    }
+    private func detailSections(_ item: AudiobookshelfClient.ItemDetail) -> some View {
+        details(item)
+        if let text = HTMLText.plain(item.media.metadata.description), !text.isEmpty {
+            Section("Opis") {
+                ExpandableText(text: text, lineLimit: 5)
+            }
+        }
+        if let chapters = item.media.chapters, chapters.count > 1 {
+            chapterList(item, chapters)
+        }
+    }
+
+    /// Okładka, tytuł, autor, postęp i główne akcje (odtwarzanie, pobranie).
+    private func heroContent(_ item: AudiobookshelfClient.ItemDetail) -> some View {
+        VStack(spacing: 14) {
+            CoverImage(image: cover, isPodcast: item.isPodcast)
+                .frame(width: min(coverSize, 300))
+                .accessibilityHidden(true)
+                .padding(.top, 8)
+            VStack(spacing: 4) {
                 Text(item.title)
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)
@@ -94,17 +130,28 @@ struct ItemDetailView: View {
                 if let subtitle = item.media.metadata.subtitle, !subtitle.isEmpty {
                     Text(subtitle).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
-                if item.isPodcast, let author = item.media.metadata.author {
-                    Text(author).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if let authors = item.media.metadata.authors, !authors.isEmpty {
+                    Text(authors.map(\.name).joined(separator: ", "))
+                        .font(.body)
+                        .foregroundStyle(.tint)
+                        .multilineTextAlignment(.center)
                 }
-                if !item.isPodcast {
-                    BookProgress(entry: session.library.progress.entry(item.id), duration: item.media.duration)
+            }
+            BookProgress(entry: session.library.progress.entry(item.id), duration: item.media.duration)
+            if typeSize.isAccessibilitySize {
+                // Największy tekst: przyciski pod sobą, pobieranie z podpisem.
+                VStack(spacing: 12) {
                     PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
                     DownloadButton(target: .book(itemID: item.id), session: session)
                 }
+            } else {
+                HStack(spacing: 12) {
+                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
+                    DownloadButton(target: .book(itemID: item.id), session: session, compact: true)
+                }
+                .frame(maxWidth: 360)
             }
-            .frame(maxWidth: .infinity)
-            .listRowBackground(Color.clear)
+            PlayErrorText(model: model, key: item.id)
         }
     }
 
@@ -122,7 +169,7 @@ struct ItemDetailView: View {
                     LabeledContent("Seria", value: series.sequence.map { "\(series.name) · tom \($0)" } ?? series.name)
                 }
             }
-            ForEach(metadata.narrators ?? [], id: \.self) { narrator in
+            ForEach(Array(NSOrderedSet(array: metadata.narrators ?? []).array as? [String] ?? []), id: \.self) { narrator in
                 NavigationLink(value: Route.narrator(narrator)) {
                     LabeledContent("Lektor", value: narrator)
                 }
@@ -275,18 +322,19 @@ struct PlayButton: View {
                     ProgressView()
                 } else {
                     Image(systemName: isCurrent && playback.player.isPlaying ? "pause.fill" : "play.fill")
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 Text(title(isCurrent: isCurrent))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
             .font(.headline)
-            .frame(maxWidth: 280)
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.glassProminent)
+        .buttonBorderShape(.capsule)
         .controlSize(.large)
         .disabled(isStarting)
-        if let error = playback.loadError, !isCurrent {
-            Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
-        }
     }
 
     private func title(isCurrent: Bool) -> String {
@@ -295,6 +343,18 @@ struct PlayButton: View {
             return progress?.isFinished == true ? "Słuchaj od nowa" : "Odtwarzaj"
         }
         return "Kontynuuj"
+    }
+}
+
+/// Błąd startu odtwarzania pod przyciskami (gdy dotyczy innej pozycji niż bieżąca).
+struct PlayErrorText: View {
+    let model: AppModel
+    let key: String
+
+    var body: some View {
+        if let error = model.playback.loadError, model.playback.nowPlayingKey != key {
+            Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+        }
     }
 }
 
@@ -321,26 +381,6 @@ private struct ProgressSummary: View {
         } else if let duration, !compact {
             Text(TimeText.long(duration)).font(.footnote).foregroundStyle(.secondary)
         }
-    }
-}
-
-struct CoverImage: View {
-    let image: UIImage?
-    var isPodcast = false
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFit()
-            } else {
-                Image(systemName: isPodcast ? "dot.radiowaves.left.and.right" : "book.closed")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.quaternary)
-            }
-        }
-        .clipShape(.rect(cornerRadius: 8))
     }
 }
 

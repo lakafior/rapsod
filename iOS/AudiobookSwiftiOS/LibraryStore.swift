@@ -32,6 +32,7 @@ final class LibraryStore {
     @ObservationIgnored private let auth: ListeningAuth
     @ObservationIgnored private let journal: ProgressJournal
     @ObservationIgnored private let downloads: DownloadsController
+    @ObservationIgnored private let playback: PlaybackCoordinator
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var itemsChange: Task<Void, Never>?
 
@@ -39,6 +40,7 @@ final class LibraryStore {
         self.auth = auth
         self.journal = journal
         self.downloads = downloads
+        self.playback = playback
         let progress = ProgressStore()
         self.progress = progress
         podcasts = PodcastStore(auth: auth, playback: playback, progress: progress, localEpisodes: journal, feeds: feeds)
@@ -98,8 +100,16 @@ final class LibraryStore {
     /// Postęp pobranych pozycji trafia do dziennika — bez sieci start i paski postępu biorą go stamtąd.
     private func rememberDownloadedProgress(_ list: [AudiobookshelfClient.MediaProgress]) {
         for entry in list {
-            guard let itemID = entry.libraryItemId, downloads.manager.item(itemID: itemID, episodeID: entry.episodeId) != nil else { continue }
+            guard let itemID = entry.libraryItemId, let downloaded = downloads.manager.item(itemID: itemID, episodeID: entry.episodeId) else { continue }
             journal.recordServer(entry)
+            // „Usuwaj po wysłuchaniu”: znika to, co ukończono PO pobraniu (pozycja ukończona dawno
+            // i pobrana od nowa do ponownego słuchania zostaje) — i nie to, co właśnie gra.
+            let key = PlaybackTimeline.key(itemID, entry.episodeId)
+            let finishedAt = (entry.finishedAt ?? entry.lastUpdate) / 1000
+            if entry.isFinished, finishedAt > downloaded.addedAt.timeIntervalSince1970,
+               UserDefaults.standard.bool(forKey: DownloadsController.removeFinishedKey), !playback.nowPlayingKeys.contains(key) {
+                downloads.manager.remove(key: ProgressJournal.key(itemID, entry.episodeId))
+            }
         }
     }
 
@@ -204,6 +214,8 @@ final class ProgressStore {
     /// Czas ostatniego słuchania (ms) — do sortowania „Ostatnio słuchane” i półki „Słuchaj dalej”.
     /// Tylko pozycje (bez odcinków podcastów).
     var lastUpdate: [String: Double] { values.filter { $0.value.episodeId == nil }.mapValues(\.lastUpdate) }
+    /// Czas ostatniego słuchania pozycji i odcinków (klucz jak `PlaybackTimeline.key`).
+    var lastUpdateByKey: [String: Double] { values.mapValues(\.lastUpdate) }
 
     /// Książki pod identyfikatorem pozycji, odcinki — pod `PlaybackTimeline.key(pozycja, odcinek)`.
     private static func key(_ entry: AudiobookshelfClient.MediaProgress) -> String? {

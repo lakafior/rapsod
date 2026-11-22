@@ -17,6 +17,16 @@ enum Route: Hashable {
     case seriesSeed(libraryID: String, id: String, name: String)
     case authorSeed(libraryID: String, id: String, name: String)
     case narrator(String)
+    /// Pełna lista półki Startu („Zobacz wszystko”).
+    case shelf(HomeShelf)
+    case allSeries
+    case allAuthors
+    case narrators
+    case collections
+    case collection(libraryID: String, id: String, name: String)
+    case playlists
+    case playlist(libraryID: String, id: String, name: String)
+    case downloads
 }
 
 extension View {
@@ -36,39 +46,26 @@ extension View {
                 AuthorPage(author: nil, seed: Tagged(libraryID: libraryID, value: Client.Author(id: id, name: name, description: nil, imagePath: nil, numBooks: nil, updatedAt: nil)), model: model, session: session)
             case .narrator(let name):
                 NarratorPage(name: name, model: model, session: session)
+            case .shelf(let shelf):
+                ShelfPage(shelf: shelf, model: model, session: session)
+            case .allSeries:
+                if let combined = session.library.combined { SeriesList(combined: combined, session: session) }
+            case .allAuthors:
+                if let combined = session.library.combined { AuthorsList(combined: combined, session: session) }
+            case .narrators:
+                NarratorsPage(session: session)
+            case .collections:
+                CollectionsPage(session: session)
+            case .collection(let libraryID, let id, let name):
+                CollectionPage(libraryID: libraryID, id: id, name: name, session: session)
+            case .playlists:
+                PlaylistsPage(session: session)
+            case .playlist(let libraryID, let id, let name):
+                PlaylistPage(libraryID: libraryID, id: id, name: name, model: model, session: session)
+            case .downloads:
+                DownloadsScreen(model: model, session: session)
             }
         }
-    }
-}
-
-/// Okładka pozycji z pamięci okładek; pobieranie anulowane, gdy karta zniknie z ekranu.
-struct ItemCover: View {
-    let itemID: String
-    let session: ServerSession
-    /// Rozmiar w punktach, do którego serwer zmniejsza okładkę (kubełki: mniej wariantów w pamięci).
-    var points: CGFloat = 180
-    @Environment(\.displayScale) private var displayScale
-    @State private var image: UIImage?
-
-    var body: some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                if let image {
-                    Image(uiImage: image).resizable().scaledToFill()
-                } else {
-                    Image(systemName: "book.closed")
-                        .font(.title)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.quaternary)
-                }
-            }
-            .clipShape(.rect(cornerRadius: 8))
-            .task(id: itemID) {
-                image = await session.cover(itemID: itemID, path: nil, size: points, scale: displayScale)
-            }
-            .accessibilityHidden(true)
     }
 }
 
@@ -85,6 +82,7 @@ struct BookCard: View {
         NavigationLink(value: Route.item(item.id)) {
             VStack(alignment: .leading, spacing: 4) {
                 ItemCover(itemID: item.id, session: session)
+                    .layoutPriority(1)
                     .overlay(alignment: .bottom) {
                         CardProgress(entry: session.library.progress.entry(item.id))
                     }
@@ -216,22 +214,6 @@ struct FailureNotice: View {
 func coverColumns(minimum: CGFloat) -> [GridItem] {
     let width = min(minimum, 150)
     return [GridItem(.adaptive(minimum: width, maximum: width * 1.8), spacing: 14, alignment: .top)]
-}
-
-/// Stan pusty / błąd z przyciskiem ponowienia.
-struct LoadFailureView: View {
-    let message: String
-    let retry: () -> Void
-
-    var body: some View {
-        ContentUnavailableView {
-            Label("Nie udało się wczytać", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Spróbuj ponownie", action: retry)
-        }
-    }
 }
 
 /// Liczebniki po polsku: 1 książka, 2–4 książki, 5–21 książek, 22–24 książki…

@@ -136,24 +136,12 @@ final class EntityListModel<Element: Decodable & Sendable & Identifiable> where 
     }
 }
 
-/// Zakładka „Audiobooki”: wszystkie biblioteki książek jako jedna.
+/// Zakładka „Audiobooki”: wszystkie biblioteki książek jako jedna. Na górze kategorie jak w
+/// bibliotece systemowej aplikacji muzycznej (serie, autorzy, lektorzy, kolekcje, pobrane),
+/// pod nimi wszystkie książki w siatce albo na liście.
 struct BooksTab: View {
     let model: AppModel
     let session: ServerSession
-
-    enum Mode: String, CaseIterable, Identifiable {
-        case books, series, authors
-        var id: Self { self }
-        var title: String {
-            switch self {
-            case .books: "Książki"
-            case .series: "Serie"
-            case .authors: "Autorzy"
-            }
-        }
-    }
-
-    @AppStorage("books.mode") private var mode: Mode = .books
 
     var body: some View {
         NavigationStack {
@@ -167,11 +155,7 @@ struct BooksTab: View {
                 case .failed(let message):
                     OfflineFallback(model: model, session: session, message: message) { Task { await session.library.load() } }
                 case .ready(let combined):
-                    switch mode {
-                    case .books: BooksGrid(combined: combined, session: session, mode: $mode)
-                    case .series: SeriesList(combined: combined, session: session, mode: $mode)
-                    case .authors: AuthorsList(combined: combined, session: session, mode: $mode)
-                    }
+                    BooksGrid(combined: combined, session: session)
                 }
             }
             .navigationTitle("Audiobooki")
@@ -180,19 +164,49 @@ struct BooksTab: View {
     }
 }
 
-/// Przełącznik Książki / Serie / Autorzy nad listą.
-private struct ModePicker: View {
-    @Binding var mode: BooksTab.Mode
+/// Kategorie biblioteki — wiersze z ikoną jak w bibliotece systemowej.
+private struct LibraryCategories: View {
+    let session: ServerSession
 
     var body: some View {
-        Picker("Widok", selection: $mode) {
-            ForEach(BooksTab.Mode.allCases) { Text($0.title).tag($0) }
+        let hasDownloads = !session.downloads.manager.items(scope: session.scope).isEmpty
+        VStack(spacing: 0) {
+            row("Serie", "square.stack", .allSeries)
+            row("Autorzy", "person.2", .allAuthors)
+            row("Lektorzy", "waveform", .narrators)
+            row("Kolekcje", "rectangle.stack", .collections)
+            row("Playlisty", "music.note.list", .playlists)
+            if hasDownloads { row("Pobrane", "arrow.down.circle", .downloads) }
         }
-        .pickerStyle(.segmented)
+    }
+
+    private func row(_ title: String, _ symbol: String, _ route: Route) -> some View {
+        NavigationLink(value: route) {
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: symbol)
+                        .font(.title3)
+                        .foregroundStyle(.tint)
+                        .frame(width: 30)
+                        .accessibilityHidden(true)
+                    Text(title).font(.title3)
+                    Spacer()
+                    Image(systemName: "chevron.forward").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
+                }
+                .padding(.vertical, 11)
+                Divider().padding(.leading, 44)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 }
 
 // MARK: - Książki
+
+enum BookLayout: String {
+    case grid, list
+}
 
 private struct BookQuery: Hashable {
     var sort: CombinedLibraries.ItemSort
@@ -206,8 +220,8 @@ private struct BookQuery: Hashable {
 private struct BooksGrid: View {
     let combined: CombinedLibraries
     let session: ServerSession
-    @Binding var mode: BooksTab.Mode
 
+    @AppStorage("books.layout") private var layout: BookLayout = .grid
     @AppStorage("books.sort") private var sort: CombinedLibraries.ItemSort = .title
     @AppStorage("books.descending") private var descending = false
     @AppStorage("books.filter") private var filterRaw = ""
@@ -225,15 +239,38 @@ private struct BooksGrid: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                ModePicker(mode: $mode)
+                LibraryCategories(session: session)
                 FailureNotice(failures: list.failures)
-                if let summary {
-                    Text(summary).font(.footnote).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Wszystkie książki").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                    if let summary {
+                        Text(summary).font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
-                LazyVGrid(columns: coverColumns(minimum: cardWidth), spacing: 18) {
-                    ForEach(list.items) { entry in
-                        BookCard(item: entry.value, session: session, libraryName: badge(entry.libraryID))
+                .padding(.top, 12)
+                switch layout {
+                case .grid:
+                    LazyVGrid(columns: coverColumns(minimum: cardWidth), spacing: 20) {
+                        ForEach(list.items) { entry in
+                            BookCard(item: entry.value, session: session, libraryName: badge(entry.libraryID))
+                                .onAppear { list.appeared(entry.id) }
+                        }
+                    }
+                case .list:
+                    LazyVStack(spacing: 0) {
+                        ForEach(list.items) { entry in
+                            NavigationLink(value: Route.item(entry.value.id)) {
+                                VStack(spacing: 0) {
+                                    BookRow(book: entry.value, session: session)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, 8)
+                                        .contentShape(.rect)
+                                    Divider().padding(.leading, 64)
+                                }
+                            }
+                            .buttonStyle(.plain)
                             .onAppear { list.appeared(entry.id) }
+                        }
                     }
                 }
                 footer
@@ -305,6 +342,11 @@ private struct BooksGrid: View {
 
     private var sortMenu: some View {
         Menu {
+            Picker("Widok", selection: $layout) {
+                Label("Siatka", systemImage: "square.grid.2x2").tag(BookLayout.grid)
+                Label("Lista", systemImage: "list.bullet").tag(BookLayout.list)
+            }
+            .pickerStyle(.palette)
             Picker("Sortuj", selection: $sort) {
                 Text("Tytuł").tag(CombinedLibraries.ItemSort.title)
                 Text("Autor").tag(CombinedLibraries.ItemSort.author)
@@ -333,7 +375,7 @@ private struct BooksGrid: View {
                 }
             }
         } label: {
-            Label("Sortowanie i filtr", systemImage: filter == nil && scopedLibrary == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+            Label("Widok, sortowanie i filtr", systemImage: filter == nil && scopedLibrary == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
         }
     }
 
@@ -356,18 +398,14 @@ private struct BooksGrid: View {
 
 // MARK: - Serie i autorzy
 
-private struct SeriesList: View {
+struct SeriesList: View {
     let combined: CombinedLibraries
     let session: ServerSession
-    @Binding var mode: BooksTab.Mode
     @AppStorage("series.descending") private var descending = false
     @State private var list = EntityListModel<Client.Series>()
 
     var body: some View {
         List {
-            Section {
-                ModePicker(mode: $mode).listRowBackground(Color.clear).listRowInsets(.init())
-            }
             FailureNotice(failures: list.failures)
             ForEach(list.entities) { series in
                 NavigationLink(value: Route.series(series)) {
@@ -382,6 +420,7 @@ private struct SeriesList: View {
                 ContentUnavailableView("Brak serii", systemImage: "square.stack", description: Text("Żadna książka nie ma przypisanej serii."))
             }
         }
+        .navigationTitle("Serie")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { DirectionMenu(descending: $descending) } }
         .refreshable { list.reset(combined.series(descending: descending)) }
         .task(id: descending) { list.reset(combined.series(descending: descending)) }
@@ -416,18 +455,14 @@ private struct SeriesRow: View {
     }
 }
 
-private struct AuthorsList: View {
+struct AuthorsList: View {
     let combined: CombinedLibraries
     let session: ServerSession
-    @Binding var mode: BooksTab.Mode
     @AppStorage("authors.descending") private var descending = false
     @State private var list = EntityListModel<Client.Author>()
 
     var body: some View {
         List {
-            Section {
-                ModePicker(mode: $mode).listRowBackground(Color.clear).listRowInsets(.init())
-            }
             FailureNotice(failures: list.failures)
             ForEach(list.entities) { author in
                 NavigationLink(value: Route.author(author)) {
@@ -447,6 +482,7 @@ private struct AuthorsList: View {
                 ContentUnavailableView("Brak autorów", systemImage: "person.2", description: Text("W bibliotekach nie ma jeszcze autorów."))
             }
         }
+        .navigationTitle("Autorzy")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { DirectionMenu(descending: $descending) } }
         .refreshable { list.reset(combined.authors(descending: descending)) }
         .task(id: descending) { list.reset(combined.authors(descending: descending)) }

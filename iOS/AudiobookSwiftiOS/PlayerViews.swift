@@ -99,102 +99,154 @@ struct PlayPauseButton: View {
     }
 }
 
-/// Pełny ekran odtwarzacza.
+/// Pełny ekran odtwarzacza: wysuwa się z mini-odtwarzacza (przejście „zoom”, zamykany gestem
+/// w dół), tło z rozmytej okładki, duża okładka, suwak rozdziału, przeskoki, prędkość,
+/// wyłącznik czasowy, AirPlay i rozdziały. W poziomie okładka obok sterowania.
 struct PlayerScreen: View {
     let model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var cover: UIImage?
     @State private var showsChapters = false
 
     private var player: AudiobookPlayer { model.playback.player }
 
     var body: some View {
-        NavigationStack {
+        ZStack {
             if let book = player.book {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        CoverImage(image: cover)
-                            .frame(maxWidth: 320, maxHeight: 320)
-                            .aspectRatio(1, contentMode: .fit)
-                            .shadow(radius: 8, y: 4)
-                            .accessibilityHidden(true)
-                            .task(id: book.key) {
-                                cover = await model.currentSession?.cover(itemID: book.itemID, path: nil, size: 320, scale: displayScale)
-                            }
-
-                        VStack(spacing: 4) {
-                            Text(book.title).font(.title3.bold()).multilineTextAlignment(.center)
-                            if let author = book.author {
-                                Text(author).foregroundStyle(.secondary)
-                            }
-                            if model.playback.isProgressLocal {
-                                // Odcinek ze strumienia, którego nie ma na serwerze (etap 10e).
-                                Label("Ze strumienia wydawcy · postęp tylko na tym telefonie", systemImage: "iphone")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            if let chapter = player.currentChapter, player.chapters.count > 1 {
-                                Button {
-                                    showsChapters = true
-                                } label: {
-                                    Label(chapter.title, systemImage: "list.bullet")
-                                        .font(.subheadline)
+                GeometryReader { proxy in
+                    if proxy.size.width > proxy.size.height * 1.15 {
+                        HStack(spacing: 36) {
+                            artwork(side: min(proxy.size.height - 40, proxy.size.width * 0.42))
+                            // Przewijana, gdy przy dużym tekście sterowanie się nie mieści.
+                            ScrollView {
+                                VStack(spacing: 18) {
+                                    topBar
+                                    info(book)
+                                    ChapterScrubber(player: player)
+                                    controls
+                                    options
                                 }
-                                .padding(.top, 4)
-                                .accessibilityLabel(Text("Rozdział: \(chapter.title)"))
-                                .accessibilityHint(Text("Pokazuje listę rozdziałów"))
+                                .padding(.vertical, 12)
+                                .frame(minHeight: proxy.size.height - 24)
                             }
+                            .scrollBounceBehavior(.basedOnSize)
+                            .frame(maxWidth: 460)
                         }
-
-                        ChapterScrubber(player: player)
-
-                        controls
-
-                        if let error = player.error ?? model.playback.loadError {
-                            Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
-                        }
-                        if model.isOffline {
-                            Label("Brak połączenia z serwerem — pozycja zostanie wysłana po powrocie sieci.", systemImage: "wifi.slash")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-
-                        options
-                    }
-                    .padding()
-                }
-                .navigationTitle("Teraz odtwarzane")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Zamknij", systemImage: "chevron.down") { dismiss() }
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        Menu("Więcej", systemImage: "ellipsis.circle") {
-                            Button("Oznacz jako ukończone", systemImage: "checkmark.circle") {
-                                Task { await model.playback.markFinished() }
-                                dismiss()
+                        .padding(.horizontal, 24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 22) {
+                                topBar
+                                artwork(side: min(proxy.size.width - 48, 520, proxy.size.height * 0.5))
+                                    .padding(.vertical, 8)
+                                info(book)
+                                ChapterScrubber(player: player)
+                                controls
+                                options
                             }
-                            Button("Zakończ słuchanie", systemImage: "stop.circle", role: .destructive) {
-                                Task { await model.playback.stop() }
-                                dismiss()
-                            }
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 24)
+                            .frame(maxWidth: 560)
+                            .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                         }
+                        .scrollBounceBehavior(.basedOnSize)
                     }
                 }
-                .sheet(isPresented: $showsChapters) {
-                    ChapterList(player: player)
+                .task(id: book.key) {
+                    cover = await model.currentSession?.cover(itemID: book.itemID, path: nil, size: 520, scale: displayScale)
                 }
             } else {
-                ContentUnavailableView("Nic nie gra", systemImage: "headphones")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Zamknij") { dismiss() }
-                        }
-                    }
+                VStack {
+                    topBar.padding(24)
+                    ContentUnavailableView("Nic nie gra", systemImage: "headphones")
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { ArtworkBackdrop(image: cover, fadesToBackground: false).ignoresSafeArea() }
+        .foregroundStyle(.white)
+        .tint(.white)
+        .environment(\.colorScheme, .dark)
+        .sheet(isPresented: $showsChapters) {
+            ChapterList(player: player)
+        }
+    }
+
+    /// Uchwyt, zamknięcie i menu.
+    private var topBar: some View {
+        HStack {
+            Button("Zamknij", systemImage: "chevron.down") { dismiss() }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+            Spacer()
+            Capsule().fill(.white.opacity(0.35)).frame(width: 40, height: 5).accessibilityHidden(true)
+            Spacer()
+            Menu {
+                Button("Oznacz jako ukończone", systemImage: "checkmark.circle") {
+                    Task { await model.playback.markFinished() }
+                    dismiss()
+                }
+                Button("Zakończ słuchanie", systemImage: "stop.circle", role: .destructive) {
+                    Task { await model.playback.stop() }
+                    dismiss()
+                }
+            } label: {
+                Label("Więcej", systemImage: "ellipsis")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+        }
+        .controlSize(.large)
+    }
+
+    /// Okładka — przy pauzie lekko mniejsza (bez animacji przy „Ogranicz ruch”).
+    private func artwork(side: CGFloat) -> some View {
+        CoverImage(image: cover, isPodcast: player.book?.episodeID != nil || player.book?.feedKey != nil)
+            .frame(width: max(120, side), height: max(120, side))
+            .scaleEffect(player.isPlaying || reduceMotion ? 1 : 0.86)
+            .animation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.3), value: player.isPlaying)
+            .accessibilityHidden(true)
+    }
+
+    private func info(_ book: PlaybackBook) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(book.title).font(.title3.bold()).lineLimit(3)
+            if let author = book.author {
+                Text(author).font(.body).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+            }
+            if let chapter = player.currentChapter, player.chapters.count > 1 {
+                Button {
+                    showsChapters = true
+                } label: {
+                    Label(chapter.title, systemImage: "list.bullet")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+                .accessibilityLabel(Text("Rozdział: \(chapter.title)"))
+                .accessibilityHint(Text("Pokazuje listę rozdziałów"))
+            }
+            if model.playback.isProgressLocal {
+                // Odcinek ze strumienia, którego nie ma na serwerze (etap 10e).
+                Label("Ze strumienia wydawcy · postęp tylko na tym telefonie", systemImage: "iphone")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            if let error = player.error ?? model.playback.loadError {
+                Text(error).font(.footnote).foregroundStyle(.red)
+            }
+            if model.isOffline {
+                Label("Brak połączenia z serwerem — pozycja zostanie wysłana po powrocie sieci.", systemImage: "wifi.slash")
+                    .font(.footnote).foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var controls: some View {
@@ -210,16 +262,16 @@ struct PlayerScreen: View {
             Button {
                 player.skip(by: -AudiobookPlayer.skipBack)
             } label: {
-                Image(systemName: "gobackward.15").font(.largeTitle)
+                Image(systemName: "gobackward.15").font(.system(size: 34, weight: .medium))
             }
             .accessibilityLabel(Text("15 sekund wstecz"))
             Spacer()
-            PlayPauseButton(player: player, size: .system(size: 56))
+            PlayPauseButton(player: player, size: .system(size: 58, weight: .semibold))
             Spacer()
             Button {
                 player.skip(by: AudiobookPlayer.skipForward)
             } label: {
-                Image(systemName: "goforward.30").font(.largeTitle)
+                Image(systemName: "goforward.30").font(.system(size: 34, weight: .medium))
             }
             .accessibilityLabel(Text("30 sekund do przodu"))
             Spacer()
@@ -238,10 +290,11 @@ struct PlayerScreen: View {
     private var options: some View {
         // Przy dużym tekście (Dynamic Type) w jednym wierszu się nie mieszczą — wtedy pod sobą.
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 24) { optionButtons }
-            VStack(spacing: 12) { optionButtons }
+            HStack(spacing: 0) { optionButtons }
+            VStack(spacing: 14) { optionButtons }
         }
-        .font(.subheadline)
+        .labelStyle(StackedLabelStyle())
+        .font(.caption.weight(.medium))
     }
 
     @ViewBuilder
@@ -257,16 +310,21 @@ struct PlayerScreen: View {
                 Label(Self.rateLabel(player.rate), systemImage: "gauge.with.dots.needle.67percent")
             }
             .accessibilityLabel(Text("Prędkość: \(Self.rateLabel(player.rate))"))
+            .frame(maxWidth: .infinity)
 
             SleepTimerMenu(player: player)
+                .frame(maxWidth: .infinity)
 
             AirPlayButton()
                 .frame(width: 30, height: 30)
+                .frame(maxWidth: .infinity)
 
             if player.chapters.count > 1 {
                 Button("Rozdziały", systemImage: "list.bullet") { showsChapters = true }
+                    .frame(maxWidth: .infinity)
             }
         }
+        .buttonStyle(.plain)
     }
 
     static func rateLabel(_ rate: Float) -> String {
@@ -390,5 +448,17 @@ private struct ChapterList: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// Ikona nad krótkim podpisem — dolny rząd odtwarzacza (prędkość, wyłącznik, rozdziały).
+struct StackedLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: 4) {
+            configuration.icon.font(.title3)
+            configuration.title.lineLimit(1).monospacedDigit()
+        }
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(.rect)
     }
 }
