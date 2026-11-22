@@ -20,6 +20,13 @@ struct AppCommands: Commands {
                 openWindow.openSettings(navigation: settings)
             }
             .keyboardShortcut(",")
+            .modifierKeyAlternate(.option) {
+                Button("Zarządzanie serwerem (web UI)…") {
+                    webMode.isManagement = true
+                    openWindow.bringToFront(id: WebUIWindow.windowID)
+                }
+                .disabled(account.state != .ready)
+            }
         }
 
         CommandGroup(replacing: .appTermination) {
@@ -37,15 +44,13 @@ struct AppCommands: Commands {
                 openWindow.bringToFront(id: LibraryWindow.windowID)
             }
             .keyboardShortcut("o")
-            Button("\(WebUIWindow.title)…") {
-                webMode.isManagement = false
-                openWindow.bringToFront(id: WebUIWindow.windowID)
+            // Web UI tylko jako wyjście awaryjne pod Option (etap 9i).
+            .modifierKeyAlternate(.option) {
+                Button("\(WebUIWindow.title)…") {
+                    webMode.isManagement = false
+                    openWindow.bringToFront(id: WebUIWindow.windowID)
+                }
             }
-            Button("Zarządzanie serwerem…") {
-                webMode.isManagement = true
-                openWindow.bringToFront(id: WebUIWindow.windowID)
-            }
-            .disabled(account.state != .ready)
         }
     }
 }

@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Zaznaczanie wielu pozycji w siatce i działania na nich (etap 9h) — to, co web UI ma
 /// w pasku zaznaczenia (`Appbar.vue`): odtwarzanie, ukończone, kolekcja i playlista,
@@ -133,6 +135,10 @@ private struct BatchSelection: ViewModifier {
                     Button("Osadź metadane w plikach…") { confirm = .embed }.disabled(!allPlayable)
                 }
                 Button("Skanuj ponownie…") { confirm = .scan }
+            }
+            Divider()
+            Button("Pobierz jako archiwum ZIP…") { download() }
+            if manager.isAvailable {
                 Divider()
                 Button("Usuń…", role: .destructive) { confirm = .delete }
             }
@@ -189,6 +195,28 @@ private struct BatchSelection: ViewModifier {
             } catch {
                 result = ("Nie udało się", ItemManager.message(for: error, action: label.replacingOccurrences(of: "…", with: "")))
             }
+        }
+    }
+
+    /// Archiwum ZIP z folderami zaznaczonych pozycji (etap 9i; `GET /api/libraries/:id/download`).
+    /// Kontem root, gdy jest (słuchacz może nie mieć prawa pobierania), inaczej kontem słuchacza.
+    private func download() {
+        guard let libraryID = browser.libraryID else { return }
+        let ids = ids
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = selection.count == 1 ? "\(selection[0].title).zip" : "Pozycje (\(selection.count)).zip"
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        run("Pakowanie i pobieranie…") {
+            if manager.isAvailable {
+                try await manager.run { try await $0.downloadItems(libraryID: libraryID, ids: ids, to: destination, token: $1) }
+            } else {
+                try await listening.api { try await $0.downloadItems(libraryID: libraryID, ids: ids, to: destination, token: $1) }
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+            return nil
         }
     }
 

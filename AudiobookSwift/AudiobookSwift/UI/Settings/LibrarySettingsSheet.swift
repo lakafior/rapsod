@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Arkusz „Ustawienia biblioteki” (etap 9g) — to, co web UI ma w oknie edycji biblioteki:
@@ -7,6 +8,7 @@ import SwiftUI
 struct LibrarySettingsSheet: View {
     @State private var model: LibrarySettingsModel
     @State private var confirmRemove: String?
+    @State private var folderToRemove: AudiobookshelfClient.Library.Folder?
     @Environment(\.dismiss) private var dismiss
 
     init(account: ServerAccount, library: AudiobookshelfClient.Library) {
@@ -17,6 +19,10 @@ struct LibrarySettingsSheet: View {
 
     var body: some View {
         Form {
+            // Komunikaty na górze — dół długiego arkusza jest zwykle schowany.
+            if model.status.isBusy || model.status.error != nil || model.status.notice != nil {
+                Section { AdminStatusRows(status: model.status) }
+            }
             if model.settings != nil {
                 general
                 display
@@ -25,7 +31,6 @@ struct LibrarySettingsSheet: View {
                 finished
                 tools
             }
-            Section { AdminStatusRows(status: model.status) }
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 640)
@@ -39,6 +44,12 @@ struct LibrarySettingsSheet: View {
             }
         }
         .task { await model.load() }
+        .confirmationDialog("Usunąć folder z biblioteki?", isPresented: Binding(get: { folderToRemove != nil }, set: { if !$0 { folderToRemove = nil } }), presenting: folderToRemove) { folder in
+            Button("Usuń folder z biblioteki", role: .destructive) { Task { await model.removeFolder(folder) } }
+            Button("Anuluj", role: .cancel) {}
+        } message: { folder in
+            Text("Pozycje z „\(folder.fullPath)” znikną z biblioteki razem z postępem słuchania, także na telefonie. Pliki zostaną na dysku nietknięte.")
+        }
         .confirmationDialog("Usunąć wszystkie pliki metadata.\(confirmRemove ?? "")?", isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } }), presenting: confirmRemove) { ext in
             Button("Usuń pliki", role: .destructive) { Task { await model.removeMetadataFiles(ext: ext) } }
             Button("Anuluj", role: .cancel) {}
@@ -49,7 +60,7 @@ struct LibrarySettingsSheet: View {
 
     // MARK: Sekcje
 
-    private var general: some View {
+    @ViewBuilder private var general: some View {
         Section("Biblioteka") {
             TextField("Nazwa", text: $model.name)
             Picker("Ikona", selection: $model.icon) {
@@ -65,12 +76,37 @@ struct LibrarySettingsSheet: View {
                     ForEach(regions, id: \.0) { Text($0.1).tag($0.0) }
                 }
             }
-            if let folders = model.loaded?.folders, !folders.isEmpty {
-                LabeledContent("Foldery") {
-                    VStack(alignment: .trailing) {
-                        ForEach(folders, id: \.id) { Text($0.fullPath).font(.caption).textSelection(.enabled) }
+        }
+        if let folders = model.loaded?.folders {
+            Section {
+                ForEach(folders, id: \.id) { folder in
+                    HStack {
+                        Label(folder.fullPath, systemImage: "folder").textSelection(.enabled)
+                        Spacer()
+                        Button("Pokaż w Finderze", systemImage: "magnifyingglass") {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: folder.fullPath)])
+                        }
+                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                        Button("Usuń folder z biblioteki", systemImage: "minus.circle", role: .destructive) { folderToRemove = folder }
+                            .labelStyle(.iconOnly).buttonStyle(.borderless)
+                            .disabled(folders.count < 2 || model.status.isBusy)
+                            .help(folders.count < 2 ? "Biblioteka musi mieć co najmniej jeden folder" : "Usuń folder z biblioteki (pliki zostają)")
                     }
                 }
+                HStack {
+                    Spacer()
+                    Button("Dodaj folder…") {
+                        Task {
+                            guard let folder = await chooseLibraryFolder(for: model.isPodcast ? .podcasts : .audiobooks) else { return }
+                            await model.addFolder(folder)
+                        }
+                    }
+                    .disabled(model.status.isBusy)
+                }
+            } header: {
+                Text("Foldery")
+            } footer: {
+                Text("Biblioteka może obejmować kilka folderów; zmiany zapisują się od razu.").foregroundStyle(.secondary)
             }
         }
     }

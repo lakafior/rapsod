@@ -300,6 +300,7 @@ private struct BookPage: View {
                     Button("Skanuj ponownie") { itemAction = .scan }
                     Divider()
                     if hasAudio { Button("Kanał RSS…") { itemAction = .rssFeed } }
+                    if hasAudio { Button("Publiczny link…") { itemAction = .shareLink } }
                     if item.media.ebookFile != nil { Button("Wyślij e-book na czytnik…") { itemAction = .sendEbook } }
                     if hasAudio || item.media.ebookFile != nil { Divider() }
                 }

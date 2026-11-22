@@ -221,8 +221,9 @@ struct AuthorPhoto: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: author?.id) {
+        .task(id: "\(author?.id ?? "")#\(listening.coverRevision["author-" + (author?.id ?? "")] ?? 0)|\(author?.imagePath ?? "")") {
             guard let author else { return }
+            image = nil
             image = await listening.authorImage(id: author.id, path: author.imagePath, size: size)
         }
     }
@@ -235,6 +236,7 @@ struct AuthorPage: View {
     let name: String
     @State private var author: AudiobookshelfClient.AuthorDetail?
     @State private var error: String?
+    @State private var editing = false
 
     var body: some View {
         Group {
@@ -269,7 +271,38 @@ struct AuthorPage: View {
             }
         }
         .navigationTitle(name)
+        .toolbar {
+            if browser.manager.isAvailable {
+                ToolbarItem {
+                    Button("Edytuj autora…", systemImage: "pencil") { editing = true }
+                        .disabled(author == nil)
+                        .help("Nazwa, opis, zdjęcie i dopasowanie w Audible")
+                        .accessibilityIdentifier("author.edit")
+                }
+            }
+        }
+        .sheet(isPresented: $editing) {
+            if let author {
+                AuthorEditSheet(browser: browser, author: author) { result in changed(result) }
+            }
+        }
         .task(id: authorID) { await load() }
+        .onChange(of: browser.revision) { Task { await load() } }
+    }
+
+    /// Po edycji: inna nazwa albo połączenie z innym autorem podmienia stronę, usunięcie — zamyka ją.
+    private func changed(_ result: (id: String, name: String)?) {
+        if let libraryID = browser.libraryID { browser.listening.libraryChanged(libraryID) }
+        let route = LibraryBrowser.Route.author(id: authorID, name: name)
+        guard let result else {
+            browser.path.removeAll { $0 == route }
+            return
+        }
+        if result.id != authorID || result.name != name, let index = browser.path.lastIndex(of: route) {
+            browser.path[index] = .author(id: result.id, name: result.name)
+        } else {
+            Task { await load() }
+        }
     }
 
     private func load() async {
@@ -289,6 +322,10 @@ struct NarratorsSection: View {
     @State private var narrators: [AudiobookshelfClient.Narrator]?
     @State private var error: String?
     @State private var selection: String?
+    @State private var renaming: AudiobookshelfClient.Narrator?
+    @State private var newName = ""
+    @State private var deleting: AudiobookshelfClient.Narrator?
+    @State private var failure: String?
 
     var body: some View {
         Group {
@@ -304,7 +341,11 @@ struct NarratorsSection: View {
                         }
                         .tag(narrator.id)
                     }
-                    .contextMenu(forSelectionType: String.self) { _ in } primaryAction: { ids in
+                    .contextMenu(forSelectionType: String.self) { ids in
+                        if let narrator = narrators.first(where: { ids.contains($0.id) }) {
+                            NarratorManageMenu(browser: browser, libraryID: libraryID, narrator: narrator, renaming: $renaming, deleting: $deleting)
+                        }
+                    } primaryAction: { ids in
                         if let narrator = narrators.first(where: { ids.contains($0.id) }) { browser.open(.filtered(.narrator(narrator.name))) }
                     }
                     .onChange(of: selection) {
@@ -322,6 +363,45 @@ struct NarratorsSection: View {
         .navigationTitle("Lektorzy")
         .task(id: libraryID) { await load() }
         .onChange(of: browser.revision) { Task { await load() } }
+        .onChange(of: renaming) { if let renaming { newName = renaming.name } }
+        .alert("Nowa nazwa lektora", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { narrator in
+            TextField("Nazwa", text: $newName)
+            Button("Zmień") { Task { await rename(narrator) } }
+            Button("Anuluj", role: .cancel) {}
+        } message: { narrator in
+            Text("„\(narrator.name)” zmieni się we wszystkich książkach tej biblioteki. Istniejąca nazwa połączy obu lektorów.")
+        }
+        .confirmationDialog("Usunąć lektora „\(deleting?.name ?? "")”?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { narrator in
+            Button("Usuń ze wszystkich książek", role: .destructive) { Task { await remove(narrator) } }
+            Button("Anuluj", role: .cancel) {}
+        } message: { narrator in
+            Text("Lektor zniknie z \(narrator.numBooks ?? 0) książek tej biblioteki. Książki zostają.")
+        }
+        .alert("Nie udało się", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK") {}
+        } message: { Text(failure ?? "") }
+    }
+
+    private func rename(_ narrator: AudiobookshelfClient.Narrator) async {
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name != narrator.name else { return }
+        do {
+            _ = try await browser.manager.run { try await $0.renameNarrator(libraryID: libraryID, narratorID: narrator.id, to: name, token: $1) }
+            browser.invalidateFilterData()
+            await load()
+        } catch {
+            failure = ItemManager.message(for: error, action: "Zmiana nazwy lektora")
+        }
+    }
+
+    private func remove(_ narrator: AudiobookshelfClient.Narrator) async {
+        do {
+            _ = try await browser.manager.run { try await $0.removeNarrator(libraryID: libraryID, narratorID: narrator.id, token: $1) }
+            browser.invalidateFilterData()
+            await load()
+        } catch {
+            failure = ItemManager.message(for: error, action: "Usuwanie lektora")
+        }
     }
 
     private func load() async {

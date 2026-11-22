@@ -9,6 +9,8 @@ import Observation
 final class LibraryBrowser {
     enum Section: Hashable {
         case home, items, series, authors, narrators, collections, playlists, latestEpisodes, downloads, stats
+        /// Etap 9i: statystyki biblioteki i tagi/gatunki całego serwera.
+        case libraryStats, metadata
     }
 
     enum Route: Hashable {
@@ -56,7 +58,7 @@ final class LibraryBrowser {
             isSelecting = false
             if let library, library.mediaType != "podcast", section == .downloads {
                 section = .items
-            } else if let library, library.mediaType == "podcast", ![.home, .items, .latestEpisodes, .downloads, .playlists, .stats].contains(section) {
+            } else if let library, library.mediaType == "podcast", ![.home, .items, .latestEpisodes, .downloads, .playlists, .stats, .libraryStats, .metadata].contains(section) {
                 section = .items
             }
         }

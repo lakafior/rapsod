@@ -230,6 +230,49 @@ final class LibrarySettingsModel {
         }
     }
 
+    // MARK: Foldery (etap 9i)
+
+    /// Dodaje folder do biblioteki i zleca skan. Folder nie może nakładać się na inną bibliotekę.
+    func addFolder(_ folder: URL) async {
+        let folder = folder.libraryFolderURL
+        guard let current = loaded?.folders else { return }
+        await status.run("Dodawanie folderu…", failure: "Nie udało się dodać folderu") {
+            if let other = account.libraryOverlapping(folder) {
+                throw ItemManager.ManageError.invalid(other.id == libraryID
+                    ? "Ten folder (albo nadrzędny) już należy do tej biblioteki."
+                    : "Ten folder nakłada się na bibliotekę „\(other.name)”.")
+            }
+            // Pierwszy odczyt robi aplikacja — ewentualna prośba o dostęp pojawi się teraz (jak przy nowej bibliotece).
+            _ = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            let folders = current.map { AudiobookshelfClient.FolderEntry(id: $0.id, fullPath: $0.fullPath) } + [.init(id: nil, fullPath: folder.path)]
+            try await account.withAdminToken { try await $0.updateLibraryFolders(id: libraryID, folders: folders, token: $1) }
+            try await account.withAdminToken { try await $0.scanLibrary(id: libraryID, token: $1) }
+            try await reloadFolders()
+            status.notice = "Dodano folder; serwer skanuje bibliotekę."
+        }
+    }
+
+    /// Usuwa folder z biblioteki: jego pozycje znikają z bazy (z postępem słuchania), pliki zostają.
+    func removeFolder(_ folder: AudiobookshelfClient.Library.Folder) async {
+        guard let current = loaded?.folders else { return }
+        await status.run("Usuwanie folderu…", failure: "Nie udało się usunąć folderu") {
+            guard current.count > 1 else {
+                throw ItemManager.ManageError.invalid("Biblioteka musi mieć co najmniej jeden folder — usuń całą bibliotekę.")
+            }
+            let folders = current.filter { $0.id != folder.id }.map { AudiobookshelfClient.FolderEntry(id: $0.id, fullPath: $0.fullPath) }
+            try await account.withAdminToken { try await $0.updateLibraryFolders(id: libraryID, folders: folders, token: $1) }
+            try await reloadFolders()
+            status.notice = "Folder usunięty z biblioteki. Pliki zostały na dysku."
+        }
+    }
+
+    private func reloadFolders() async throws {
+        let details = try await account.withAdminToken { try await $0.libraryDetails(id: libraryID, token: $1) }
+        // Tylko foldery — reszta formularza mogła być już zmieniona i czeka na „Zapisz”.
+        loaded = details
+        try? await account.refreshLibraries()
+    }
+
     func removeMetadataFiles(ext: String) async {
         await status.run("Usuwanie plików metadata.\(ext)…", failure: "Nie udało się usunąć plików metadanych") {
             let result = try await account.withAdminToken { try await $0.removeMetadataFiles(libraryID: libraryID, ext: ext, token: $1) }

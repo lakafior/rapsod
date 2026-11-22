@@ -16,18 +16,13 @@ struct ServerMenu: View {
 
         MenuPlayerControls(player: player)
 
+        // Codzienna praca jest natywna (okno „Biblioteka” i „Ustawienia aplikacji”); web UI zostaje
+        // jako wyjście awaryjne pod Option (etap 9i): przy bibliotece — web UI słuchacza, przy
+        // ustawieniach — zarządzanie serwerem na koncie root.
         Button("Otwórz bibliotekę") {
             openWindow.bringToFront(id: LibraryWindow.windowID)
         }
         .keyboardShortcut("o")
-
-        // Przeglądanie i słuchanie są w oknie „Biblioteka”; web UI słuchacza zostaje jako wyjście
-        // awaryjne pod Option (i w menu aplikacji), zarządzanie na koncie root — bez zmian.
-        Button("Zarządzanie serwerem…") {
-            webMode.isManagement = true
-            openWindow.bringToFront(id: WebUIWindow.windowID)
-        }
-        .disabled(account.state != .ready)
         .modifierKeyAlternate(.option) {
             Button("\(WebUIWindow.title)…") {
                 webMode.isManagement = false
@@ -39,6 +34,13 @@ struct ServerMenu: View {
             openWindow.openSettings(navigation: settings)
         }
         .keyboardShortcut(",")
+        .modifierKeyAlternate(.option) {
+            Button("Zarządzanie serwerem (web UI)…") {
+                webMode.isManagement = true
+                openWindow.bringToFront(id: WebUIWindow.windowID)
+            }
+            .disabled(account.state != .ready)
+        }
 
         Divider()
 

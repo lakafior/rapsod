@@ -125,6 +125,8 @@ struct LibraryWindow: View {
             if activeState == .key { Task { await listening.refreshMe() } }
         }
         .onChange(of: listening.libraries) { browser.ensureLibrary() }
+        // Kolejność, nazwy i foldery bibliotek zmieniane w ustawieniach (etap 9i).
+        .onChange(of: account.libraries) { Task { await listening.refresh() } }
         .task(id: browser.libraryID) { await browser.loadPlaylists() }
         // `presenting:` przekazuje pozycję do akcji — zamknięcie alertu zeruje `newPlaylistEntry` wcześniej.
         .alert("Nowa playlista", isPresented: Binding(get: { browser.newPlaylistEntry != nil }, set: { if !$0 { browser.newPlaylistEntry = nil } }),
@@ -160,6 +162,8 @@ struct LibraryWindow: View {
                 case .latestEpisodes: LatestEpisodesView(browser: browser, libraryID: libraryID)
                 case .downloads: DownloadsView(browser: browser, libraryID: libraryID)
                 case .stats: StatsView(listening: listening)
+                case .libraryStats: LibraryStatsView(browser: browser, libraryID: libraryID)
+                case .metadata: MetadataValuesSection(browser: browser, libraryID: libraryID)
                 }
             }
         } else if listening.libraries.isEmpty, !listening.isRefreshing {
@@ -238,6 +242,10 @@ private struct LibrarySidebar: View {
                     row("Kolekcje", "rectangle.stack", .collections)
                 }
                 row("Playlisty", "music.note.list", .playlists)
+                row("Statystyki biblioteki", "chart.pie", .libraryStats)
+                if browser.manager.isAvailable {
+                    row("Tagi i gatunki", "tag", .metadata)
+                }
             }
             Section("Twoje słuchanie") {
                 row("Statystyki", "chart.bar", .stats)
