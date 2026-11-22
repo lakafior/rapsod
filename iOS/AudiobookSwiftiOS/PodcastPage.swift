@@ -282,6 +282,7 @@ struct PodcastPage: View {
 
     // MARK: Nagłówek
 
+    @ViewBuilder
     private var header: some View {
         Section {
             VStack(spacing: 12) {
@@ -308,6 +309,7 @@ struct PodcastPage: View {
                         play(latest)
                     } label: {
                         Label(latest.server == nil ? "Najnowszy odcinek (ze strumienia)" : "Najnowszy odcinek", systemImage: "play.fill")
+                            .foregroundStyle(.white)
                             .font(.headline)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
@@ -321,7 +323,9 @@ struct PodcastPage: View {
             }
             .frame(maxWidth: .infinity)
             .listRowBackground(Color.clear)
-            if let text = HTMLText.plain(item.media.metadata.description) ?? page.feed?.summary, !text.isEmpty {
+        }
+        if let text = HTMLText.plain(item.media.metadata.description) ?? page.feed?.summary, !text.isEmpty {
+            Section {
                 ExpandableText(text: text, lineLimit: 4)
             }
         }

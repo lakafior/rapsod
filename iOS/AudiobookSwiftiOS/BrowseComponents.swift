@@ -82,6 +82,7 @@ struct BookCard: View {
         NavigationLink(value: Route.item(item.id)) {
             VStack(alignment: .leading, spacing: 4) {
                 ItemCover(itemID: item.id, session: session)
+                    .layoutPriority(1)
                     .overlay(alignment: .bottom) {
                         CardProgress(entry: session.library.progress.entry(item.id))
                     }
