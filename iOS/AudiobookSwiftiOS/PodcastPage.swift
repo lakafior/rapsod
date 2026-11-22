@@ -241,6 +241,13 @@ struct PodcastPage: View {
             }
         }
         .environment(\.editMode, $editMode)
+        .scrollContentBackground(.hidden)
+        .background(alignment: .top) {
+            ArtworkBackdrop(image: cover, base: Color(.systemGroupedBackground))
+                .frame(height: 560)
+                .ignoresSafeArea(edges: .top)
+        }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
@@ -277,10 +284,11 @@ struct PodcastPage: View {
 
     private var header: some View {
         Section {
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 CoverImage(image: cover, isPodcast: true)
-                    .frame(width: min(coverSize, 300), height: min(coverSize, 300))
+                    .frame(width: min(coverSize, 280))
                     .accessibilityHidden(true)
+                    .padding(.top, 8)
                     .task(id: item.id) {
                         cover = await session.cover(itemID: item.id, path: nil, size: 300, scale: displayScale)
                     }
@@ -293,6 +301,19 @@ struct PodcastPage: View {
                 }
                 if let combined = session.library.combined, combined.hasSeveralPodcastLibraries, let name = combined.libraryName(item.libraryId) {
                     LibraryBadge(name: name)
+                }
+                if let latest = page.rows.first {
+                    // Najnowszy odcinek jednym dotknięciem, jak w aplikacjach podcastowych.
+                    Button {
+                        play(latest)
+                    } label: {
+                        Label(latest.server == nil ? "Najnowszy odcinek (ze strumienia)" : "Najnowszy odcinek", systemImage: "play.fill")
+                            .font(.headline)
+                            .frame(maxWidth: 320)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
+                    .accessibilityHint(Text(latest.title))
                 }
             }
             .frame(maxWidth: .infinity)

@@ -50,6 +50,8 @@ enum DownloadTarget {
 struct DownloadButton: View {
     let target: DownloadTarget
     let session: ServerSession
+    /// Sama ikona w okrągłym przycisku (obok „Odtwarzaj” na stronie pozycji).
+    var compact = false
     @State private var isStarting = false
     @State private var error: String?
     @State private var confirmsRemoval = false
@@ -81,12 +83,13 @@ struct DownloadButton: View {
                 Button { manager.pause(key: key) } label: {
                     HStack(spacing: 8) {
                         DownloadBadge(status: status)
-                        Text("Wstrzymaj")
+                        if !compact { Text("Wstrzymaj") }
                     }
                 }
+                .accessibilityLabel(Text("Wstrzymaj pobieranie"))
             }
         }
-        .buttonStyle(.bordered)
+        .modifier(DownloadButtonStyle(compact: compact))
         .accessibilityHint(status.text)
         .confirmationDialog("Usunąć z telefonu?", isPresented: $confirmsRemoval, titleVisibility: .visible) {
             Button("Usuń pobrane pliki", role: .destructive) { manager.remove(key: key) }
@@ -99,7 +102,7 @@ struct DownloadButton: View {
             Text(error ?? "")
         }
         // Podpis ze stanem pod przyciskiem: procent, oczekiwanie na sieć, błąd.
-        if status.isActive {
+        if status.isActive, !compact {
             Text(status.text)
                 .font(.footnote)
                 .foregroundStyle(status.isFailure ? .red : .secondary)
@@ -117,6 +120,22 @@ struct DownloadButton: View {
             try await target.start(in: session)
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+}
+
+private struct DownloadButtonStyle: ViewModifier {
+    let compact: Bool
+
+    func body(content: Content) -> some View {
+        if compact {
+            content
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+        } else {
+            content.buttonStyle(.bordered)
         }
     }
 }
