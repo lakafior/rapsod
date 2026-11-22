@@ -94,6 +94,8 @@ extension AudiobookshelfClient {
                 public let path: String?
                 public let size: Double?
             }
+            /// Identyfikator pliku na serwerze (`/api/items/:id/file/:ino`, etap 10f).
+            public var ino: String? = nil
             public let duration: Double?
             public let metadata: FileMetadata?
         }
@@ -399,5 +401,59 @@ extension AudiobookshelfClient {
         } else {
             _ = try await send("POST", "api/session/\(id)/close", token: token)
         }
+    }
+
+    // MARK: Sesje lokalne (etap 10f)
+
+    /// Wynik wysłania jednej sesji lokalnej.
+    public struct LocalSessionResult: Decodable, Sendable, Equatable {
+        public let id: String
+        public let success: Bool
+        /// Serwer przyjął pozycję sesji; `false` — miał nowszy zapis (z innego urządzenia).
+        public let progressSynced: Bool?
+        public let error: String?
+
+        public init(id: String, success: Bool, progressSynced: Bool?, error: String?) {
+            self.id = id
+            self.success = success
+            self.progressSynced = progressSynced
+            self.error = error
+        }
+    }
+
+    /// Słuchanie bez sesji serwera (pliki na urządzeniu): `POST /api/session/local-all`.
+    /// Serwer dopisuje sesję do statystyk (albo aktualizuje tę o tym samym id) i zapisuje jej
+    /// pozycję tylko wtedy, gdy jego postęp nie jest nowszy niż `updatedAt` sesji
+    /// (`PlaybackSessionManager.syncLocalSession`). Znaczniki czasu w milisekundach.
+    public func syncLocalSessions(_ sessions: [LocalListeningSession], device: DeviceInfo, token: String) async throws -> [LocalSessionResult] {
+        struct Session: Encodable {
+            let id: String
+            let libraryId: String?
+            let libraryItemId: String
+            let episodeId: String?
+            let mediaType: String
+            let displayTitle: String
+            let displayAuthor: String?
+            let duration: Double
+            let playMethod = 3
+            let mediaPlayer = "AVPlayer"
+            let timeListening: Double
+            let startTime: Double
+            let currentTime: Double
+            let startedAt: Double
+            let updatedAt: Double
+        }
+        struct Body: Encodable {
+            let sessions: [Session]
+            let deviceInfo: DeviceInfo
+        }
+        struct Response: Decodable { let results: [LocalSessionResult] }
+        let body = Body(sessions: sessions.map {
+            Session(id: $0.id, libraryId: $0.libraryID, libraryItemId: $0.itemID, episodeId: $0.episodeID, mediaType: $0.mediaType,
+                    displayTitle: $0.displayTitle, displayAuthor: $0.displayAuthor, duration: $0.duration,
+                    timeListening: $0.timeListening.rounded(), startTime: $0.startTime, currentTime: $0.currentTime,
+                    startedAt: ($0.startedAt.timeIntervalSince1970 * 1000).rounded(), updatedAt: ($0.updatedAt.timeIntervalSince1970 * 1000).rounded())
+        }, deviceInfo: device)
+        return try decode(Response.self, from: await send("POST", "api/session/local-all", body: body, token: token)).results
     }
 }

@@ -64,7 +64,8 @@ struct SearchView: View {
                                 ForEach(podcastResults.episodes, id: \.recentEpisode?.id) { item in
                                     if let episode = item.recentEpisode {
                                         CompactEpisodeRow(itemID: item.id, title: episode.title ?? "Odcinek", podcastTitle: item.title,
-                                                          keys: [PlaybackTimeline.key(item.id, episode.id)], localOnly: false, session: session, playback: model.playback) {
+                                                          keys: [PlaybackTimeline.key(item.id, episode.id)], localOnly: false, session: session, playback: model.playback,
+                                                          download: .episode(episode, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId)) {
                                             Task { await model.playback.play(itemID: item.id, episodeID: episode.id) }
                                         }
                                     }

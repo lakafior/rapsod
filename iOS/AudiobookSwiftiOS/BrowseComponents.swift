@@ -78,13 +78,22 @@ struct BookCard: View {
     let session: ServerSession
     /// Nazwa biblioteki — tylko gdy bibliotek książek jest więcej niż jedna.
     let libraryName: String?
+    @State private var downloadError: String?
 
     var body: some View {
+        let download = session.downloads.manager.entry(itemID: item.id, episodeID: nil)
         NavigationLink(value: Route.item(item.id)) {
             VStack(alignment: .leading, spacing: 4) {
                 ItemCover(itemID: item.id, session: session)
                     .overlay(alignment: .bottom) {
                         CardProgress(entry: session.library.progress.entry(item.id))
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        DownloadEntryBadge(entry: download)
+                            .padding(4)
+                            .background(.regularMaterial, in: .circle)
+                            .padding(4)
+                            .opacity(download.status == .notDownloaded ? 0 : 1)
                     }
                 Text(item.title)
                     .font(.subheadline.weight(.medium))
@@ -105,9 +114,19 @@ struct BookCard: View {
             // Jedna etykieta na całej zawartości — odnośnik jest wtedy jednym przyciskiem dla VoiceOver.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(BookAccessibility.label(item: item, libraryName: libraryName))
-            .accessibilityValue(ProgressText(entry: session.library.progress.entry(item.id)))
+            .accessibilityValue(Text("\(ProgressText(entry: session.library.progress.entry(item.id)))\(download.status == .notDownloaded ? "" : ", " + download.status.text)"))
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if !item.isPodcast {
+                DownloadMenuItems(target: .book(itemID: item.id), session: session) { downloadError = $0 }
+            }
+        }
+        .alert("Nie udało się pobrać", isPresented: Binding(get: { downloadError != nil }, set: { if !$0 { downloadError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(downloadError ?? "")
+        }
     }
 }
 
@@ -227,4 +246,5 @@ enum PolishCount {
     static func books(_ n: Int) -> String { form(n, one: "książka", few: "książki", many: "książek") }
     static func series(_ n: Int) -> String { form(n, one: "seria", few: "serie", many: "serii") }
     static func episodes(_ n: Int) -> String { form(n, one: "odcinek", few: "odcinki", many: "odcinków") }
+    static func positions(_ n: Int) -> String { form(n, one: "pozycja", few: "pozycje", many: "pozycji") }
 }

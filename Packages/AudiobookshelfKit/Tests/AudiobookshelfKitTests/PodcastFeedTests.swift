@@ -305,15 +305,15 @@ private let standardFeed = """
     @Test func survivesRestart() throws {
         let file = FileManager.default.temporaryDirectory.appending(path: "local-episodes-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
-        let store = LocalEpisodeStore(fileURL: file)
+        let store = ProgressJournal(fileURL: file)
         store.save(record())
         store.save(LocalEpisodeRecord(itemID: "li", feedKey: "u:https://cdn/b.mp3", title: "B", podcastTitle: nil, guid: nil, enclosureURL: "https://cdn/b.mp3", published: nil, duration: 10, currentTime: 10, isFinished: true, updatedAt: .now))
-        let reopened = LocalEpisodeStore(fileURL: file)
+        let reopened = ProgressJournal(fileURL: file)
         #expect(reopened.records.count == 2)
         #expect(reopened.record(itemID: "li", feedKey: "g:ep")?.currentTime == 120)
         #expect(reopened.inProgress.map(\.feedKey) == ["g:ep"])
         reopened.remove(itemID: "li", feedKey: "g:ep")
-        #expect(LocalEpisodeStore(fileURL: file).records.count == 1)
+        #expect(ProgressJournal(fileURL: file).records.count == 1)
     }
 
     @Test func handoverDecision() {

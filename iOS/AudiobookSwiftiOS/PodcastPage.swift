@@ -73,13 +73,13 @@ final class PodcastPageModel {
 
     var feedURL: String? { item.media.metadata.feedUrl.flatMap { $0.isEmpty ? nil : $0 } }
 
-    func update(item: Client.ItemDetail, local: LocalEpisodeStore) {
+    func update(item: Client.ItemDetail, local: ProgressJournal) {
         self.item = item
         rebuild(local: local)
     }
 
     /// Kanał z pamięci od razu, potem od wydawcy (`force` — z pominięciem świeżości pamięci).
-    func loadFeed(_ loader: PodcastFeedLoader, local: LocalEpisodeStore, force: Bool) async {
+    func loadFeed(_ loader: PodcastFeedLoader, local: ProgressJournal, force: Bool) async {
         guard let url = feedURL else {
             feedError = PodcastFeedLoader.LoadError.invalidURL.localizedDescription
             rebuild(local: local)
@@ -106,7 +106,7 @@ final class PodcastPageModel {
     }
 
     /// Złączenie odcinków serwera i kanału (`EpisodeMatching`), od najnowszych.
-    func rebuild(local: LocalEpisodeStore) {
+    func rebuild(local: ProgressJournal) {
         let itemID = item.id
         let server = item.media.episodes?.elements ?? []
         let feedEpisodes = feed?.episodes ?? []
@@ -226,7 +226,7 @@ struct PodcastPage: View {
                 }
                 feedStatus
                 ForEach(page.visibleRows) { row in
-                    EpisodeRowView(row: row, model: model, session: session,
+                    EpisodeRowView(row: row, model: model, session: session, podcastTitle: item.title, libraryID: item.libraryId,
                                    play: { play(row) }, order: { Task { await order([row]) } }, info: { detail = row })
                         .selectionDisabled(!row.canOrder || !PodcastStore.canRequest(podcasts.downloadState(itemID: item.id, identity: row.identity, feedKey: row.feedKey)))
                 }
@@ -255,7 +255,7 @@ struct PodcastPage: View {
             page.rebuild(local: podcasts.localEpisodes)
         }
         .sheet(item: $detail) { row in
-            EpisodeDetailSheet(row: row, podcastTitle: item.title)
+            EpisodeDetailSheet(row: row, podcastTitle: item.title, libraryID: item.libraryId, session: session)
         }
         .alert("Nie udało się odtworzyć", isPresented: Binding(get: { streamFailure != nil }, set: { if !$0 { streamFailure = nil } }), presenting: streamFailure) { failure in
             // Plik zniknął u wydawcy — serwer też go nie pobierze.
@@ -430,13 +430,21 @@ private struct EpisodeRowView: View {
     let row: PodcastEpisodeRow
     let model: AppModel
     let session: ServerSession
+    let podcastTitle: String
+    let libraryID: String?
     let play: () -> Void
     let order: () -> Void
     let info: () -> Void
     @Environment(\.editMode) private var editMode
     @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var downloadError: String?
 
     private var podcasts: PodcastStore { session.library.podcasts }
+
+    /// „Pobierz na telefon” jest niezależne od „Pobierz na serwer”: dotyczy odcinków już na serwerze.
+    private var phoneDownload: DownloadTarget? {
+        row.server.map { .episode($0, itemID: row.itemID, podcastTitle: podcastTitle, libraryID: libraryID) }
+    }
 
     var body: some View {
         let download = podcasts.downloadState(itemID: row.itemID, identity: row.identity, feedKey: row.feedKey)
@@ -464,13 +472,31 @@ private struct EpisodeRowView: View {
         .contextMenu {
             Button("Opis odcinka", systemImage: "info.circle", action: info)
             if row.canOrder, PodcastStore.canRequest(download) {
-                Button("Pobierz na serwer", systemImage: "arrow.down.circle", action: order)
+                Button("Pobierz na serwer", systemImage: "externaldrive.badge.plus", action: order)
                     .disabled(!podcasts.permission.canOrder)
             }
+            if let phoneDownload {
+                DownloadMenuItems(target: phoneDownload, session: session) { downloadError = $0 }
+            }
+        }
+        .alert("Nie udało się pobrać", isPresented: Binding(get: { downloadError != nil }, set: { if !$0 { downloadError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(downloadError ?? "")
         }
         .swipeActions(edge: .trailing) {
             if row.canOrder, PodcastStore.canRequest(download), podcasts.permission.canOrder {
                 Button("Pobierz na serwer", systemImage: "arrow.down.circle", action: order).tint(.accentColor)
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if let phoneDownload, session.downloads.manager.entry(itemID: row.itemID, episodeID: phoneDownload.episodeID).status == .notDownloaded {
+                Button("Pobierz na telefon", systemImage: "arrow.down.circle") {
+                    Task {
+                        do { try await phoneDownload.start(in: session) } catch { downloadError = error.localizedDescription }
+                    }
+                }
+                .tint(.green)
             }
         }
         .accessibilityElement(children: .combine)
@@ -489,7 +515,12 @@ private struct EpisodeRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(lineLimit)
             meta
-            EpisodeStateLabel(row: row, download: download)
+            HStack(spacing: 6) {
+                EpisodeStateLabel(row: row, download: download)
+                if let server = row.server {
+                    PhoneDownloadLabel(entry: session.downloads.manager.entry(itemID: row.itemID, episodeID: server.id))
+                }
+            }
             EpisodeProgressLine(row: row, session: session)
         }
     }
@@ -500,6 +531,25 @@ private struct EpisodeRowView: View {
         return Text(parts.joined(separator: " · "))
             .font(.footnote)
             .foregroundStyle(.secondary)
+    }
+}
+
+/// Stan pobrania na telefon przy odcinku (obserwuje tylko wpis tego odcinka). Pusty, gdy nie pobrano.
+private struct PhoneDownloadLabel: View {
+    let entry: DownloadManager.Entry
+
+    var body: some View {
+        if entry.status != .notDownloaded {
+            HStack(spacing: 4) {
+                DownloadBadge(status: entry.status).accessibilityHidden(true)
+                Text(entry.status == .downloaded ? "Na telefonie" : entry.status.text)
+                    .lineLimit(1)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(entry.status.text)
+        }
     }
 }
 
@@ -556,7 +606,7 @@ private struct ServerProgressLine: View {
 }
 
 private struct LocalProgressLine: View {
-    let entry: LocalEpisodeStore.Entry
+    let entry: ProgressJournal.Entry
 
     var body: some View {
         if let record = entry.value, record.isFinished || record.currentTime > 1 {
@@ -629,6 +679,8 @@ private struct PlayEpisodeButton: View {
 private struct EpisodeDetailSheet: View {
     let row: PodcastEpisodeRow
     let podcastTitle: String
+    let libraryID: String?
+    let session: ServerSession
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -639,6 +691,12 @@ private struct EpisodeDetailSheet: View {
                     Text(podcastTitle).foregroundStyle(.secondary)
                     if let published = row.published {
                         Text(published, format: .dateTime.day().month(.wide).year()).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    // Odcinek na serwerze: pobranie na telefon (stan, procent, wstrzymanie, usunięcie).
+                    if let server = row.server {
+                        VStack(alignment: .leading, spacing: 4) {
+                            DownloadButton(target: .episode(server, itemID: row.itemID, podcastTitle: podcastTitle, libraryID: libraryID), session: session)
+                        }
                     }
                     if let summary = row.summary, !summary.isEmpty {
                         Text(summary).textSelection(.enabled)

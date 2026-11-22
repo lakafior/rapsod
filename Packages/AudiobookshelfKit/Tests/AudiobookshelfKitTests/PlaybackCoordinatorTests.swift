@@ -115,11 +115,11 @@ extension Stubbed {
 @Suite @MainActor struct ExternalEpisodeTests {
     init() { StubServer.reset() }
 
-    private func makeCoordinator(_ store: LocalEpisodeStore) -> PlaybackCoordinator {
+    private func makeCoordinator(_ store: ProgressJournal) -> PlaybackCoordinator {
         let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
         let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
         let coordinator = PlaybackCoordinator(device: device) { auth }
-        coordinator.localEpisodes = store
+        coordinator.journal = store
         coordinator.streamProbe = { url in (url, 600) }
         return coordinator
     }
@@ -134,7 +134,7 @@ extension Stubbed {
     }
 
     @Test func progressStaysOnPhone() async throws {
-        let store = LocalEpisodeStore(fileURL: nil)
+        let store = ProgressJournal(fileURL: nil)
         let coordinator = makeCoordinator(store)
         await coordinator.play(external: episode)
         #expect(coordinator.player.book?.key == "li/feed:g:ep1")
@@ -157,7 +157,7 @@ extension Stubbed {
 
     @Test func switchesTargetWhenServerHasEpisode() async throws {
         StubServer.on("PATCH api/me/progress/li/se1", .json("{}"))
-        let store = LocalEpisodeStore(fileURL: nil)
+        let store = ProgressJournal(fileURL: nil)
         let coordinator = makeCoordinator(store)
         await coordinator.play(external: episode)
         coordinator.player.seek(to: 321)
@@ -179,7 +179,7 @@ extension Stubbed {
 
     @Test func mapsPositionToShorterServerFile() async throws {
         StubServer.on("PATCH api/me/progress/li/se1", .json("{}"))
-        let store = LocalEpisodeStore(fileURL: nil)
+        let store = ProgressJournal(fileURL: nil)
         let coordinator = makeCoordinator(store)
         await coordinator.play(external: episode)
         coordinator.player.seek(to: 300)
@@ -193,7 +193,7 @@ extension Stubbed {
     }
 
     @Test func finishingLocallyMarksRecordFinished() async throws {
-        let store = LocalEpisodeStore(fileURL: nil)
+        let store = ProgressJournal(fileURL: nil)
         let coordinator = makeCoordinator(store)
         await coordinator.play(external: episode)
         await coordinator.markFinished()

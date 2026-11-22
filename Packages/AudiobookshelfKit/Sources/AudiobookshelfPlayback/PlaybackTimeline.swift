@@ -271,37 +271,3 @@ public enum PlaybackTimeline {
         max(0, position - (position > 10 ? 3 : 0))
     }
 }
-
-/// Pozycja, której nie udało się wysłać (brak sieci, serwer wyłączony) — czeka w pamięci.
-public struct PendingPosition: Sendable, Equatable {
-    public let itemID: String
-    public let episodeID: String?
-    public let currentTime: Double
-    public let duration: Double
-    public let savedAt: Date
-
-    public var key: String { PlaybackTimeline.key(itemID, episodeID) }
-
-    public init(itemID: String, episodeID: String?, currentTime: Double, duration: Double, savedAt: Date) {
-        self.itemID = itemID
-        self.episodeID = episodeID
-        self.currentTime = currentTime
-        self.duration = duration
-        self.savedAt = savedAt
-    }
-
-    /// Czy wysłać ją na serwer: tylko gdy serwer nie ma nowszego zapisu (np. z Maca).
-    /// `serverLastUpdate` w milisekundach, `nil` = serwer nie zna postępu tej pozycji.
-    public func isNewer(thanServer serverLastUpdate: Double?) -> Bool {
-        guard let serverLastUpdate else { return true }
-        return serverLastUpdate / 1000 < savedAt.timeIntervalSince1970
-    }
-
-    /// Skąd zacząć: z tej pozycji, jeśli jest nowsza niż serwer, inaczej z serwera.
-    public static func resolveStart(server: AudiobookshelfClient.MediaProgress?, sessionTime: Double, pending: PendingPosition?) -> (time: Double, local: Bool) {
-        if let pending, pending.isNewer(thanServer: server?.lastUpdate) {
-            return (pending.currentTime, true)
-        }
-        return (sessionTime, false)
-    }
-}

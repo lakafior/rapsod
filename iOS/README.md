@@ -34,3 +34,10 @@ tylko w kanale, pobierany, w kolejce. Odcinek spoza serwera gra od razu ze strum
 a serwer może go w tym czasie pobrać (wymaga typu administratora i „Edycji pozycji” dla konta
 telefonu); postęp takiego odcinka zostaje na telefonie i przechodzi na serwer po pobraniu.
 Szczegóły w głównym `README.md` („Podcasty na iOS”).
+
+Etap 10f: pobieranie książek i odcinków z serwera na telefon (sesja tła `URLSession`, domyślnie
+tylko w sieci domowej przez Wi-Fi; tunel do włączenia w Ustawieniach) i słuchanie bez sieci —
+pobrane grają z plików, a bez połączenia Start i zakładki pokazują to, co jest na telefonie.
+Postęp zapisuje się w trwałym dzienniku na telefonie i po powrocie połączenia idzie na serwer
+(sesje lokalne do statystyk; nowszy zapis z innego urządzenia wygrywa). Szczegóły w głównym
+`README.md` („Pobieranie na telefon i słuchanie bez sieci”).

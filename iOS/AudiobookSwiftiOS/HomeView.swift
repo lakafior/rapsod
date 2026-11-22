@@ -23,10 +23,13 @@ struct HomeView: View {
         NavigationStack {
             Group {
                 switch session.library.state {
+                case .loading where model.isOffline:
+                    // Bez sieci nie czekamy na limit czasu zapytań — od razu to, co jest na telefonie.
+                    OfflineFallback(model: model, session: session, message: nil) { Task { await model.reconnect() } }
                 case .loading:
                     ProgressView()
                 case .failed(let message):
-                    LoadFailureView(message: message) { Task { await session.library.load() } }
+                    OfflineFallback(model: model, session: session, message: message) { Task { await session.library.load() } }
                 case .ready(let combined):
                     content(combined)
                 }
@@ -45,6 +48,7 @@ struct HomeView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal)
                 }
+                DownloadsLink(model: model, session: session)
                 if let shelves {
                     FailureNotice(failures: shelves.failures).padding(.horizontal)
                     Shelf(title: "Słuchaj dalej", items: shelves.continueListening, combined: combined, session: session)
@@ -65,7 +69,7 @@ struct HomeView: View {
                                        description: Text(combined.libraries.isEmpty ? "Na serwerze nie ma bibliotek książek dostępnych dla tego konta." : "W bibliotekach nie ma jeszcze książek."))
             } else if shelves == nil {
                 if let error {
-                    LoadFailureView(message: error) { Task { await load(combined) } }
+                    OfflineFallback(model: model, session: session, message: error) { Task { await load(combined) } }
                 } else {
                     ProgressView()
                 }
@@ -138,6 +142,37 @@ private struct Shelf: View {
                 }
                 .scrollIndicators(.hidden)
             }
+        }
+    }
+}
+
+/// Wejście do „Pobranych” na Starcie — tylko gdy coś jest na telefonie albo się pobiera.
+private struct DownloadsLink: View {
+    let model: AppModel
+    let session: ServerSession
+
+    var body: some View {
+        let items = session.downloads.manager.items(scope: session.scope)
+        if !items.isEmpty {
+            let active = items.count { !$0.isComplete }
+            NavigationLink {
+                DownloadsScreen(model: model, session: session)
+            } label: {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pobrane na telefon").font(.headline)
+                        Text(active > 0 ? "\(PolishCount.positions(items.count - active)) gotowe, pobieranie: \(active)" : PolishCount.positions(items.count))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "arrow.down.circle.fill").foregroundStyle(.tint)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal)
         }
     }
 }

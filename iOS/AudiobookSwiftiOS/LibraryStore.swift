@@ -30,14 +30,18 @@ final class LibraryStore {
     /// Podcasty: uprawnienia, kolejka pobierania serwera, przekazanie lokalnego postępu (etap 10e).
     @ObservationIgnored let podcasts: PodcastStore
     @ObservationIgnored private let auth: ListeningAuth
+    @ObservationIgnored private let journal: ProgressJournal
+    @ObservationIgnored private let downloads: DownloadsController
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var itemsChange: Task<Void, Never>?
 
-    init(auth: ListeningAuth, playback: PlaybackCoordinator, localEpisodes: LocalEpisodeStore, feeds: PodcastFeedLoader) {
+    init(auth: ListeningAuth, playback: PlaybackCoordinator, journal: ProgressJournal, feeds: PodcastFeedLoader, downloads: DownloadsController) {
         self.auth = auth
+        self.journal = journal
+        self.downloads = downloads
         let progress = ProgressStore()
         self.progress = progress
-        podcasts = PodcastStore(auth: auth, playback: playback, progress: progress, localEpisodes: localEpisodes, feeds: feeds)
+        podcasts = PodcastStore(auth: auth, playback: playback, progress: progress, localEpisodes: journal, feeds: feeds)
         podcasts.onProgressSent = { [weak self] in await self?.refreshProgress() }
     }
 
@@ -87,7 +91,16 @@ final class LibraryStore {
         guard let me: AudiobookshelfClient.MeState = try? await auth.perform({ try await $0.me(token: $1) }) else { return }
         progress.replaceAll(me.mediaProgress.elements)
         podcasts.setAccount(me)
+        rememberDownloadedProgress(me.mediaProgress.elements)
         progressRevision += 1
+    }
+
+    /// Postęp pobranych pozycji trafia do dziennika — bez sieci start i paski postępu biorą go stamtąd.
+    private func rememberDownloadedProgress(_ list: [AudiobookshelfClient.MediaProgress]) {
+        for entry in list {
+            guard let itemID = entry.libraryItemId, downloads.manager.item(itemID: itemID, episodeID: entry.episodeId) != nil else { continue }
+            journal.recordServer(entry)
+        }
     }
 
     static func message(_ error: any Error) -> String {
@@ -119,9 +132,11 @@ final class LibraryStore {
         switch event {
         case .progress(let entry):
             progress.update(entry)
+            rememberDownloadedProgress([entry])
         case .user(let me):
             progress.replaceAll(me.mediaProgress.elements)
             podcasts.setAccount(me)
+            rememberDownloadedProgress(me.mediaProgress.elements)
         case .itemsChanged(let libraries, let items):
             if let combined, libraries.contains(where: { id in combined.podcastLibraries.contains { $0.id == id } }) {
                 for item in items { podcasts.itemChanged(item) }
