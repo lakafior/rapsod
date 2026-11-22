@@ -46,6 +46,8 @@ final class ListeningController {
     private(set) var libraryRevision: [String: Int] = [:]
     /// Kolejka pobierania odcinków podcastów (zdarzenia serwera przy otwartym oknie).
     let episodeDownloads = EpisodeDownloads()
+    /// Synchronizacja e-booka z nagraniem (etap 11a) — żyje tu, nie w oknie, żeby przetrwała ⌘Q.
+    let textSync = TextSyncController()
     /// Rośnie po zmianie okładki pozycji — `AsyncCover` wczytuje ją wtedy od nowa.
     private(set) var coverRevision: [String: Int] = [:]
     /// Kolejka playlisty: po ukończeniu bieżącej pozycji gra następna.
