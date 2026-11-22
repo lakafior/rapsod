@@ -169,9 +169,11 @@ public final class PlaybackCoordinator {
 
     /// Połączenie z serwerem wróciło albo zmienił się jego adres.
     public func connectionChanged(baseURLChanged: Bool) async {
-        if baseURLChanged, let book = player.book, !player.isPlaying,
+        if baseURLChanged, let book = player.book, !player.isPlaying || player.isStalled,
            book.tracks.contains(where: { if case .file = $0.source { false } else { true } }) {
-            // Zatrzymany element trzyma stary adres — przy wznowieniu zbudujemy go od nowa.
+            // Zatrzymany albo czekający na dane element trzyma stary adres — budujemy go od nowa
+            // (razem z dołożonym następnym plikiem). Grający dalej zostaje: przejście na sieć
+            // lokalną w domu nie przerywa słuchania, a nieudany plik i tak odbuduje `remoteFailed`.
             player.reload(fresh: false)
         }
         await flushPending()

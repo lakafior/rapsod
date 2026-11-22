@@ -226,7 +226,17 @@ struct PlayerScreen: View {
     }
 
     private var options: some View {
-        HStack(spacing: 24) {
+        // Przy dużym tekście (Dynamic Type) w jednym wierszu się nie mieszczą — wtedy pod sobą.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 24) { optionButtons }
+            VStack(spacing: 12) { optionButtons }
+        }
+        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private var optionButtons: some View {
+        Group {
             Menu {
                 Picker("Prędkość", selection: Binding(get: { player.rate }, set: { player.rate = $0 })) {
                     ForEach(AudiobookPlayer.rates, id: \.self) { rate in
@@ -244,7 +254,6 @@ struct PlayerScreen: View {
                 Button("Rozdziały", systemImage: "list.bullet") { showsChapters = true }
             }
         }
-        .font(.subheadline)
     }
 
     static func rateLabel(_ rate: Float) -> String {

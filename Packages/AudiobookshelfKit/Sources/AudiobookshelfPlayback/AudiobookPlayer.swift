@@ -44,6 +44,9 @@ public final class AudiobookPlayer {
     public private(set) var currentChapterID: Int?
     public private(set) var trackIndex = 0
     public private(set) var isPlaying = false
+    /// Słuchacz chce, żeby grało: ustawiane przy „Odtwarzaj”, czyszczone tylko przez pauzę,
+    /// zamknięcie i koniec książki — nie przez system (przerwanie, brak danych z sieci).
+    public private(set) var wantsToPlay = false
     public private(set) var isLoading = false
     public var error: String?
 
@@ -124,6 +127,11 @@ public final class AudiobookPlayer {
 
     public var duration: Double { book?.duration ?? 0 }
 
+    /// Ma grać, ale czeka na dane (np. adres serwera przestał odpowiadać).
+    public var isStalled: Bool {
+        isLoading || player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+    }
+
     /// Przesłuchane sekundy od poprzedniego wywołania (do `timeListened` w synchronizacji).
     public func takeListenedTime() -> Double {
         defer { listened = 0 }
@@ -154,6 +162,7 @@ public final class AudiobookPlayer {
     /// `resumeCheck`, czy pozycja nie przesunęła się gdzie indziej (np. na Macu).
     public func play() {
         guard book != nil, !isLoading else { return }
+        wantsToPlay = true
         guard let resumeCheck, !isDirty else {
             resume()
             return
@@ -184,6 +193,7 @@ public final class AudiobookPlayer {
     }
 
     public func pause() {
+        wantsToPlay = false
         player.pause()
         syncPlayingState()
     }
@@ -205,6 +215,7 @@ public final class AudiobookPlayer {
         clearQueue()
         book = nil
         isPlaying = false
+        wantsToPlay = false
         isLoading = false
         currentTime = 0
         trackIndex = 0
@@ -283,6 +294,19 @@ public final class AudiobookPlayer {
             sleepDeadline = nil
             sleepChapter = nil
         }
+        updateItemEndAction()
+    }
+
+    /// Wyłącznik „do końca rozdziału”, gdy rozdział kończy się razem z grającym plikiem: kolejka
+    /// staje na końcu pliku zamiast przechodzić do następnego. Pauza wywołana dopiero w obsłudze
+    /// końca pliku przychodziła za późno — `AVQueuePlayer` przechodził dalej i grał.
+    private func updateItemEndAction() {
+        var stopAtEnd = false
+        if sleepTimer == .endOfChapter, let sleepChapter, let book, book.tracks.indices.contains(trackIndex) {
+            let track = book.tracks[trackIndex]
+            stopAtEnd = sleepChapter.end > track.startOffset && PlaybackTimeline.chapterEndsWithTrack(sleepChapter, track)
+        }
+        player.actionAtItemEnd = stopAtEnd ? .pause : .advance
     }
 
     private func cancelSleepTimer() {
@@ -310,6 +334,7 @@ public final class AudiobookPlayer {
         currentTime = time
         isLoading = true
         lastTick = nil
+        updateItemEndAction()
         loadTask = Task {
             defer { if !Task.isCancelled { isLoading = false } }
             do {
@@ -328,6 +353,7 @@ public final class AudiobookPlayer {
                 }
                 guard !Task.isCancelled, self.book?.key == key else { return }
                 if autoplay {
+                    wantsToPlay = true
                     onWillPlay?()
                     player.playImmediately(atRate: rate)
                 }
@@ -410,6 +436,10 @@ public final class AudiobookPlayer {
                 currentTime = startsAt
                 isDirty = true
                 sleepNow()
+                // Kolejka stoi na końcu skończonego pliku — przechodzimy do następnego bez grania.
+                if let current = player.currentItem, itemTracks[ObjectIdentifier(current)] == nil {
+                    player.advanceToNextItem()
+                }
             } else {
                 sleepNow()
                 finish()
@@ -423,15 +453,19 @@ public final class AudiobookPlayer {
         trackIndex = next
         currentTime = startsAt
         isDirty = true
+        updateItemEndAction()
         if let current = player.currentItem, itemTracks[ObjectIdentifier(current)] == next {
             enqueue(after: next)
         } else {
-            // Następny plik nie zdążył się załadować.
-            load(at: currentTime, autoplay: true)
+            // Następny plik nie zdążył się załadować. Bez grania, gdy chwilę wcześniej zatrzymał
+            // nas wyłącznik czasowy albo pauza (zegar potrafi dojść do końca pliku przed zdarzeniem
+            // końca pliku i wtedy wyłącznik jest już wyłączony).
+            load(at: currentTime, autoplay: wantsToPlay)
         }
     }
 
     private func finish() {
+        wantsToPlay = false
         player.pause()
         clearQueue()
         currentTime = duration

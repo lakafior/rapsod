@@ -78,7 +78,8 @@ final class AudioSessionController {
     /// Sesję wyłączył system (rozmowa, Siri, alarm, inna aplikacja) — dźwięk już stoi;
     /// odtwarzacz zapisze pozycję przez zdarzenie pauzy.
     private func deactivated() {
-        wasPlayingBeforeInterruption = player.isPlaying
+        // Zamiar słuchacza, nie chwilowy stan: zegar odtwarzacza mógł już zauważyć zatrzymanie.
+        wasPlayingBeforeInterruption = player.wantsToPlay
         isActive = false
         player.refreshPlayingState()
     }
