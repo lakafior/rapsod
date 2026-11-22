@@ -18,6 +18,7 @@ struct CoverTab: View {
     @Bindable var model: ItemEditorModel
     @State private var urlText = ""
     @State private var confirmRemove = false
+    @State private var choosingFile = false
     @State private var providers: [AudiobookshelfClient.SearchProvider] = []
 
     private var search: CoverSearch { model.covers }
@@ -32,8 +33,13 @@ struct CoverTab: View {
                     .accessibilityIdentifier("cover.current")
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Button("Wybierz plik…", systemImage: "folder") { chooseFile() }
+                        Button("Wybierz plik…", systemImage: "folder") { choosingFile = true }
                             .accessibilityIdentifier("cover.file")
+                            .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.jpeg, .png, .webP]) { result in
+                                // Aplikacja nie jest w piaskownicy — adres z panelu czyta się wprost.
+                                if case .success(let url) = result { upload(url) }
+                            }
+                            .fileDialogMessage("Wybierz obraz okładki")
                         Button("Usuń okładkę", systemImage: "trash", role: .destructive) { confirmRemove = true }
                             .disabled(model.item.media.coverPath == nil)
                             .accessibilityIdentifier("cover.remove")
@@ -150,12 +156,7 @@ struct CoverTab: View {
         }
     }
 
-    private func chooseFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.jpeg, .png, .webP]
-        panel.allowsMultipleSelection = false
-        panel.message = "Wybierz obraz okładki"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func upload(_ url: URL) {
         let type = UTType(filenameExtension: url.pathExtension)
         let mime = type?.preferredMIMEType ?? "image/jpeg"
         let filename = url.lastPathComponent

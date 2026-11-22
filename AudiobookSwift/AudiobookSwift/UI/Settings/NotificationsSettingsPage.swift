@@ -12,6 +12,9 @@ struct NotificationsSettingsPage: View {
 
     let models: AppModels
     @State private var tab: Tab = .notifications
+    // Modele kart trzymane tutaj, żeby przełączenie karty nie wyrzucało ich (i stanu filtrów) — wracając, karta tylko się odświeża.
+    @State private var notificationsModel: NotificationsModel?
+    @State private var emailModel: EmailModel?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,15 +27,29 @@ struct NotificationsSettingsPage: View {
             .padding(.top, 12)
             switch tab {
             case .notifications:
-                AdminPage(account: models.account, title: "Powiadomienia", make: { NotificationsModel(account: models.account) }, load: { await $0.load() }) { model in
+                AdminPage(account: models.account, title: "Powiadomienia", make: { cachedNotificationsModel() }, load: { await $0.load() }) { model in
                     NotificationsContent(model: model)
                 }
             case .email:
-                AdminPage(account: models.account, title: "E-mail", make: { EmailModel(account: models.account) }, load: { await $0.load() }) { model in
+                AdminPage(account: models.account, title: "E-mail", make: { cachedEmailModel() }, load: { await $0.load() }) { model in
                     EmailContent(model: model)
                 }
             }
         }
+    }
+
+    private func cachedNotificationsModel() -> NotificationsModel {
+        if let notificationsModel { return notificationsModel }
+        let made = NotificationsModel(account: models.account)
+        notificationsModel = made
+        return made
+    }
+
+    private func cachedEmailModel() -> EmailModel {
+        if let emailModel { return emailModel }
+        let made = EmailModel(account: models.account)
+        emailModel = made
+        return made
     }
 }
 
@@ -89,7 +106,7 @@ private struct NotificationsContent: View {
         .sheet(item: $editing) { draft in
             NotificationEditor(model: model, draft: draft)
         }
-        .confirmationDialog("Usunąć powiadomienie?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } }), presenting: toDelete) { notification in
+        .confirmationDialog("Usunąć powiadomienie?", item: $toDelete) { notification in
             Button("Usuń", role: .destructive) { Task { await model.delete(notification) } }
             Button("Anuluj", role: .cancel) {}
         }
@@ -152,6 +169,8 @@ private struct NotificationRow: View {
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
+            .accessibilityLabel("Więcej działań")
+            .help("Więcej działań")
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(model.status.isBusy)
@@ -217,8 +236,13 @@ extension NotificationDraft: Hashable {
 
 private struct NotificationEditor: View {
     let model: NotificationsModel
-    @State var draft: NotificationDraft
+    @State private var draft: NotificationDraft
     @Environment(\.dismiss) private var dismiss
+
+    init(model: NotificationsModel, draft: NotificationDraft) {
+        self.model = model
+        _draft = State(initialValue: draft)
+    }
 
     private var event: AudiobookshelfClient.NotificationEvent? { model.event(named: draft.eventName) }
 
@@ -359,7 +383,8 @@ private struct EmailContent: View {
                     }
                     Spacer()
                     Button("Edytuj…") { editingDevice = DeviceDraft(original: device.name, device: device) }
-                    Button(role: .destructive) { deviceToDelete = device } label: { Image(systemName: "trash") }
+                    Button("Usuń czytnik", systemImage: "trash", role: .destructive) { deviceToDelete = device }
+                        .labelStyle(.iconOnly)
                         .buttonStyle(.borderless)
                         .help("Usuń czytnik")
                 }
@@ -379,7 +404,7 @@ private struct EmailContent: View {
         .sheet(item: $editingDevice) { draft in
             DeviceEditor(model: model, draft: draft, devices: devices)
         }
-        .confirmationDialog("Usunąć czytnik „\(deviceToDelete?.name ?? "")”?", isPresented: Binding(get: { deviceToDelete != nil }, set: { if !$0 { deviceToDelete = nil } }), presenting: deviceToDelete) { device in
+        .confirmationDialog("Usunąć czytnik „\(deviceToDelete?.name ?? "")”?", item: $deviceToDelete) { device in
             Button("Usuń", role: .destructive) { Task { _ = await model.saveDevices(devices.filter { $0.name != device.name }) } }
             Button("Anuluj", role: .cancel) {}
         }
@@ -407,9 +432,15 @@ private struct DeviceDraft: Identifiable {
 
 private struct DeviceEditor: View {
     let model: EmailModel
-    @State var draft: DeviceDraft
+    @State private var draft: DeviceDraft
     let devices: [AudiobookshelfClient.EreaderDevice]
     @Environment(\.dismiss) private var dismiss
+
+    init(model: EmailModel, draft: DeviceDraft, devices: [AudiobookshelfClient.EreaderDevice]) {
+        self.model = model
+        _draft = State(initialValue: draft)
+        self.devices = devices
+    }
 
     var body: some View {
         Form {

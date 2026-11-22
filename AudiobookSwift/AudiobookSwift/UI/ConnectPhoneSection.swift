@@ -127,10 +127,7 @@ struct CopyableRow<Accessory: View>: View {
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
                 accessory
-                Button("Kopiuj") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(value, forType: .string)
-                }
+                Button("Kopiuj") { NSPasteboard.copy(value) }
             }
         }
     }

@@ -11,6 +11,7 @@ struct MetadataValuesSection: View {
     @State private var values: [String]?
     @State private var status = AdminStatus()
     @State private var filter = ""
+    @FocusState private var filterFocused: Bool
     @State private var renaming: String?
     @State private var newName = ""
     @State private var deleting: String?
@@ -29,6 +30,9 @@ struct MetadataValuesSection: View {
                 .labelsHidden()
                 .fixedSize()
                 TextField("Szukaj", text: $filter).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                    .focused($filterFocused)
+                    .onChange(of: filterFocused) { browser.textField("metadata.filter", focused: filterFocused) }
+                    .onDisappear { browser.textField("metadata.filter", focused: false) }
                 Spacer()
                 if status.isBusy { ProgressView().controlSize(.small) }
             }
@@ -69,14 +73,14 @@ struct MetadataValuesSection: View {
         }
         .navigationTitle("Tagi i gatunki")
         .task(id: listRaw) { await load() }
-        .alert("Nowa nazwa: \(renaming ?? "")", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+        .alert("Nowa nazwa: \(renaming ?? "")", item: $renaming) { old in
             TextField("Nazwa", text: $newName)
-            Button("Zmień") { if let old = renaming { Task { await rename(old, to: newName) } } }
+            Button("Zmień") { Task { await rename(old, to: newName) } }
             Button("Anuluj", role: .cancel) {}
-        } message: {
+        } message: { _ in
             Text("Zmiana obejmuje wszystkie biblioteki serwera. Jeśli \(noun) o nowej nazwie już istnieje, oba zostaną połączone.")
         }
-        .confirmationDialog("Usunąć \(noun) „\(deleting ?? "")”?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { value in
+        .confirmationDialog("Usunąć \(noun) „\(deleting ?? "")”?", item: $deleting) { value in
             Button("Usuń ze wszystkich pozycji", role: .destructive) { Task { await delete(value) } }
             Button("Anuluj", role: .cancel) {}
         } message: { _ in
@@ -193,8 +197,7 @@ struct LibraryStatsView: View {
             }
         }
         .navigationTitle("Statystyki biblioteki")
-        .task(id: libraryID) { await load() }
-        .onChange(of: browser.revision) { Task { await load() } }
+        .task(id: ReloadKey(id: libraryID, revision: browser.revision)) { await load() }
     }
 
     private func ranking<Element: Identifiable>(_ title: String, _ elements: [Element], row: @escaping (Element) -> (String, () -> Void)) -> some View
@@ -223,6 +226,7 @@ struct LibraryStatsView: View {
             stats = try await browser.listening.api { try await $0.libraryStats(libraryID: libraryID, token: $1) }
             error = nil
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
         }
     }

@@ -5,6 +5,8 @@ struct AboutWindow: View {
     static let windowID = "about"
 
     let supervisor: ServerSupervisor
+    /// Treść THIRD-PARTY-NOTICES.txt, wczytana raz po otwarciu okna (nie przy każdym `body`).
+    @State private var notices = ""
 
     private var appVersion: String {
         let info = Bundle.main.infoDictionary
@@ -20,7 +22,7 @@ struct AboutWindow: View {
         return URL(string: text)
     }
 
-    private var notices: String {
+    private static func loadNotices() -> String {
         guard let url = Bundle.main.url(forResource: "THIRD-PARTY-NOTICES", withExtension: "txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
         return text
@@ -65,5 +67,8 @@ struct AboutWindow: View {
         }
         .padding(20)
         .frame(width: 640)
+        .task {
+            notices = Self.loadNotices()
+        }
     }
 }

@@ -55,6 +55,7 @@ final class ReaderSession {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// Rozpakowany komiks (sprzątany przy zamknięciu okna).
     @ObservationIgnored private var temporary: URL?
+    @ObservationIgnored private var isClosed = false
 
     init(target: ReaderTarget, listening: ListeningController) {
         self.target = target
@@ -85,7 +86,8 @@ final class ReaderSession {
                 saved = progress?.ebookLocation?.value
             }
             // Jak web UI: pozycja z innego formatu (np. CFI przy PDF) jest ignorowana.
-            let startPage = saved.flatMap { Double($0) }.map { max(1, Int($0)) } ?? 1
+            // `Int(exactly:)`: zapis „inf”, „nan” albo ogromna liczba nie może wywrócić aplikacji.
+            let startPage = saved.flatMap { Double($0) }.flatMap { Int(exactly: $0.rounded(.down)) }.map { max(1, $0) } ?? 1
             pages.onPageChange = { [weak self] page, count in
                 self?.record(location: String(page), progress: count > 0 ? Double(page - 1) / Double(count) : nil)
             }
@@ -99,6 +101,11 @@ final class ReaderSession {
                 phase = .ready(.pdf(url, start: startPage))
             case .comic:
                 let (folder, images) = try await ComicArchive.extract(url)
+                // Okno zamknięte w trakcie rozpakowywania: `close()` już było, folder trzeba posprzątać tutaj.
+                guard !isClosed else {
+                    try? FileManager.default.removeItem(at: folder)
+                    return
+                }
                 temporary = folder
                 pages.loadComic(pages: images, start: startPage)
                 phase = .ready(.comic)
@@ -134,10 +141,13 @@ final class ReaderSession {
             saveError = nil
         } catch {
             saveError = ItemManager.message(for: error, action: "Nie udało się zapisać postępu czytania")
+            // Nieudany zapis czeka na następną okazję (kolejna strona albo zamknięcie okna).
+            if self.pending == nil { self.pending = pending }
         }
     }
 
     func close() {
+        isClosed = true
         saveTask?.cancel()
         Task { await flush() }
         if let temporary {
@@ -168,6 +178,9 @@ struct ReaderWindow: View {
     @State private var session: ReaderSession
     @State private var sidebar = NavigationSplitViewVisibility.detailOnly
     @State private var showsSettings = false
+    /// Okno dość szerokie na dwie strony obok siebie (układ „auto”).
+    @State private var fitsTwoPages = true
+    @FocusState private var comicFocused: Bool
     @AppStorage("reader.settings") private var settings = ReaderSettings()
 
     init(listening: ListeningController, target: ReaderTarget) {
@@ -208,11 +221,15 @@ struct ReaderWindow: View {
                             .background(settings.theme.background)
                     }
                 case .pdf(let url, let start):
-                    PDFReaderView(controller: session.pages, fileURL: url, startPage: start, twoPages: settings.spread == "auto")
+                    PDFReaderView(controller: session.pages, fileURL: url, startPage: start, twoPages: settings.spread == "auto" && fitsTwoPages)
+                        .onGeometryChange(for: Bool.self) { $0.size.width >= 820 } action: { fitsTwoPages = $0 }
                 case .comic:
                     ComicReaderView(controller: session.pages)
                         .focusable()
+                        .focused($comicFocused)
                         .focusEffectDisabled()
+                        // Strzałki działają od razu po otwarciu, bez klikania w stronę.
+                        .onAppear { comicFocused = true }
                         .onKeyPress(.leftArrow) { session.pages.previous(); return .handled }
                         .onKeyPress(.rightArrow) { session.pages.next(); return .handled }
                         .onKeyPress(.space) { session.pages.next(); return .handled }
@@ -243,9 +260,7 @@ struct ReaderWindow: View {
                 Text(controller.position?.chapter ?? " ").lineLimit(1).foregroundStyle(.secondary)
                 Spacer()
                 if controller.hasLocations, let fraction = controller.position?.percentage {
-                    Slider(value: Binding(get: { fraction }, set: { controller.seek($0) }), in: 0...1)
-                        .frame(maxWidth: 260)
-                        .accessibilityLabel("Miejsce w książce")
+                    EpubPositionSlider(fraction: fraction) { controller.seek($0) }
                     Text(fraction.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit().frame(width: 44, alignment: .trailing)
                 } else if controller.isOpened {
                     ProgressView().controlSize(.mini)
@@ -255,9 +270,7 @@ struct ReaderWindow: View {
                 Spacer()
                 let pages = session.pages
                 if pages.pageCount > 1 {
-                    Slider(value: Binding(get: { Double(pages.page) }, set: { pages.setPage(Int($0.rounded())) }), in: 1...Double(pages.pageCount), step: 1)
-                        .frame(maxWidth: 260)
-                        .accessibilityLabel("Strona")
+                    PageSlider(pages: pages)
                 }
                 Text("Strona \(pages.page) z \(pages.pageCount)").monospacedDigit()
             case .unsupported:
@@ -385,5 +398,40 @@ struct ReaderWindow: View {
         .formStyle(.grouped)
         .frame(width: 340)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Suwak miejsca w książce: przeciąganie tylko przesuwa gałkę, a książka przeskakuje raz,
+/// po puszczeniu — bez przeliczania układu przy każdym ruchu myszy.
+private struct EpubPositionSlider: View {
+    let fraction: Double
+    let seek: (Double) -> Void
+    @State private var value = 0.0
+    @State private var isDragging = false
+
+    var body: some View {
+        Slider(value: $value, in: 0...1) { editing in
+            isDragging = editing
+            if !editing { seek(value) }
+        }
+        .frame(maxWidth: 260)
+        .accessibilityLabel("Miejsce w książce")
+        .onChange(of: fraction, initial: true) {
+            if !isDragging { value = fraction }
+        }
+    }
+}
+
+/// Suwak stron PDF i komiksu.
+private struct PageSlider: View {
+    let pages: PageController
+    @State private var value = 1.0
+
+    var body: some View {
+        Slider(value: $value, in: 1...Double(max(2, pages.pageCount)), step: 1)
+            .frame(maxWidth: 260)
+            .accessibilityLabel("Strona")
+            .onChange(of: value) { pages.setPage(Int(value.rounded())) }
+            .onChange(of: pages.page, initial: true) { value = Double(pages.page) }
     }
 }

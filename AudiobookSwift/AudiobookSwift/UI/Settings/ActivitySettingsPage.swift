@@ -12,6 +12,9 @@ struct ActivitySettingsPage: View {
 
     let models: AppModels
     @State private var tab: Tab = .sessions
+    // Modele kart trzymane tutaj, żeby przełączenie karty nie wyrzucało ich (i stanu filtrów) — wracając, karta tylko się odświeża.
+    @State private var sessionsModel: SessionsModel?
+    @State private var feedsModel: FeedsModel?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,15 +27,29 @@ struct ActivitySettingsPage: View {
             .padding(.top, 12)
             switch tab {
             case .sessions:
-                AdminPage(account: models.account, title: "Sesje słuchania", make: { SessionsModel(account: models.account) }, load: { await $0.load() }) { model in
+                AdminPage(account: models.account, title: "Sesje słuchania", make: { cachedSessionsModel() }, load: { await $0.load() }) { model in
                     SessionsContent(model: model)
                 }
             case .feeds:
-                AdminPage(account: models.account, title: "Kanały RSS", make: { FeedsModel(account: models.account) }, load: { await $0.load() }) { model in
+                AdminPage(account: models.account, title: "Kanały RSS", make: { cachedFeedsModel() }, load: { await $0.load() }) { model in
                     FeedsContent(model: model)
                 }
             }
         }
+    }
+
+    private func cachedSessionsModel() -> SessionsModel {
+        if let sessionsModel { return sessionsModel }
+        let made = SessionsModel(account: models.account)
+        sessionsModel = made
+        return made
+    }
+
+    private func cachedFeedsModel() -> FeedsModel {
+        if let feedsModel { return feedsModel }
+        let made = FeedsModel(account: models.account)
+        feedsModel = made
+        return made
     }
 }
 
@@ -56,6 +73,10 @@ private struct SessionsContent: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { details = session }
+                .contextMenu {
+                    Button("Pokaż szczegóły") { details = session }
+                }
+                .accessibilityAction(named: "Pokaż szczegóły") { details = session }
             }
         } header: {
             HStack {
@@ -69,13 +90,13 @@ private struct SessionsContent: View {
 
         Section {
             AdminStatusRows(status: model.status)
-            Picker("Użytkownik", selection: Binding(get: { model.userFilter }, set: { value in
-                model.userFilter = value
-                model.pageIndex = 0
-                Task { await model.load() }
-            })) {
+            Picker("Użytkownik", selection: $model.userFilter) {
                 Text("Wszyscy").tag(String?.none)
                 ForEach(model.users) { Text($0.username).tag(String?.some($0.id)) }
+            }
+            .onChange(of: model.userFilter) {
+                model.pageIndex = 0
+                Task { await model.load() }
             }
             if let page = model.page {
                 if page.sessions.isEmpty {
@@ -100,10 +121,12 @@ private struct SessionsContent: View {
                         .disabled(model.selection.isEmpty || model.status.isBusy)
                     Spacer()
                     Text(pageText(page)).foregroundStyle(.secondary).monospacedDigit()
-                    Button { go(-1) } label: { Image(systemName: "chevron.left") }
+                    Button("Poprzednia strona", systemImage: "chevron.left") { go(-1) }
+                        .labelStyle(.iconOnly)
                         .disabled(model.pageIndex == 0 || model.status.isBusy)
                         .help("Poprzednia strona")
-                    Button { go(1) } label: { Image(systemName: "chevron.right") }
+                    Button("Następna strona", systemImage: "chevron.right") { go(1) }
+                        .labelStyle(.iconOnly)
                         .disabled(model.pageIndex + 1 >= page.numPages || model.status.isBusy)
                         .help("Następna strona")
                 }
@@ -121,8 +144,7 @@ private struct SessionsContent: View {
             }
         }
         .confirmationDialog(confirmDelete?.count == 1 ? "Usunąć sesję?" : "Usunąć \(confirmDelete?.count ?? 0) sesje?",
-                            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
-                            presenting: confirmDelete) { ids in
+                            item: $confirmDelete) { ids in
             Button("Usuń", role: .destructive) { Task { await model.delete(ids: ids) } }
             Button("Anuluj", role: .cancel) {}
         } message: { _ in
@@ -199,14 +221,17 @@ private struct SessionDetailsSheet: View {
                 row("Identyfikator", session.id)
             }
             .formStyle(.grouped)
-            HStack {
-                Button("Usuń…", role: .destructive) { close(true) }
-                Spacer()
-                Button("Zamknij") { close(false) }.keyboardShortcut(.defaultAction)
-            }
         }
         .padding(20)
         .frame(width: 520, height: 520)
+        .toolbar {
+            ToolbarItem(placement: .destructiveAction) {
+                Button("Usuń…", role: .destructive) { close(true) }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Zamknij") { close(false) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -240,10 +265,10 @@ private struct FeedsContent: View {
                     }
                     Spacer()
                     if let url = feed.url {
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(url.absoluteString, forType: .string)
-                        } label: { Image(systemName: "doc.on.doc") }
+                        Button("Kopiuj adres kanału", systemImage: "doc.on.doc") {
+                            NSPasteboard.copy(url.absoluteString)
+                        }
+                            .labelStyle(.iconOnly)
                             .buttonStyle(.borderless)
                             .help("Kopiuj adres kanału")
                     }
@@ -263,7 +288,7 @@ private struct FeedsContent: View {
             Text("Kanał RSS udostępnia książkę albo podcast jako podcast pod publicznym adresem — bez logowania, dla każdego, kto zna adres. Kanał dla książki otwierasz z menu „Więcej” na jej stronie w oknie „Biblioteka”.")
                 .foregroundStyle(.secondary)
         }
-        .confirmationDialog("Zamknąć kanał „\(feedToClose?.meta?.title ?? "")”?", isPresented: Binding(get: { feedToClose != nil }, set: { if !$0 { feedToClose = nil } }), presenting: feedToClose) { feed in
+        .confirmationDialog("Zamknąć kanał „\(feedToClose?.meta?.title ?? "")”?", item: $feedToClose) { feed in
             Button("Zamknij kanał", role: .destructive) { Task { await model.close(feed) } }
             Button("Anuluj", role: .cancel) {}
         } message: { _ in

@@ -80,8 +80,7 @@ struct RSSFeedSheet: View {
                     AdminStatusRows(status: status)
                     HStack {
                         Button("Kopiuj adres") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(feed.url?.absoluteString ?? "", forType: .string)
+                            NSPasteboard.copy(feed.url?.absoluteString ?? "")
                             status.notice = "Adres skopiowany."
                         }
                         Spacer()
@@ -297,8 +296,7 @@ struct ShareLinkSheet: View {
                     AdminStatusRows(status: status)
                     HStack {
                         Button("Kopiuj link") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(link(share.slug), forType: .string)
+                            NSPasteboard.copy(link(share.slug))
                             status.notice = "Link skopiowany."
                         }
                         Spacer()

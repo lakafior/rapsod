@@ -50,17 +50,17 @@ struct BatchEditSheet: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                row(.subtitle, "Podtytuł") { TextField("", text: $subtitle).labelsHidden() }
+                row(.subtitle, "Podtytuł") { TextField("", text: $subtitle).labelsHidden().accessibilityLabel("Podtytuł") }
                 row(.authors, "Autorzy") { TokenInput(values: $authors, suggestions: (filterData?.authors ?? []).map(\.name), placeholder: "Imię i nazwisko") }
                 row(.narrators, "Lektorzy") { TokenInput(values: $narrators, suggestions: filterData?.narrators ?? [], placeholder: "Lektor") }
                 row(.series, "Serie") { TokenInput(values: $series, suggestions: (filterData?.series ?? []).map(\.name), placeholder: "Nazwa serii") }
                 row(.genres, "Gatunki") { TokenInput(values: $genres, suggestions: filterData?.genres ?? [], placeholder: "Gatunek") }
                 row(.tags, "Tagi") { TokenInput(values: $tags, suggestions: filterData?.tags ?? [], placeholder: "Tag") }
-                row(.publishedYear, "Rok wydania") { TextField("", text: $publishedYear).labelsHidden() }
-                row(.publisher, "Wydawca") { TextField("", text: $publisher).labelsHidden() }
-                row(.language, "Język") { TextField("", text: $language).labelsHidden() }
-                row(.explicit, "Dla dorosłych") { Toggle("", isOn: $explicit).labelsHidden() }
-                row(.abridged, "Skrócona") { Toggle("", isOn: $abridged).labelsHidden() }
+                row(.publishedYear, "Rok wydania") { TextField("", text: $publishedYear).labelsHidden().accessibilityLabel("Rok wydania") }
+                row(.publisher, "Wydawca") { TextField("", text: $publisher).labelsHidden().accessibilityLabel("Wydawca") }
+                row(.language, "Język") { TextField("", text: $language).labelsHidden().accessibilityLabel("Język") }
+                row(.explicit, "Dla dorosłych") { Toggle("Dla dorosłych", isOn: $explicit).labelsHidden() }
+                row(.abridged, "Skrócona") { Toggle("Skrócona", isOn: $abridged).labelsHidden() }
             } footer: {
                 if enabled.contains(.series) {
                     Text("Numer tomu zostaje, jeśli książka już była w serii o tej nazwie.").foregroundStyle(.secondary)

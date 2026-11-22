@@ -119,6 +119,11 @@ final class EpubController {
         }
     }
 
+    /// Książki nie da się bezpiecznie otworzyć (np. brak blokady sieci).
+    func fail(_ message: String) {
+        if !isOpened { error = message }
+    }
+
     private func call(_ script: String) {
         webView?.evaluateJavaScript(script) { _, error in
             if let error { logger.debug("EPUB JS: \(error.localizedDescription, privacy: .public)") }
@@ -190,14 +195,18 @@ struct EpubReaderView: NSViewRepresentable {
 
         func load(into webView: WKWebView) {
             // Wszystko z http(s) zablokowane — także obrazki i czcionki, do których odwołuje się książka.
-            let rules = #"[{"trigger":{"url-filter":"^(https?|wss?|ftp)://"},"action":{"type":"block"}}]"#
+            // Osobna reguła na każdy schemat: wyrażenia reguł treści WebKit nie obsługują alternatywy
+            // („a|b”) — reguła z alternatywą nie kompilowała się i blokada w ogóle nie działała.
+            let rules = #"[{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^wss?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^ftp://"},"action":{"type":"block"}}]"#
             WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "AudiobookSwiftReaderOffline", encodedContentRuleList: rules) { list, error in
                 MainActor.assumeIsolated {
-                    if let list {
-                        webView.configuration.userContentController.add(list)
-                    } else if let error {
-                        logger.error("Reguła treści czytnika: \(error.localizedDescription, privacy: .public)")
+                    guard let list else {
+                        // Bez reguły książka mogłaby sięgać do sieci — nie otwieramy jej wcale.
+                        logger.error("Reguła treści czytnika: \(error?.localizedDescription ?? "brak", privacy: .public)")
+                        self.controller.fail("Nie udało się włączyć blokady sieci dla czytnika, więc książka nie została otwarta. Zamknij okno i spróbuj ponownie.")
+                        return
                     }
+                    webView.configuration.userContentController.add(list)
                     webView.load(URLRequest(url: ReaderFiles.pageURL(for: self.controller.kind)))
                 }
             }
@@ -245,6 +254,14 @@ struct EpubReaderView: NSViewRepresentable {
 final class ReaderWebView: WKWebView {
     enum Key { case left, right, previous, next }
     var onKey: ((Key) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Strzałki przewracają strony od razu po otwarciu, bez klikania w tekst.
+        DispatchQueue.main.async { [weak self] in
+            if let self { self.window?.makeFirstResponder(self) }
+        }
+    }
 
     override func keyDown(with event: NSEvent) {
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return super.keyDown(with: event) }

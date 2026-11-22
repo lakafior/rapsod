@@ -115,18 +115,20 @@ struct CloudflareTunnelSection: View {
         }
         if !tunnel.recentLog.isEmpty {
             DisclosureGroup("Log tunelu", isExpanded: $showsLog) {
-                VStack(alignment: .trailing) {
-                    ScrollView([.vertical, .horizontal]) {
-                        Text(tunnel.recentLog.suffix(120).joined(separator: "\n"))
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
-                            .fixedSize()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: 160)
-                    Button("Kopiuj log tunelu") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(tunnel.recentLog.joined(separator: "\n"), forType: .string)
+                // Tekst logu składany tylko po rozwinięciu — zwinięta grupa nie przelicza go przy każdym wpisie.
+                if showsLog {
+                    VStack(alignment: .trailing) {
+                        ScrollView([.vertical, .horizontal]) {
+                            Text(tunnel.recentLog.suffix(120).joined(separator: "\n"))
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .fixedSize()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 160)
+                        Button("Kopiuj log tunelu") {
+                            NSPasteboard.copy(tunnel.recentLog.joined(separator: "\n"))
+                        }
                     }
                 }
             }

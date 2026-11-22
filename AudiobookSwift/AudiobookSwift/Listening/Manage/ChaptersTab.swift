@@ -99,7 +99,8 @@ struct ChaptersTab: View {
                     row(index: index, chapter: chapter)
                 }
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .listStyle(.bordered)
+            .alternatingRowBackgrounds()
             .accessibilityIdentifier("chapters.list")
             HStack {
                 Text("Koniec rozdziału to początek następnego; ostatni kończy się z książką.")
@@ -122,13 +123,16 @@ struct ChaptersTab: View {
         let valid = chapter.start != nil
         return HStack(spacing: 8) {
             Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
-            TextField("Początek", text: binding(chapter.id, \.startText))
+            TextField("Początek", text: binding(index, chapter.id, \.startText))
                 .labelsHidden()
                 .monospacedDigit()
                 .frame(width: 110)
                 .foregroundStyle(valid ? AnyShapeStyle(.primary) : AnyShapeStyle(.red))
+                // Błąd nie tylko kolorem: podpowiedź i etykieta dla VoiceOver.
+                .help(valid ? "Początek rozdziału, np. 1:02:03 albo 62:03" : "Nieprawidłowy czas — wpisz np. 1:02:03 albo 62:03")
+                .accessibilityLabel(valid ? "Początek" : "Początek, nieprawidłowy czas")
                 .accessibilityIdentifier("chapter.start.\(index)")
-            TextField("Tytuł", text: binding(chapter.id, \.title))
+            TextField("Tytuł", text: binding(index, chapter.id, \.title))
                 .labelsHidden()
                 .accessibilityIdentifier("chapter.title.\(index)")
             Button("Dodaj rozdział po", systemImage: "plus.circle") { insert(after: index) }
@@ -142,12 +146,20 @@ struct ChaptersTab: View {
         }
     }
 
-    private func binding(_ id: UUID, _ keyPath: WritableKeyPath<ChapterDraft, String>) -> Binding<String> {
+    /// Pole wiersza: zwykle trafia od razu po indeksie (O(1)); szukanie po `id` tylko wtedy,
+    /// gdy lista zmieniła się pod polem (usunięcie, wstawienie) — wtedy indeks bywa nieaktualny.
+    private func binding(_ index: Int, _ id: UUID, _ keyPath: WritableKeyPath<ChapterDraft, String>) -> Binding<String> {
         Binding {
-            model.chapters.first { $0.id == id }?[keyPath: keyPath] ?? ""
+            guard let current = currentIndex(index, id) else { return "" }
+            return model.chapters[current][keyPath: keyPath]
         } set: { value in
-            if let index = model.chapters.firstIndex(where: { $0.id == id }) { model.chapters[index][keyPath: keyPath] = value }
+            if let current = currentIndex(index, id) { model.chapters[current][keyPath: keyPath] = value }
         }
+    }
+
+    private func currentIndex(_ hint: Int, _ id: UUID) -> Int? {
+        if model.chapters.indices.contains(hint), model.chapters[hint].id == id { return hint }
+        return model.chapters.firstIndex { $0.id == id }
     }
 
     /// Nowy rozdział w połowie między tym a następnym (albo końcem książki).

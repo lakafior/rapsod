@@ -112,7 +112,7 @@ struct CustomProvidersSection: View {
             await model.load()
         }
         .sheet(isPresented: $adding) { AddCustomProviderSheet(model: model) }
-        .confirmationDialog("Usunąć dostawcę „\(removing?.name ?? "")”?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { provider in
+        .confirmationDialog("Usunąć dostawcę „\(removing?.name ?? "")”?", item: $removing) { provider in
             Button("Usuń", role: .destructive) { Task { await model.delete(provider) } }
             Button("Anuluj", role: .cancel) {}
         } message: { _ in

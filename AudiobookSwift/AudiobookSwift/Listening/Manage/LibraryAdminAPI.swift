@@ -142,7 +142,8 @@ extension AudiobookshelfClient {
             if let number = try? c.decodeIfPresent(Double.self, forKey: .expiresAt) {
                 expiresAt = number
             } else if let text = try? c.decodeIfPresent(String.self, forKey: .expiresAt),
-                      let date = ISO8601DateFormatter.withFractions.date(from: text) ?? ISO8601DateFormatter().date(from: text) {
+                      let date = (try? Date(text, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+                          ?? (try? Date(text, strategy: .iso8601)) {
                 expiresAt = date.timeIntervalSince1970 * 1000
             } else {
                 expiresAt = nil
@@ -264,12 +265,4 @@ extension AudiobookshelfClient {
         }
         try FileManager.default.moveItem(at: file, to: destination)
     }
-}
-
-extension ISO8601DateFormatter {
-    nonisolated(unsafe) static let withFractions: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 }

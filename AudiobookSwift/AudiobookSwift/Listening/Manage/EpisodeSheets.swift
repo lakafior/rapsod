@@ -15,6 +15,8 @@ struct EpisodeFeedSheet: View {
     @State private var error: String?
 
     var body: some View {
+        // Klucze pobranych liczone raz na przebieg `body`, nie dla każdego wiersza.
+        let downloaded = downloadedKeys
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading) {
@@ -26,9 +28,9 @@ struct EpisodeFeedSheet: View {
                 Toggle("Ukryj pobrane", isOn: $hideDownloaded).toggleStyle(.checkbox)
             }
             if let episodes {
-                let shown = visible(episodes)
+                let shown = visible(episodes, downloaded)
                 List(shown) { episode in
-                    row(episode)
+                    row(episode, downloaded: downloaded.contains(episode))
                 }
                 .listStyle(.inset)
                 .accessibilityIdentifier("feed.episodes")
@@ -57,7 +59,7 @@ struct EpisodeFeedSheet: View {
                 }
                 Spacer()
                 if let episodes {
-                    let candidates = visible(episodes).filter { !isDownloaded($0) }
+                    let candidates = visible(episodes, downloaded).filter { !downloaded.contains($0) }
                     Button(selected.isEmpty ? "Zaznacz widoczne" : "Odznacz wszystkie") {
                         selected = selected.isEmpty ? Set(candidates.map(\.id)) : []
                     }
@@ -77,9 +79,8 @@ struct EpisodeFeedSheet: View {
         .task { await load() }
     }
 
-    private func row(_ episode: AudiobookshelfClient.FeedEpisode) -> some View {
-        let downloaded = isDownloaded(episode)
-        return Toggle(isOn: Binding(get: { downloaded || selected.contains(episode.id) },
+    private func row(_ episode: AudiobookshelfClient.FeedEpisode, downloaded: Bool) -> some View {
+        Toggle(isOn: Binding(get: { downloaded || selected.contains(episode.id) },
                                     set: { if $0 { selected.insert(episode.id) } else { selected.remove(episode.id) } })) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
@@ -106,27 +107,36 @@ struct EpisodeFeedSheet: View {
         .padding(.vertical, 3)
     }
 
-    private func visible(_ episodes: [AudiobookshelfClient.FeedEpisode]) -> [AudiobookshelfClient.FeedEpisode] {
+    private func visible(_ episodes: [AudiobookshelfClient.FeedEpisode], _ downloaded: DownloadedKeys) -> [AudiobookshelfClient.FeedEpisode] {
         let text = query.trimmingCharacters(in: .whitespaces)
         return episodes.filter { episode in
-            (!hideDownloaded || !isDownloaded(episode)) && (text.isEmpty || episode.title.localizedCaseInsensitiveContains(text))
+            (!hideDownloaded || !downloaded.contains(episode)) && (text.isEmpty || episode.title.localizedCaseInsensitiveContains(text))
         }
     }
 
     /// Jak `EpisodeFeed.vue`: najpierw `guid`, w drugiej kolejności adres bez parametrów śledzących.
-    private var downloadedKeys: (guids: Set<String>, urls: Set<String>) {
-        let local = item.media.episodes?.elements ?? []
-        return (Set(local.compactMap(\.guid)), Set(local.compactMap { $0.enclosure?.url.map(AudiobookshelfClient.cleanEpisodeURL) }))
+    private struct DownloadedKeys {
+        let guids: Set<String>
+        let urls: Set<String>
+        /// Już w kolejce serwera — też nie do ponownego wyboru.
+        let queued: [AudiobookshelfClient.EpisodeDownload]
+
+        func contains(_ episode: AudiobookshelfClient.FeedEpisode) -> Bool {
+            if let guid = episode.guid, guids.contains(guid) { return true }
+            if let url = episode.url, urls.contains(AudiobookshelfClient.cleanEpisodeURL(url)) { return true }
+            return queued.contains { d in (episode.guid != nil && d.guid == episode.guid) || (d.url != nil && d.url == episode.url) }
+        }
     }
 
-    private func isDownloaded(_ episode: AudiobookshelfClient.FeedEpisode) -> Bool {
-        let keys = downloadedKeys
-        if let guid = episode.guid, keys.guids.contains(guid) { return true }
-        if let url = episode.url, keys.urls.contains(AudiobookshelfClient.cleanEpisodeURL(url)) { return true }
-        // Już w kolejce serwera — też nie do ponownego wyboru.
+    private var downloadedKeys: DownloadedKeys {
+        let local = item.media.episodes?.elements ?? []
         let queued = ([browser.listening.episodeDownloads.current].compactMap { $0 } + browser.listening.episodeDownloads.queue)
             .filter { $0.libraryItemId == item.id }
-        return queued.contains { d in (episode.guid != nil && d.guid == episode.guid) || (d.url != nil && d.url == episode.url) }
+        return DownloadedKeys(
+            guids: Set(local.compactMap(\.guid)),
+            urls: Set(local.compactMap { $0.enclosure?.url.map(AudiobookshelfClient.cleanEpisodeURL) }),
+            queued: queued
+        )
     }
 
     private func load() async {
@@ -264,7 +274,7 @@ struct EpisodeEditSheet: View {
                 Toggle("Data publikacji", isOn: $hasDate).disabled(episode.publishedAt != nil)
                 if hasDate { DatePicker("Opublikowano", selection: $date) }
                 Section("Opis") {
-                    TextEditor(text: $description).frame(minHeight: 140)
+                    TextEditor(text: $description).frame(minHeight: 140).accessibilityLabel("Opis")
                 }
             }
             .formStyle(.grouped)

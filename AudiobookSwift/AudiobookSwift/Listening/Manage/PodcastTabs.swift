@@ -185,7 +185,7 @@ struct PodcastDetailsTab: View {
                     TextField("Identyfikator iTunes", text: $model.podcast.itunesID)
                 }
                 Section("Opis") {
-                    TextEditor(text: $model.podcast.description).frame(minHeight: 120)
+                    TextEditor(text: $model.podcast.description).frame(minHeight: 120).accessibilityLabel("Opis")
                 }
             }
             .formStyle(.grouped)

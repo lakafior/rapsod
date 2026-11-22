@@ -32,6 +32,8 @@ struct ItemGrid: View {
                         let item = list.element(at: index)
                         ItemCard(browser: browser, item: item, sequence: seriesID.flatMap { item?.sequence(in: $0) }, selectable: selectionScope != nil)
                             .onAppear { list.ensureLoaded(index) }
+                            // Strona zwolniona przy odświeżeniu: żywa komórka doczytuje ją sama.
+                            .onChange(of: item == nil) { if item == nil { list.ensureLoaded(index) } }
                     }
                     .accessibilityIdentifier("itemGrid")
                 }

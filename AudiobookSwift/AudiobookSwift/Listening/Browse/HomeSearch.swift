@@ -33,17 +33,7 @@ struct HomeView: View {
             }
         }
         .navigationTitle("Start")
-        .task(id: Trigger(libraryID: libraryID, revision: browser.revision, progress: progressSignature)) { await load() }
-    }
-
-    private var progressSignature: Int {
-        var hasher = Hasher()
-        for (key, value) in browser.listening.progress.sorted(by: { $0.key < $1.key }) where (value.currentTime ?? 0) > 0 || value.isFinished {
-            hasher.combine(key)
-            hasher.combine(value.isFinished)
-            hasher.combine(value.hideFromContinueListening)
-        }
-        return hasher.finalize()
+        .task(id: Trigger(libraryID: libraryID, revision: browser.revision, progress: browser.listening.shelfRevision)) { await load() }
     }
 
     @ViewBuilder private func shelfView(_ shelf: AudiobookshelfClient.Shelf) -> some View {
@@ -71,6 +61,8 @@ struct HomeView: View {
             shelves = try await browser.listening.api { try await $0.personalized(libraryID: libraryID, token: $1) }
             error = nil
         } catch {
+            // Wczytanie zastąpione nowszym (zmiana biblioteki albo postępu) — bez komunikatu.
+            if Task.isCancelled { return }
             if shelves == nil { self.error = error.localizedDescription }
         }
     }
@@ -202,8 +194,8 @@ struct LatestEpisodesView: View {
             }
         }
         .navigationTitle("Najnowsze odcinki")
-        .task(id: libraryID) { await load() }
-        .onChange(of: browser.revision) { Task { await load() } }
+        // Zmiana biblioteki albo zdarzenie serwera: nowe wczytanie przerywa poprzednie.
+        .task(id: ReloadKey(id: libraryID, revision: browser.revision)) { await load() }
     }
 
     private func load() async {
@@ -211,6 +203,7 @@ struct LatestEpisodesView: View {
             episodes = try await browser.listening.api { try await $0.recentEpisodes(libraryID: libraryID, page: 0, limit: 100, token: $1) }
             error = nil
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
         }
     }
