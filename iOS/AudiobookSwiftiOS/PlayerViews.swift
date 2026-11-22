@@ -389,7 +389,7 @@ private struct SleepTimerMenu: View {
             } else if player.sleepTimer == .endOfChapter {
                 Label("Koniec rozdziału", systemImage: "moon.zzz.fill")
             } else {
-                Label("Wyłącznik czasowy", systemImage: "moon.zzz")
+                Label("Wyłącznik", systemImage: "moon.zzz")
             }
         }
         .accessibilityLabel(Text(accessibilityText))

@@ -101,11 +101,13 @@ struct Shelf<Data: RandomAccessCollection, Card: View>: View where Data.Element:
     @ViewBuilder let card: (Data.Element) -> Card
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if !items.isEmpty {
-            let layout = width.count(regular: sizeClass == .regular, largeText: typeSize >= .xxLarge)
+            // iPhone w poziomie liczy się jak szeroki ekran (więcej, węższych kart).
+            let layout = width.count(regular: sizeClass == .regular || verticalSizeClass == .compact, largeText: typeSize >= .xxLarge)
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(title: title, subtitle: subtitle, destination: destination)
                 ScrollView(.horizontal) {
@@ -242,7 +244,8 @@ struct ArtworkBackdrop: View {
             if fadesToBackground {
                 LinearGradient(colors: [.clear, base], startPoint: .center, endPoint: .bottom)
             } else {
-                Color.black.opacity(reduceTransparency ? 0.85 : 0.35)
+                // Jasne okładki: biały tekst odtwarzacza musi zostać czytelny.
+                Color.black.opacity(reduceTransparency ? 0.85 : 0.5)
             }
         }
         .accessibilityHidden(true)

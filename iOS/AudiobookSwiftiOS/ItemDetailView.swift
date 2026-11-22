@@ -34,18 +34,19 @@ struct ItemDetailView: View {
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var bookPage: some View {
         Group {
             if let item {
-                if sizeClass == .regular {
-                    // iPad: okładka i główne akcje w lewej kolumnie, reszta przewija się obok.
+                if sizeClass == .regular || verticalSizeClass == .compact {
+                    // iPad i iPhone w poziomie: okładka i główne akcje w lewej kolumnie, reszta przewija się obok.
                     HStack(alignment: .top, spacing: 0) {
                         ScrollView {
                             heroContent(item).padding(24)
                         }
-                        .frame(width: 380)
+                        .frame(width: verticalSizeClass == .compact ? 340 : 380)
                         .background { ArtworkBackdrop(image: cover, base: Color(.systemGroupedBackground)).ignoresSafeArea() }
                         List { detailSections(item) }
                     }

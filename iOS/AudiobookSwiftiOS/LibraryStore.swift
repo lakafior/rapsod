@@ -100,12 +100,14 @@ final class LibraryStore {
     /// Postęp pobranych pozycji trafia do dziennika — bez sieci start i paski postępu biorą go stamtąd.
     private func rememberDownloadedProgress(_ list: [AudiobookshelfClient.MediaProgress]) {
         for entry in list {
-            guard let itemID = entry.libraryItemId, downloads.manager.item(itemID: itemID, episodeID: entry.episodeId) != nil else { continue }
+            guard let itemID = entry.libraryItemId, let downloaded = downloads.manager.item(itemID: itemID, episodeID: entry.episodeId) else { continue }
             journal.recordServer(entry)
-            // „Usuwaj po wysłuchaniu”: ukończone znika z telefonu — ale nie to, co właśnie gra
-            // (po ukończeniu odtwarzacz zostaje na początku i można słuchać od nowa).
+            // „Usuwaj po wysłuchaniu”: znika to, co ukończono PO pobraniu (pozycja ukończona dawno
+            // i pobrana od nowa do ponownego słuchania zostaje) — i nie to, co właśnie gra.
             let key = PlaybackTimeline.key(itemID, entry.episodeId)
-            if entry.isFinished, UserDefaults.standard.bool(forKey: DownloadsController.removeFinishedKey), !playback.nowPlayingKeys.contains(key) {
+            let finishedAt = (entry.finishedAt ?? entry.lastUpdate) / 1000
+            if entry.isFinished, finishedAt > downloaded.addedAt.timeIntervalSince1970,
+               UserDefaults.standard.bool(forKey: DownloadsController.removeFinishedKey), !playback.nowPlayingKeys.contains(key) {
                 downloads.manager.remove(key: ProgressJournal.key(itemID, entry.episodeId))
             }
         }
