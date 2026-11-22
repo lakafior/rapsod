@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Dostęp: klucze API (`client/pages/config/api-keys`) i sposób logowania

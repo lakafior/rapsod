@@ -9,21 +9,21 @@ import Foundation
 /// `Autor/Tytuł`. Odstępstwo od web UI: podfoldery płyt (`CD1`, `Disc 2`) zostają częścią
 /// książki, tak jak przy skanie serwera (`server/utils/scandir.js`) — web UI zrobiłby z nich
 /// osobne pozycje.
-enum UploadGrouping {
-    struct Book: Equatable {
-        let files: [URL]
-        let title: String
-        let author: String
-        let series: String
+public enum UploadGrouping {
+    public struct Book: Equatable {
+        public let files: [URL]
+        public let title: String
+        public let author: String
+        public let series: String
     }
 
-    static let ebookExtensions: Set<String> = ["epub", "pdf", "mobi", "azw3", "cbr", "cbz"]
+    public static let ebookExtensions: Set<String> = ["epub", "pdf", "mobi", "azw3", "cbr", "cbz"]
 
-    static func isDiscFolder(_ name: String) -> Bool {
+    public static func isDiscFolder(_ name: String) -> Bool {
         name.range(of: #"^(cd|dis[ck])\s*\d{1,3}$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    static func books(in directory: URL, path: [String], supported: Set<String>, audio: Set<String>, ignored: inout [String]) -> [Book] {
+    public static func books(in directory: URL, path: [String], supported: Set<String>, audio: Set<String>, ignored: inout [String]) -> [Book] {
         let keys: [URLResourceKey] = [.isDirectoryKey]
         let children = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
         let isFolder = { (url: URL) in (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
@@ -55,7 +55,7 @@ enum UploadGrouping {
     /// i `Disc 2/01.mp3` nadpisałyby się nawzajem. Gdy nazwy się powtarzają, każdy plik z podfolderu
     /// dostaje prefiks folderu (`CD1 - 01.mp3`) — wszystkie, żeby kolejność płyt została. Bez powtórek
     /// nazwy zostają (np. `Extras/cover.jpg` to dalej `cover.jpg`). Co się wciąż powtarza, dostaje numer.
-    static func uploadNames(for files: [URL]) -> [String] {
+    public static func uploadNames(for files: [URL]) -> [String] {
         let plain = files.map(\.lastPathComponent)
         guard Set(plain.map { $0.lowercased() }).count < plain.count else { return plain }
         let parents = files.map { $0.deletingLastPathComponent().standardizedFileURL.path }
@@ -87,7 +87,7 @@ enum UploadGrouping {
     }
 
     /// Pliki folderu razem z podfolderami (serwer i tak kładzie je płasko w folderze książki).
-    static func collect(in directory: URL, supported: Set<String>, ignored: inout [String]) -> [URL] {
+    public static func collect(in directory: URL, supported: Set<String>, ignored: inout [String]) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [] }
         var files: [URL] = []
         for case let url as URL in enumerator {

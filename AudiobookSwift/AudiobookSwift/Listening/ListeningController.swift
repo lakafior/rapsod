@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import AVFoundation
 import Observation
 import OSLog

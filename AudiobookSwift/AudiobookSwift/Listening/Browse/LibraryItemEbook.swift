@@ -1,3 +1,4 @@
+import AudiobookshelfKit
 import SwiftUI
 
 extension AudiobookshelfClient.LibraryItem {

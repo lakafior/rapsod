@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Aktywność: sesje słuchania (`client/pages/config/sessions.vue`) i otwarte kanały RSS

@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Szkic szczegółów książki. Listy trzymają to, co wpisano (z ewentualnymi spacjami w trakcie

@@ -1,3 +1,4 @@
+import AudiobookshelfKit
 import SwiftUI
 
 /// Wynik arkusza wsadowego: tytuł i treść komunikatu albo `nil` (zamknięte bez zmian).

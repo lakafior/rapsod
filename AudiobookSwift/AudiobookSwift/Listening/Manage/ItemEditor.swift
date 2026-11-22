@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Stan arkusza zarządzania pozycją. Szkice (szczegóły, rozdziały) są brane z pozycji raz,

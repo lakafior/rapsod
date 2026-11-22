@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Czego dotyczy kanał RSS: pozycji, serii albo kolekcji (etap 9g; `Feed.entityType` upstreamu).

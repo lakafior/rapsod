@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 // Zakładki arkusza edycji dla podcastu (etap 9d): Szczegóły, Harmonogram i Dopasuj (iTunes).

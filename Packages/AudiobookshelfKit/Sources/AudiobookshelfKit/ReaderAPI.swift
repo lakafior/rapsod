@@ -7,7 +7,7 @@ extension AudiobookshelfClient {
     /// Zapisuje miejsce w e-booku (`PATCH /api/me/progress/:id`). Serwer zmienia tylko podane
     /// pola, więc pozycja w audiobooku zostaje nietknięta. `progress` pomijamy, gdy go nie znamy
     /// (EPUB, zanim epub.js policzy lokacje) — dokładnie jak web UI.
-    func updateEbookProgress(itemID: String, location: String, progress: Double?, token: String) async throws {
+    public func updateEbookProgress(itemID: String, location: String, progress: Double?, token: String) async throws {
         struct Body: Encodable {
             let ebookLocation: String
             let ebookProgress: Double?

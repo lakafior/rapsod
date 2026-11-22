@@ -1,20 +1,31 @@
-import AppKit
 import ImageIO
+#if os(macOS)
+import AppKit
 
-/// Okładki w rozmiarze, w jakim są pokazywane. Plik okładki czytany jest wprost z dysku
-/// (serwer działa na tym samym Macu); gdy się nie da — serwer skaluje ją przez HTTP.
+/// Obraz okładki w typie, który pokazują widoki danej platformy.
+public typealias PlatformImage = NSImage
+#else
+import UIKit
+
+/// Obraz okładki w typie, który pokazują widoki danej platformy.
+public typealias PlatformImage = UIImage
+#endif
+
+/// Okładki w rozmiarze, w jakim są pokazywane. Domyślnie serwer skaluje okładkę przez HTTP
+/// (`fetch`). Aplikacja na Maca, przy której serwer działa na tym samym komputerze, podaje
+/// dodatkowo `path` — wtedy plik jest czytany wprost z dysku, a HTTP zostaje zapasem.
 ///
 /// Pamięć ma limit (`NSCache` z kosztem w bajtach), więc przewijanie biblioteki z tysiącami
 /// okładek nie rośnie bez końca: najdawniej oglądane wypadają i w razie potrzeby są czytane
 /// z dysku od nowa. Po zamknięciu okna wszystko jest zwalniane
 /// (zob. `ListeningController.windowClosed`).
 @MainActor
-final class CoverCache {
+public final class CoverCache {
     /// Ok. 150 okładek siatki (280 × 280 px) — kilka ekranów wstecz.
-    static let memoryLimit = 48 * 1024 * 1024
+    public static let memoryLimit = 48 * 1024 * 1024
 
-    private let images: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
+    private let images: NSCache<NSString, PlatformImage> = {
+        let cache = NSCache<NSString, PlatformImage>()
         cache.totalCostLimit = memoryLimit
         return cache
     }()
@@ -24,11 +35,13 @@ final class CoverCache {
     private static let missingLifetime = Duration.seconds(60)
     /// Trwające wczytania, żeby ta sama okładka nie była dekodowana dwa razy naraz. Licznik
     /// czekających: wczytanie jest przerywane dopiero, gdy zniknie ostatnia komórka, która go chce.
-    private var loading: [String: (task: Task<NSImage?, Never>, waiters: Int)] = [:]
+    private var loading: [String: (task: Task<PlatformImage?, Never>, waiters: Int)] = [:]
     /// Wersja okładki pozycji (rośnie po zmianie): stare wpisy wypadają z `NSCache` same.
     private var versions: [String: Int] = [:]
 
-    func image(itemID: String, path: String?, pixels: Int, fetch: @escaping (Int) async -> Data?) async -> NSImage? {
+    public init() {}
+
+    public func image(itemID: String, path: String? = nil, pixels: Int, fetch: @escaping (Int) async -> Data?) async -> PlatformImage? {
         // Ścieżka w kluczu: po zmianie okładki widok z jeszcze starą ścieżką (plik zostaje na dysku)
         // nie może podsunąć starego obrazka widokowi, który ma już nową.
         let key = "\(itemID)#\(versions[itemID] ?? 0)@\(pixels)|\(path ?? "")"
@@ -37,14 +50,14 @@ final class CoverCache {
             if ContinuousClock.now - since < Self.missingLifetime { return nil }
             missing[key] = nil
         }
-        let task: Task<NSImage?, Never>
+        let task: Task<PlatformImage?, Never>
         if let current = loading[key] {
             task = current.task
             loading[key]?.waiters += 1
         } else {
-            task = Task<NSImage?, Never> {
+            task = Task<PlatformImage?, Never> {
                 guard !Task.isCancelled else { return nil }
-                var image: NSImage?
+                var image: PlatformImage?
                 if let path, FileManager.default.isReadableFile(atPath: path) {
                     image = await Self.thumbnail(url: URL(filePath: path), pixels: pixels)
                 }
@@ -73,7 +86,7 @@ final class CoverCache {
         return image
     }
 
-    private func abandon(_ key: String, _ task: Task<NSImage?, Never>) {
+    private func abandon(_ key: String, _ task: Task<PlatformImage?, Never>) {
         guard let current = loading[key], current.task == task else { return }
         if current.waiters <= 1 {
             task.cancel()
@@ -84,25 +97,25 @@ final class CoverCache {
     }
 
     /// Okładka pozycji się zmieniła (zapis z edycji albo zdarzenie serwera) — następne pytanie czyta ją od nowa.
-    func forget(itemID: String) {
+    public func forget(itemID: String) {
         versions[itemID, default: 0] += 1
     }
 
     /// Zwalnia wszystko (okładka bieżącej książki żyje dalej w odtwarzaczu — `AudiobookPlayer.artwork`).
-    func purge() {
+    public func purge() {
         images.removeAllObjects()
         missing = [:]
     }
 
-    nonisolated private static func thumbnail(url: URL, pixels: Int) async -> NSImage? {
+    nonisolated private static func thumbnail(url: URL, pixels: Int) async -> PlatformImage? {
         CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary).flatMap { thumbnail(source: $0, pixels: pixels) }
     }
 
-    nonisolated static func thumbnail(data: Data, pixels: Int) async -> NSImage? {
+    public nonisolated static func thumbnail(data: Data, pixels: Int) async -> PlatformImage? {
         CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary).flatMap { thumbnail(source: $0, pixels: pixels) }
     }
 
-    nonisolated private static func thumbnail(source: CGImageSource, pixels: Int) -> NSImage? {
+    nonisolated private static func thumbnail(source: CGImageSource, pixels: Int) -> PlatformImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: pixels,
@@ -110,6 +123,15 @@ final class CoverCache {
             kCGImageSourceShouldCacheImmediately: true,
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return NSImage(cgImage: image, size: NSSize(width: image.width / 2, height: image.height / 2))
+        return platformImage(image)
+    }
+
+    /// Obraz w punktach przy skali 2 (Retina): `pixels` to piksele, widoki podają punkty × 2.
+    nonisolated private static func platformImage(_ image: CGImage) -> PlatformImage {
+        #if os(macOS)
+        NSImage(cgImage: image, size: NSSize(width: image.width / 2, height: image.height / 2))
+        #else
+        UIImage(cgImage: image, scale: 2, orientation: .up)
+        #endif
     }
 }

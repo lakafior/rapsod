@@ -10,7 +10,7 @@ extension AudiobookshelfClient {
     /// Segment ścieżki jak `encodeURIComponent(base64(nazwa))` w web UI. `URL.appending(path:)` koduje
     /// jeszcze raz `%`, Express zdejmuje jedno kodowanie, serwer drugie (`decodeURIComponent`) — dzięki temu
     /// `/` z base64 nie rozcina ścieżki.
-    static func encodedName(_ name: String) -> String {
+    public static func encodedName(_ name: String) -> String {
         let base64 = Data(name.utf8).base64EncodedString()
         return base64.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? base64
     }
@@ -19,33 +19,39 @@ extension AudiobookshelfClient {
 
     /// Wszystkie trzy pola zawsze w treści: serwer zmienia tylko obecne klucze, więc pominięty
     /// (nil) opis albo ASIN nie dałby się wyczyścić. Puste pole to pusty napis.
-    struct AuthorUpdate: Encodable, Sendable {
-        let name: String
-        let description: String
-        let asin: String
-    }
+    public struct AuthorUpdate: Encodable, Sendable {
+        public let name: String
+        public let description: String
+        public let asin: String
 
-    struct AuthorChange: Decodable, Sendable {
-        struct Changed: Decodable, Sendable {
-            let id: String
-            let name: String
-            let imagePath: String?
-            let description: String?
-            let asin: String?
+        public init(name: String, description: String, asin: String) {
+            self.name = name
+            self.description = description
+            self.asin = asin
         }
-        let author: Changed
-        /// Nowa nazwa należała do innego autora tej biblioteki — serwer połączył obu, stary `id` znika.
-        let merged: Bool?
-        let updated: Bool?
     }
 
-    func updateAuthor(id: String, _ update: AuthorUpdate, token: String) async throws -> AuthorChange {
+    public struct AuthorChange: Decodable, Sendable {
+        public struct Changed: Decodable, Sendable {
+            public let id: String
+            public let name: String
+            public let imagePath: String?
+            public let description: String?
+            public let asin: String?
+        }
+        public let author: Changed
+        /// Nowa nazwa należała do innego autora tej biblioteki — serwer połączył obu, stary `id` znika.
+        public let merged: Bool?
+        public let updated: Bool?
+    }
+
+    public func updateAuthor(id: String, _ update: AuthorUpdate, token: String) async throws -> AuthorChange {
         try decode(AuthorChange.self, from: await send("PATCH", "api/authors/\(id)", body: update, token: token))
     }
 
     /// Dopasowanie w Audible (`POST /api/authors/:id/match`): opis, ASIN i zdjęcie (zdjęcie tylko, gdy
     /// autor go nie miał albo zmienił się ASIN). 404, gdy nic nie znaleziono.
-    func matchAuthor(id: String, query: String?, asin: String?, region: String, token: String) async throws -> AuthorChange {
+    public func matchAuthor(id: String, query: String?, asin: String?, region: String, token: String) async throws -> AuthorChange {
         struct Body: Encodable {
             let q: String?
             let asin: String?
@@ -55,18 +61,18 @@ extension AudiobookshelfClient {
     }
 
     /// Zdjęcie autora z adresu http(s) — serwer sam je pobiera (upstream nie przyjmuje pliku).
-    func setAuthorImage(id: String, url: String, token: String) async throws {
+    public func setAuthorImage(id: String, url: String, token: String) async throws {
         struct Body: Encodable { let url: String }
         _ = try await send("POST", "api/authors/\(id)/image", body: Body(url: url), token: token, timeout: 60)
     }
 
-    func removeAuthorImage(id: String, token: String) async throws {
+    public func removeAuthorImage(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/authors/\(id)/image", token: token)
     }
 
     // MARK: Kolekcja
 
-    func updateCollection(id: String, name: String, description: String, token: String) async throws {
+    public func updateCollection(id: String, name: String, description: String, token: String) async throws {
         struct Body: Encodable {
             let name: String
             let description: String
@@ -74,66 +80,66 @@ extension AudiobookshelfClient {
         _ = try await send("PATCH", "api/collections/\(id)", body: Body(name: name, description: description), token: token)
     }
 
-    func removeFromCollection(id: String, books: [String], token: String) async throws {
+    public func removeFromCollection(id: String, books: [String], token: String) async throws {
         struct Body: Encodable { let books: [String] }
         _ = try await send("POST", "api/collections/\(id)/batch/remove", body: Body(books: books), token: token)
     }
 
-    func deleteCollection(id: String, token: String) async throws {
+    public func deleteCollection(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/collections/\(id)", token: token)
     }
 
     // MARK: Tagi, gatunki, lektorzy w całej bibliotece
 
-    enum MetadataList: String, Sendable {
+    public enum MetadataList: String, Sendable {
         case tags, genres
 
-        var singular: String { self == .tags ? "tag" : "genre" }
+        public var singular: String { self == .tags ? "tag" : "genre" }
     }
 
     /// Wszystkie tagi albo gatunki na serwerze (we wszystkich bibliotekach; tylko administrator).
-    func metadataValues(_ list: MetadataList, token: String) async throws -> [String] {
+    public func metadataValues(_ list: MetadataList, token: String) async throws -> [String] {
         let data = try await send("GET", "api/\(list.rawValue)", token: token)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         return json?[list.rawValue] as? [String] ?? []
     }
 
     /// Zmiana nazwy w każdej pozycji; nowa nazwa już istniejąca oznacza scalenie. Zwraca liczbę pozycji.
-    func renameMetadataValue(_ list: MetadataList, from old: String, to new: String, token: String) async throws -> Int {
+    public func renameMetadataValue(_ list: MetadataList, from old: String, to new: String, token: String) async throws -> Int {
         let body = [list.singular: old, "new" + list.singular.prefix(1).uppercased() + list.singular.dropFirst(): new]
         let data = try await send("POST", "api/\(list.rawValue)/rename", body: body, token: token, timeout: 120)
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["numItemsUpdated"] as? Int ?? 0
     }
 
-    func deleteMetadataValue(_ list: MetadataList, _ value: String, token: String) async throws -> Int {
+    public func deleteMetadataValue(_ list: MetadataList, _ value: String, token: String) async throws -> Int {
         let data = try await send("DELETE", "api/\(list.rawValue)/\(Self.encodedName(value))", token: token, timeout: 120)
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["numItemsUpdated"] as? Int ?? 0
     }
 
     /// `narratorID` jest już zakodowany (`Narrator.id` z `GET /api/libraries/:id/narrators`).
-    func renameNarrator(libraryID: String, narratorID: String, to name: String, token: String) async throws -> Int {
+    public func renameNarrator(libraryID: String, narratorID: String, to name: String, token: String) async throws -> Int {
         struct Body: Encodable { let name: String }
         struct Response: Decodable { let updated: Int? }
         return try decode(Response.self, from: await send("PATCH", "api/libraries/\(libraryID)/narrators/\(narratorID)", body: Body(name: name), token: token, timeout: 120)).updated ?? 0
     }
 
-    func removeNarrator(libraryID: String, narratorID: String, token: String) async throws -> Int {
+    public func removeNarrator(libraryID: String, narratorID: String, token: String) async throws -> Int {
         struct Response: Decodable { let updated: Int? }
         return try decode(Response.self, from: await send("DELETE", "api/libraries/\(libraryID)/narrators/\(narratorID)", token: token, timeout: 120)).updated ?? 0
     }
 
     // MARK: Publiczny link udostępniania
 
-    struct MediaItemShare: Decodable, Sendable, Identifiable {
-        let id: String
-        let slug: String
+    public struct MediaItemShare: Decodable, Sendable, Identifiable {
+        public let id: String
+        public let slug: String
         /// Milisekundy; `nil` — bez końca.
-        let expiresAt: Double?
-        let isDownloadable: Bool?
+        public let expiresAt: Double?
+        public let isDownloadable: Bool?
 
         private enum CodingKeys: String, CodingKey { case id, slug, expiresAt, isDownloadable }
 
-        init(from decoder: any Decoder) throws {
+        public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decode(String.self, forKey: .id)
             slug = try c.decode(String.self, forKey: .slug)
@@ -152,7 +158,7 @@ extension AudiobookshelfClient {
     }
 
     /// Książka z identyfikatorem mediów i otwartym linkiem (`include=share` widzi tylko administrator).
-    func shareState(itemID: String, token: String) async throws -> (mediaID: String, share: MediaItemShare?) {
+    public func shareState(itemID: String, token: String) async throws -> (mediaID: String, share: MediaItemShare?) {
         struct Response: Decodable {
             struct Media: Decodable { let id: String }
             let media: Media
@@ -162,7 +168,7 @@ extension AudiobookshelfClient {
         return (response.media.id, response.mediaItemShare)
     }
 
-    func createShare(mediaID: String, slug: String, expiresAt: Double, downloadable: Bool, token: String) async throws -> MediaItemShare {
+    public func createShare(mediaID: String, slug: String, expiresAt: Double, downloadable: Bool, token: String) async throws -> MediaItemShare {
         struct Body: Encodable {
             let slug: String
             /// 0 — bez wygaśnięcia (upstream odrzuca `null`).
@@ -175,56 +181,56 @@ extension AudiobookshelfClient {
         return try decode(MediaItemShare.self, from: await send("POST", "api/share/mediaitem", body: body, token: token))
     }
 
-    func deleteShare(id: String, token: String) async throws {
+    public func deleteShare(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/share/mediaitem/\(id)", token: token)
     }
 
     // MARK: Statystyki
 
-    struct LibraryStats: Decodable, Sendable {
+    public struct LibraryStats: Decodable, Sendable {
         /// Autor (`id`, `name`) albo gatunek (sam `genre`) z liczbą pozycji.
-        struct Named: Decodable, Sendable, Identifiable {
-            let authorID: String?
-            let name: String?
-            let genre: String?
-            let count: Int?
-            var title: String { name ?? genre ?? "—" }
-            var id: String { authorID ?? genre ?? title }
+        public struct Named: Decodable, Sendable, Identifiable {
+            public let authorID: String?
+            public let name: String?
+            public let genre: String?
+            public let count: Int?
+            public var title: String { name ?? genre ?? "—" }
+            public var id: String { authorID ?? genre ?? title }
 
             private enum CodingKeys: String, CodingKey {
                 case authorID = "id", name, genre, count
             }
         }
-        struct Sized: Decodable, Sendable, Identifiable {
-            let id: String
-            let title: String?
-            let size: Double?
-            let duration: Double?
+        public struct Sized: Decodable, Sendable, Identifiable {
+            public let id: String
+            public let title: String?
+            public let size: Double?
+            public let duration: Double?
         }
-        let totalItems: Int?
-        let totalAuthors: Int?
-        let totalGenres: Int?
-        let totalDuration: Double?
-        let totalSize: Double?
-        let numAudioTracks: Int?
-        let authorsWithCount: LenientList<Named>?
-        let genresWithCount: LenientList<Named>?
-        let longestItems: LenientList<Sized>?
-        let largestItems: LenientList<Sized>?
+        public let totalItems: Int?
+        public let totalAuthors: Int?
+        public let totalGenres: Int?
+        public let totalDuration: Double?
+        public let totalSize: Double?
+        public let numAudioTracks: Int?
+        public let authorsWithCount: LenientList<Named>?
+        public let genresWithCount: LenientList<Named>?
+        public let longestItems: LenientList<Sized>?
+        public let largestItems: LenientList<Sized>?
     }
 
-    func libraryStats(libraryID: String, token: String) async throws -> LibraryStats {
+    public func libraryStats(libraryID: String, token: String) async throws -> LibraryStats {
         try decode(LibraryStats.self, from: await send("GET", "api/libraries/\(libraryID)/stats", token: token, timeout: 60))
     }
 
     /// Statystyki słuchania dowolnego konta (to samo co `/api/me/listening-stats`, tylko administrator).
-    func listeningStats(userID: String, token: String) async throws -> ListeningStats {
+    public func listeningStats(userID: String, token: String) async throws -> ListeningStats {
         try decode(ListeningStats.self, from: await send("GET", "api/users/\(userID)/listening-stats", token: token))
     }
 
     // MARK: Biblioteki: kolejność, foldery, archiwum
 
-    func reorderLibraries(_ ids: [String], token: String) async throws {
+    public func reorderLibraries(_ ids: [String], token: String) async throws {
         struct Entry: Encodable {
             let id: String
             let newOrder: Int
@@ -234,19 +240,24 @@ extension AudiobookshelfClient {
 
     /// Foldery biblioteki. Istniejący folder musi mieć `id` — folder pominięty w liście serwer usuwa
     /// razem z pozycjami z bazy (pliki zostają); nowy ma samo `fullPath`.
-    struct FolderEntry: Encodable, Sendable {
-        let id: String?
-        let fullPath: String
+    public struct FolderEntry: Encodable, Sendable {
+        public let id: String?
+        public let fullPath: String
+
+        public init(id: String?, fullPath: String) {
+            self.id = id
+            self.fullPath = fullPath
+        }
     }
 
-    func updateLibraryFolders(id: String, folders: [FolderEntry], token: String) async throws {
+    public func updateLibraryFolders(id: String, folders: [FolderEntry], token: String) async throws {
         struct Body: Encodable { let folders: [FolderEntry] }
         _ = try await send("PATCH", "api/libraries/\(id)", body: Body(folders: folders), token: token, timeout: 120)
     }
 
     /// Archiwum ZIP z folderami pozycji (`GET /api/libraries/:id/download?ids=`), zapisywane wprost do pliku
     /// (`URLSession.download`), bez trzymania całego archiwum w pamięci.
-    func downloadItems(libraryID: String, ids: [String], to destination: URL, token: String) async throws {
+    public func downloadItems(libraryID: String, ids: [String], to destination: URL, token: String) async throws {
         var url = baseURL.appending(path: "api/libraries/\(libraryID)/download")
         url.append(queryItems: [URLQueryItem(name: "ids", value: ids.joined(separator: ","))])
         var request = URLRequest(url: url)

@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Zakładki książki: przejście do miejsca, zmiana nazwy, usunięcie.

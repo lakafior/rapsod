@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Strona książki: to, co słuchacz widzi w web UI (okładka, metadane z linkami, postęp, opis,
