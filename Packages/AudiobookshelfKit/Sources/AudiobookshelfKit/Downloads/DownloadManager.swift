@@ -167,6 +167,25 @@ public final class DownloadManager: NSObject {
         item.hasCover ? directory.appending(path: item.folder).appending(path: "cover.jpg") : nil
     }
 
+    /// Mapa tekstu pobrana z książką (etap 11b) — tryb „Tekst” bez sieci; `nil`, gdy jej nie ma.
+    public func textSyncData(itemID: String) -> Data? {
+        guard let item = items[ProgressJournal.key(itemID, nil)] else { return nil }
+        return try? Data(contentsOf: directory.appending(path: item.folder).appending(path: DownloadedItem.textSyncFileName))
+    }
+
+    /// Zapisuje (albo podmienia) mapę tekstu pobranej książki. Pozycja spoza pobranych — nic.
+    public func storeTextSync(_ data: Data, itemID: String) {
+        guard let item = items[ProgressJournal.key(itemID, nil)] else { return }
+        let url = directory.appending(path: item.folder).appending(path: DownloadedItem.textSyncFileName)
+        if let existing = try? Data(contentsOf: url), existing == data { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            logger.error("Zapis mapy tekstu pobranej książki: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Zajęte miejsce (pobrane pliki i okładki); `scope == nil` — wszystkich serwerów.
     public func usedBytes(scope: String? = nil) -> Int64 {
         _ = revision
@@ -184,7 +203,8 @@ public final class DownloadManager: NSObject {
     // MARK: - Działania
 
     /// Dodaje pozycję do kolejki (albo zostawia już pobieraną). Sprawdza wolne miejsce.
-    public func enqueue(_ item: DownloadedItem, cover: Data? = nil) throws {
+    /// `textSync` — mapa tekstu książki (jeśli jest), zapisana obok plików audio.
+    public func enqueue(_ item: DownloadedItem, cover: Data? = nil, textSync: Data? = nil) throws {
         if let existing = items[item.id] {
             if existing.failure != nil { retry(key: item.id) }
             return
@@ -199,6 +219,7 @@ public final class DownloadManager: NSObject {
         if let cover, (try? cover.write(to: folder.appending(path: "cover.jpg"), options: .atomic)) != nil {
             item.hasCover = true
         }
+        if let textSync { try? textSync.write(to: folder.appending(path: DownloadedItem.textSyncFileName), options: .atomic) }
         items[item.id] = item
         changed(item.id)
         pump()

@@ -72,20 +72,20 @@ public struct TextSyncCache: Sendable {
 /// Skąd wziąć mapę pozycji: serwer (pozycja i plik), kopia pobrana z książką (iOS) i jej odświeżenie.
 public struct TextSyncSource: Sendable {
     public var itemID: String
-    public var fetchItem: @Sendable () async throws -> AudiobookshelfClient.ItemDetail
-    public var fetchFile: @Sendable (_ ino: String) async throws -> Data
+    public var fetchItem: @MainActor @Sendable () async throws -> AudiobookshelfClient.ItemDetail
+    public var fetchFile: @MainActor @Sendable (_ ino: String) async throws -> Data
     /// Mapa pobrana razem z książką (działa bez sieci).
-    public var downloadedCopy: @Sendable () -> Data?
+    public var downloadedCopy: @MainActor @Sendable () -> Data?
     /// Mapa z serwera po wczytaniu — pobrana książka zapisuje ją (albo podmienia starszą) obok
     /// plików audio; także książki pobrane przed etapem 11b dostają tak tekst bez sieci.
-    public var updateDownloadedCopy: @Sendable (Data) -> Void
+    public var updateDownloadedCopy: @MainActor @Sendable (Data) -> Void
 
     public init(
         itemID: String,
-        fetchItem: @escaping @Sendable () async throws -> AudiobookshelfClient.ItemDetail,
-        fetchFile: @escaping @Sendable (_ ino: String) async throws -> Data,
-        downloadedCopy: @escaping @Sendable () -> Data? = { nil },
-        updateDownloadedCopy: @escaping @Sendable (Data) -> Void = { _ in }
+        fetchItem: @escaping @MainActor @Sendable () async throws -> AudiobookshelfClient.ItemDetail,
+        fetchFile: @escaping @MainActor @Sendable (_ ino: String) async throws -> Data,
+        downloadedCopy: @escaping @MainActor @Sendable () -> Data? = { nil },
+        updateDownloadedCopy: @escaping @MainActor @Sendable (Data) -> Void = { _ in }
     ) {
         self.itemID = itemID
         self.fetchItem = fetchItem
@@ -124,7 +124,7 @@ public enum TextSyncLoader {
             return .failed("Przerwano.")
         } catch {
             // Bez serwera: pobrana kopia, potem pamięć podręczna.
-            if let data = source.downloadedCopy() ?? cache.latest(itemID: source.itemID), let map = try? decode(data) {
+            if let data = await source.downloadedCopy() ?? cache.latest(itemID: source.itemID), let map = try? decode(data) {
                 return .ready(TextSyncDocument(map: map), isStale: false, isOffline: true)
             }
             if AddressSelection.isConnectionError(error) { return .unavailable(.offline) }
@@ -144,7 +144,7 @@ public enum TextSyncLoader {
             } catch let error as Damaged {
                 return .failed(error.localizedDescription)
             } catch {
-                if let data = source.downloadedCopy() ?? cache.latest(itemID: source.itemID), let map = try? decode(data) {
+                if let data = await source.downloadedCopy() ?? cache.latest(itemID: source.itemID), let map = try? decode(data) {
                     return .ready(TextSyncDocument(map: map), isStale: map.isStale(for: item), isOffline: true)
                 }
                 return .failed("Nie udało się pobrać tekstu: \(error.localizedDescription)")
@@ -154,7 +154,7 @@ public enum TextSyncLoader {
             cache.remove(itemID: source.itemID)
             return .failed(Damaged().localizedDescription)
         }
-        source.updateDownloadedCopy(data)
+        await source.updateDownloadedCopy(data)
         return .ready(TextSyncDocument(map: map), isStale: map.isStale(for: item), isOffline: false)
     }
 }

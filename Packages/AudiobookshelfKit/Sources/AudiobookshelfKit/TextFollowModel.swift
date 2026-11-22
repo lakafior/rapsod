@@ -64,6 +64,14 @@ public final class TextFollowModel {
     /// Wczytuje mapę pozycji `key` (ten sam klucz — nic nie robi, chyba że poprzednio się nie udało).
     public func load(key: String, source: TextSyncSource, cache: TextSyncCache) {
         if key == self.key, phase == .ready || phase == .loading { return }
+        // Inna książka: stary tekst znika od razu (ta sama, np. po nowej synchronizacji — zostaje do podmiany).
+        if let old = self.key, old.split(separator: "#").first != key.split(separator: "#").first {
+            document = nil
+            currentSentence = nil
+            currentParagraph = nil
+            window = 0..<0
+            isFollowing = true
+        }
         self.key = key
         self.source = source
         self.cache = cache
