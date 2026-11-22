@@ -169,7 +169,7 @@ struct ItemDetailView: View {
                     LabeledContent("Seria", value: series.sequence.map { "\(series.name) · tom \($0)" } ?? series.name)
                 }
             }
-            ForEach(metadata.narrators ?? [], id: \.self) { narrator in
+            ForEach(Array(NSOrderedSet(array: metadata.narrators ?? []).array as? [String] ?? []), id: \.self) { narrator in
                 NavigationLink(value: Route.narrator(narrator)) {
                     LabeledContent("Lektor", value: narrator)
                 }

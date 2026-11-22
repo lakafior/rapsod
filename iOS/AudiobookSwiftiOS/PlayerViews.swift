@@ -119,15 +119,19 @@ struct PlayerScreen: View {
                     if proxy.size.width > proxy.size.height * 1.15 {
                         HStack(spacing: 36) {
                             artwork(side: min(proxy.size.height - 40, proxy.size.width * 0.42))
-                            VStack(spacing: 18) {
-                                topBar
-                                Spacer(minLength: 0)
-                                info(book)
-                                ChapterScrubber(player: player)
-                                controls
-                                options
-                                Spacer(minLength: 0)
+                            // Przewijana, gdy przy dużym tekście sterowanie się nie mieści.
+                            ScrollView {
+                                VStack(spacing: 18) {
+                                    topBar
+                                    info(book)
+                                    ChapterScrubber(player: player)
+                                    controls
+                                    options
+                                }
+                                .padding(.vertical, 12)
+                                .frame(minHeight: proxy.size.height - 24)
                             }
+                            .scrollBounceBehavior(.basedOnSize)
                             .frame(maxWidth: 460)
                         }
                         .padding(.horizontal, 24)

@@ -148,8 +148,8 @@ private struct HomeContent: View {
         }
         .refreshable {
             await model.reconnect()
+            // Nowy postęp zmienia `progressRevision` — półki wczytuje wtedy `.task(id:)` poniżej.
             await session.library.refreshProgress()
-            await feed.load(combined, session: session, model: model)
         }
         // Po zdarzeniach serwera (nowe pozycje, wczytany od nowa postęp) i po włączeniu innej książki.
         // Nie po każdej synchronizacji postępu (co 15 s) — paski postępu odświeżają się same.
@@ -241,10 +241,11 @@ struct ContinueCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
+                // Na zawartości odnośnika, nie na nim — inaczej VoiceOver widzi dwa elementy (etap 10d).
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text([info.kicker, info.title, info.subtitle].compactMap(\.self).joined(separator: ", ")))
             }
             .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text([info.kicker, info.title, info.subtitle].compactMap(\.self).joined(separator: ", ")))
             Spacer(minLength: 0)
             if large {
                 CardProgressLine(entry: entry, session: session)
@@ -445,9 +446,9 @@ struct EpisodeListRow: View {
                     DownloadEntryBadge(entry: session.downloads.manager.entry(itemID: itemID, episodeID: episode.id))
                 }
                 .contentShape(.rect)
+                .accessibilityElement(children: .combine)
             }
             .buttonStyle(.plain)
-            .accessibilityElement(children: .combine)
             CirclePlayButton(isCurrent: playback.nowPlayingKeys.contains(key), isPlaying: playback.player.isPlaying,
                              isStarting: playback.startingKey == key) {
                 Task { await playback.play(itemID: itemID, episodeID: episode.id) }
@@ -509,7 +510,7 @@ struct SeriesCard: View {
                     }
                     if books.isEmpty { CoverPlaceholder().aspectRatio(1, contentMode: .fit).coverStyle() }
                 }
-                .padding(.top, min(CGFloat(books.count - 1), 2) * 7)
+                .padding(.top, CGFloat(max(0, min(books.count - 1, 2))) * 7)
                 Text(series.first.name).font(.subheadline.weight(.medium)).lineLimit(2).multilineTextAlignment(.leading)
                 if !books.isEmpty {
                     Text(PolishCount.books(books.count)).font(.caption).foregroundStyle(.secondary)

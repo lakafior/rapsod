@@ -386,6 +386,8 @@ struct CirclePlayButton: View {
         }
         .buttonStyle(.glassProminent)
         .buttonBorderShape(.circle)
+        .disabled(isStarting)
         .accessibilityLabel(Text(isCurrent && isPlaying ? "Pauza" : "Odtwarzaj"))
+        .accessibilityValue(Text(isStarting ? "Wczytywanie" : ""))
     }
 }

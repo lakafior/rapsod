@@ -128,8 +128,8 @@ private struct PodcastsContent: View {
         }
         .refreshable {
             await model.reconnect()
+            // Nowy postęp zmienia `progressRevision` — listę wczytuje wtedy `.task(id:)`.
             await session.library.refreshProgress()
-            await load()
         }
         .task(id: Trigger(items: session.library.itemsRevision, progress: session.library.progressRevision, playing: model.playback.nowPlayingKey)) {
             await load()
@@ -159,8 +159,14 @@ private struct PodcastsContent: View {
                 if value == sort { descending.toggle() } else { sort = value; descending = value.defaultDescending }
             })) {
                 ForEach(CombinedLibraries.PodcastSort.allCases, id: \.self) { option in
-                    Label(Self.title(option), systemImage: option == sort ? (descending ? "chevron.down" : "chevron.up") : "")
-                        .tag(option)
+                    Group {
+                        if option == sort {
+                            Label(Self.title(option), systemImage: descending ? "chevron.down" : "chevron.up")
+                        } else {
+                            Text(Self.title(option))
+                        }
+                    }
+                    .tag(option)
                 }
             }
         } label: {
