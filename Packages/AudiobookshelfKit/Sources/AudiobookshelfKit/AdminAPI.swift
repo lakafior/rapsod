@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 
 /// Punkty API administracji serwerem (etap 9c): kopie zapasowe, ustawienia automatu kopii,
@@ -9,50 +13,50 @@ extension AudiobookshelfClient {
     // MARK: Kopie zapasowe
 
     /// Kopia zapasowa (`server/objects/Backup.js`, `toJSON`).
-    struct Backup: Decodable, Sendable, Identifiable, Hashable {
-        let id: String
-        let filename: String
-        let fullPath: String
-        let fileSize: Int64?
+    public struct Backup: Decodable, Sendable, Identifiable, Hashable {
+        public let id: String
+        public let filename: String
+        public let fullPath: String
+        public let fileSize: Int64?
         /// Milisekundy od 1970.
-        let createdAt: Double?
-        let serverVersion: String?
+        public let createdAt: Double?
+        public let serverVersion: String?
 
-        var date: Date? { createdAt.map { Date(timeIntervalSince1970: $0 / 1000) } }
+        public var date: Date? { createdAt.map { Date(timeIntervalSince1970: $0 / 1000) } }
     }
 
-    struct BackupList: Decodable, Sendable {
-        let backups: [Backup]
+    public struct BackupList: Decodable, Sendable {
+        public let backups: [Backup]
         /// Folder kopii (`backupPath` z ustawień serwera).
-        let backupLocation: String?
+        public let backupLocation: String?
         /// Ścieżka ustawiona zmienną `BACKUP_PATH` — wtedy nie da się jej zmienić z API.
-        let backupPathEnvSet: Bool?
+        public let backupPathEnvSet: Bool?
     }
 
-    func backups(token: String) async throws -> BackupList {
+    public func backups(token: String) async throws -> BackupList {
         try decode(BackupList.self, from: await send("GET", "api/backups", token: token))
     }
 
     /// Tworzy kopię; serwer odpowiada dopiero po spakowaniu (stąd długi limit czasu).
     /// Porażka to goły HTTP 500 — najczęściej przekroczony limit rozmiaru kopii.
-    func createBackup(token: String) async throws -> [Backup] {
+    public func createBackup(token: String) async throws -> [Backup] {
         struct Response: Decodable { let backups: [Backup] }
         return try decode(Response.self, from: await send("POST", "api/backups", token: token, timeout: 900)).backups
     }
 
-    func deleteBackup(id: String, token: String) async throws {
+    public func deleteBackup(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/backups/\(id)", token: token)
     }
 
     /// Przywraca kopię: serwer zamyka bazę, podmienia ją i metadane pozycji oraz autorów
     /// i odpowiada po zakończeniu. Wszyscy klienci dostają `backup_applied`.
-    func applyBackup(id: String, token: String) async throws {
+    public func applyBackup(id: String, token: String) async throws {
         _ = try await send("GET", "api/backups/\(id)/apply", token: token, timeout: 900)
     }
 
     /// Wgrywa plik `.audiobookshelf` do folderu kopii (pole `file` w `multipart/form-data`,
     /// jak `BackupUploader.vue`). Treść jest składana w pliku tymczasowym, nie w pamięci.
-    func uploadBackup(file: URL, token: String) async throws -> [Backup] {
+    public func uploadBackup(file: URL, token: String) async throws -> [Backup] {
         struct Response: Decodable { let backups: [Backup] }
         let boundary = "AudiobookSwift-\(UUID().uuidString)"
         let name = file.lastPathComponent.replacingOccurrences(of: "\"", with: "")
@@ -96,7 +100,7 @@ extension AudiobookshelfClient {
 
     /// Zmienia folder kopii (`PATCH /api/backups/path`); serwer tworzy go, jeśli nie istnieje,
     /// i wczytuje kopie z nowego miejsca.
-    func setBackupPath(_ path: String, token: String) async throws {
+    public func setBackupPath(_ path: String, token: String) async throws {
         struct Body: Encodable { let path: String }
         _ = try await send("PATCH", "api/backups/path", body: Body(path: path), token: token)
     }
@@ -104,11 +108,11 @@ extension AudiobookshelfClient {
     // MARK: Ustawienia serwera (automat kopii)
 
     /// Harmonogram kopii: `false` (wyłączony) albo wyrażenie cron.
-    enum BackupSchedule: Codable, Sendable, Equatable {
+    public enum BackupSchedule: Codable, Sendable, Equatable {
         case disabled
         case cron(String)
 
-        init(from decoder: any Decoder) throws {
+        public init(from decoder: any Decoder) throws {
             let container = try decoder.singleValueContainer()
             if let text = try? container.decode(String.self), !text.isEmpty {
                 self = .cron(text)
@@ -117,7 +121,7 @@ extension AudiobookshelfClient {
             }
         }
 
-        func encode(to encoder: any Encoder) throws {
+        public func encode(to encoder: any Encoder) throws {
             var container = encoder.singleValueContainer()
             switch self {
             case .disabled: try container.encode(false)
@@ -127,16 +131,16 @@ extension AudiobookshelfClient {
     }
 
     /// Ustawienia kopii z `serverSettings` (`server/objects/settings/ServerSettings.js`).
-    struct BackupSettings: Decodable, Sendable, Equatable {
-        var backupSchedule: BackupSchedule
-        var backupsToKeep: Int
+    public struct BackupSettings: Decodable, Sendable, Equatable {
+        public var backupSchedule: BackupSchedule
+        public var backupsToKeep: Int
         /// GB; 0 = bez limitu.
-        var maxBackupSize: Double
-        var backupPath: String?
+        public var maxBackupSize: Double
+        public var backupPath: String?
 
         private enum CodingKeys: String, CodingKey { case backupSchedule, backupsToKeep, maxBackupSize, backupPath }
 
-        init(from decoder: any Decoder) throws {
+        public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             backupSchedule = (try? container.decode(BackupSchedule.self, forKey: .backupSchedule)) ?? .disabled
             backupsToKeep = (try? container.decode(Int.self, forKey: .backupsToKeep)) ?? 2
@@ -147,13 +151,13 @@ extension AudiobookshelfClient {
 
     /// Ustawienia serwera bez `GET /api/settings` (upstream go nie ma): `POST /api/authorize`
     /// zwraca je razem z użytkownikiem tokenu — i nie przechodzi przez ogranicznik `/login`.
-    func backupSettings(token: String) async throws -> BackupSettings {
+    public func backupSettings(token: String) async throws -> BackupSettings {
         struct Response: Decodable { let serverSettings: BackupSettings }
         return try decode(Response.self, from: await send("POST", "api/authorize", token: token)).serverSettings
     }
 
     /// Zmienia tylko podane pola ustawień kopii (`PATCH /api/settings`).
-    func updateBackupSettings(schedule: BackupSchedule?, backupsToKeep: Int?, maxBackupSize: Double?, token: String) async throws {
+    public func updateBackupSettings(schedule: BackupSchedule?, backupsToKeep: Int?, maxBackupSize: Double?, token: String) async throws {
         struct Body: Encodable {
             let backupSchedule: BackupSchedule?
             let backupsToKeep: Int?
@@ -165,46 +169,33 @@ extension AudiobookshelfClient {
     // MARK: Biblioteki: skan i dopasowanie
 
     /// Zleca skan; `force` (`?force=1`) skanuje ponownie także niezmienione pozycje.
-    func scanLibrary(id: String, force: Bool, token: String) async throws {
+    public func scanLibrary(id: String, force: Bool, token: String) async throws {
         let query = force ? [URLQueryItem(name: "force", value: "1")] : []
         _ = try await send("POST", "api/libraries/\(id)/scan", query: query, token: token)
     }
 
     /// Szybkie dopasowanie wszystkich książek biblioteki (zadanie `library-match-all`).
-    func matchAllItems(libraryID: String, token: String) async throws {
+    public func matchAllItems(libraryID: String, token: String) async throws {
         _ = try await send("GET", "api/libraries/\(libraryID)/matchall", token: token)
     }
 
     // MARK: Użytkownicy
 
-    struct Permissions: Codable, Sendable, Equatable {
-        var download = true
-        var update = false
-        var delete = false
-        var upload = false
-        var createEreader = false
-        var accessAllLibraries = true
-        var accessAllTags = true
-        var accessExplicitContent = false
+    public struct Permissions: Codable, Sendable, Equatable {
+        public var download = true
+        public var update = false
+        public var delete = false
+        public var upload = false
+        public var createEreader = false
+        public var accessAllLibraries = true
+        public var accessAllTags = true
+        public var accessExplicitContent = false
         /// Gdy `true`, wybrane tagi są *niedostępne*; gdy `false` — dostępne są tylko one.
-        var selectedTagsNotAccessible = false
+        public var selectedTagsNotAccessible = false
 
-        init() {}
+        public init() {}
 
-        /// Domyślne uprawnienia typu konta (jak `userTypeUpdated` w `AccountModal.vue`).
-        static func defaults(for type: String) -> Permissions {
-            var permissions = Permissions()
-            let isAdmin = type == "admin"
-            permissions.download = type != "guest"
-            permissions.update = isAdmin
-            permissions.delete = isAdmin
-            permissions.upload = isAdmin
-            permissions.accessExplicitContent = isAdmin
-            permissions.createEreader = isAdmin
-            return permissions
-        }
-
-        init(from decoder: any Decoder) throws {
+        public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             func flag(_ key: CodingKeys, _ fallback: Bool) -> Bool {
                 (try? container.decode(Bool.self, forKey: key)) ?? fallback
@@ -222,28 +213,28 @@ extension AudiobookshelfClient {
     }
 
     /// Konto na serwerze w widoku administratora (`User.toOldJSONForBrowser`, wersja minimalna).
-    struct ManagedUser: Decodable, Sendable, Identifiable, Equatable {
-        let id: String
-        let username: String
+    public struct ManagedUser: Decodable, Sendable, Identifiable, Equatable {
+        public let id: String
+        public let username: String
         /// `root`, `admin`, `user` albo `guest`.
-        let type: String
-        let isActive: Bool
-        let isLocked: Bool
+        public let type: String
+        public let isActive: Bool
+        public let isLocked: Bool
         /// Milisekundy od 1970.
-        let lastSeen: Double?
-        let createdAt: Double?
-        let permissions: Permissions
-        let librariesAccessible: [String]
-        let itemTagsSelected: [String]
-        let hasOpenIDLink: Bool
+        public let lastSeen: Double?
+        public let createdAt: Double?
+        public let permissions: Permissions
+        public let librariesAccessible: [String]
+        public let itemTagsSelected: [String]
+        public let hasOpenIDLink: Bool
 
-        var isRoot: Bool { type == "root" }
+        public var isRoot: Bool { type == "root" }
 
         private enum CodingKeys: String, CodingKey {
             case id, username, type, isActive, isLocked, lastSeen, createdAt, permissions, librariesAccessible, itemTagsSelected, hasOpenIDLink
         }
 
-        init(from decoder: any Decoder) throws {
+        public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             id = try container.decode(String.self, forKey: .id)
             username = try container.decode(String.self, forKey: .username)
@@ -262,14 +253,14 @@ extension AudiobookshelfClient {
     /// Zmiany konta. Biblioteki i tagi idą *wewnątrz* `permissions`: `UserController.update`
     /// bierze je pod uwagę tylko w gałęzi uprawnień, więc `permissions` jest zawsze wysyłane.
     /// Hasło nigdy nie trafia do logów; puste pole znaczy „bez zmiany”.
-    struct UserChanges: Encodable, Sendable {
-        var username: String?
-        var password: String?
-        var type: String?
-        var isActive: Bool?
-        var permissions: Permissions
-        var librariesAccessible: [String]
-        var itemTagsSelected: [String]
+    public struct UserChanges: Encodable, Sendable {
+        public var username: String?
+        public var password: String?
+        public var type: String?
+        public var isActive: Bool?
+        public var permissions: Permissions
+        public var librariesAccessible: [String]
+        public var itemTagsSelected: [String]
 
         private enum CodingKeys: String, CodingKey { case username, password, type, isActive, permissions }
         private enum PermissionKeys: String, CodingKey {
@@ -277,7 +268,7 @@ extension AudiobookshelfClient {
                  accessExplicitContent, selectedTagsNotAccessible, librariesAccessible, itemTagsSelected
         }
 
-        func encode(to encoder: any Encoder) throws {
+        public func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encodeIfPresent(username, forKey: .username)
             try container.encodeIfPresent(password, forKey: .password)
@@ -296,33 +287,43 @@ extension AudiobookshelfClient {
             try nested.encode(librariesAccessible, forKey: .librariesAccessible)
             try nested.encode(itemTagsSelected, forKey: .itemTagsSelected)
         }
+
+        public init(username: String? = nil, password: String? = nil, type: String? = nil, isActive: Bool? = nil, permissions: Permissions, librariesAccessible: [String], itemTagsSelected: [String]) {
+            self.username = username
+            self.password = password
+            self.type = type
+            self.isActive = isActive
+            self.permissions = permissions
+            self.librariesAccessible = librariesAccessible
+            self.itemTagsSelected = itemTagsSelected
+        }
     }
 
-    func users(token: String) async throws -> [ManagedUser] {
+    public func users(token: String) async throws -> [ManagedUser] {
         struct Response: Decodable { let users: [ManagedUser] }
         return try decode(Response.self, from: await send("GET", "api/users", token: token)).users
     }
 
     /// Zakłada konto (wymagane nazwa i hasło). Zajęta nazwa: HTTP 400.
-    func createUser(_ changes: UserChanges, token: String) async throws -> ManagedUser {
+    public func createUser(_ changes: UserChanges, token: String) async throws -> ManagedUser {
         struct Response: Decodable { let user: ManagedUser }
         return try decode(Response.self, from: await send("POST", "api/users", body: changes, token: token)).user
     }
 
     /// Zmienia konto. Zmiana nazwy albo hasła unieważnia sesje tego konta na serwerze.
-    func updateUser(id: String, _ changes: UserChanges, token: String) async throws -> ManagedUser {
+    public func updateUser(id: String, _ changes: UserChanges, token: String) async throws -> ManagedUser {
         struct Response: Decodable { let user: ManagedUser }
         return try decode(Response.self, from: await send("PATCH", "api/users/\(id)", body: changes, token: token)).user
     }
 
     /// Usuwa konto razem z jego playlistami; sesje odtwarzania zostają bez właściciela.
     /// Roota nie da się usunąć (403), samego siebie też nie (400).
-    func deleteUser(id: String, token: String) async throws {
+    public func deleteUser(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/users/\(id)", token: token)
     }
 
     /// Wszystkie tagi książek i podcastów (do ograniczania dostępu po tagach).
-    func allTags(token: String) async throws -> [String] {
+    public func allTags(token: String) async throws -> [String] {
         struct Response: Decodable { let tags: [String] }
         return try decode(Response.self, from: await send("GET", "api/tags", token: token)).tags
     }

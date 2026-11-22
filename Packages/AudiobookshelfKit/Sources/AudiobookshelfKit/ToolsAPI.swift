@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 
 /// Punkty API narzędzi pozycji (etap 9e): usunięcie, ponowny skan, kolejność plików,
@@ -12,31 +16,31 @@ extension AudiobookshelfClient {
     // MARK: Modele
 
     /// Plik audio książki (`media.audioFiles`, także wykluczone — w przeciwieństwie do `tracks`).
-    struct AudioFileEntry: Decodable, Sendable, Identifiable, Hashable {
-        let ino: String
-        let index: Int?
-        let exclude: Bool?
-        let duration: Double?
-        let codec: String?
-        let bitRate: Double?
-        let channels: Int?
-        let trackNumFromMeta: Int?
-        let trackNumFromFilename: Int?
-        let discNumFromMeta: Int?
-        let discNumFromFilename: Int?
-        let metadata: ItemDetail.Media.FileMetadata?
+    public struct AudioFileEntry: Decodable, Sendable, Identifiable, Hashable {
+        public let ino: String
+        public let index: Int?
+        public let exclude: Bool?
+        public let duration: Double?
+        public let codec: String?
+        public let bitRate: Double?
+        public let channels: Int?
+        public let trackNumFromMeta: Int?
+        public let trackNumFromFilename: Int?
+        public let discNumFromMeta: Int?
+        public let discNumFromFilename: Int?
+        public let metadata: ItemDetail.Media.FileMetadata?
         // Szczegóły pliku (etap 9g, okno „Informacje o pliku audio”).
-        let format: String?
-        let channelLayout: String?
-        let timeBase: String?
-        let language: String?
-        let embeddedCoverArt: String?
-        let chapters: LenientList<ItemDetail.Media.Chapter>?
-        var id: String { ino }
+        public let format: String?
+        public let channelLayout: String?
+        public let timeBase: String?
+        public let language: String?
+        public let embeddedCoverArt: String?
+        public let chapters: LenientList<ItemDetail.Media.Chapter>?
+        public var id: String { ino }
     }
 
     /// Wynik `POST /api/items/:id/scan` (`ScanResult` z `utils/constants.js`).
-    enum ItemScanResult: String, Sendable {
+    public enum ItemScanResult: String, Sendable {
         case nothing = "NOTHING"
         case added = "ADDED"
         case updated = "UPDATED"
@@ -45,22 +49,28 @@ extension AudiobookshelfClient {
     }
 
     /// Opcje kodowania M4B (`?codec=&bitrate=&channels=` jak w `manage.vue`).
-    struct EncodeOptions: Sendable, Hashable {
-        var codec = "aac"
-        var bitrate = "128k"
-        var channels = 2
+    public struct EncodeOptions: Sendable, Hashable {
+        public var codec = "aac"
+        public var bitrate = "128k"
+        public var channels = 2
+
+        public init(codec: String = "", bitrate: String = "", channels: Int = 2) {
+            self.codec = codec
+            self.bitrate = bitrate
+            self.channels = channels
+        }
     }
 
     /// `GET /api/tasks?include=queue`: zadania w toku i czekające osadzenia metadanych.
-    struct TaskList: Decodable, Sendable {
-        struct Queue: Decodable, Sendable {
-            struct Entry: Decodable, Sendable { let libraryItemId: String? }
-            let embedMetadata: LenientList<Entry>?
+    public struct TaskList: Decodable, Sendable {
+        public struct Queue: Decodable, Sendable {
+            public struct Entry: Decodable, Sendable { public let libraryItemId: String? }
+            public let embedMetadata: LenientList<Entry>?
         }
-        let tasks: LenientList<ServerTask>
-        let queuedTaskData: Queue?
+        public let tasks: LenientList<ServerTask>
+        public let queuedTaskData: Queue?
 
-        var queuedEmbeds: Set<String> {
+        public var queuedEmbeds: Set<String> {
             Set(queuedTaskData?.embedMetadata?.elements.compactMap(\.libraryItemId) ?? [])
         }
     }
@@ -69,12 +79,12 @@ extension AudiobookshelfClient {
 
     /// `hard` kasuje folder pozycji trwale (`fs.remove`). Aplikacja zamiast tego przenosi
     /// go do Kosza sama (decyzja użytkownika), a trwałe usunięcie zostaje jako wyjście, gdy Kosza nie ma.
-    func deleteItem(id: String, hard: Bool, token: String) async throws {
+    public func deleteItem(id: String, hard: Bool, token: String) async throws {
         let query = hard ? [URLQueryItem(name: "hard", value: "1")] : []
         _ = try await send("DELETE", "api/items/\(id)", query: query, token: token, timeout: 120)
     }
 
-    func scanItem(id: String, token: String) async throws -> ItemScanResult? {
+    public func scanItem(id: String, token: String) async throws -> ItemScanResult? {
         struct Response: Decodable { let result: String? }
         let data = try await send("POST", "api/items/\(id)/scan", token: token, timeout: 300)
         return try decode(Response.self, from: data).result.flatMap(ItemScanResult.init(rawValue:))
@@ -84,7 +94,7 @@ extension AudiobookshelfClient {
 
     /// Zastępuje listę plików audio: **zawsze wszystkie** pliki pozycji, w nowej kolejności
     /// (serwer zapisuje tylko to, co dostał — pominięty plik zniknąłby z książki).
-    func updateTracks(itemID: String, _ files: [(ino: String, exclude: Bool)], token: String) async throws {
+    public func updateTracks(itemID: String, _ files: [(ino: String, exclude: Bool)], token: String) async throws {
         struct Entry: Encodable { let ino: String; let exclude: Bool }
         struct Body: Encodable { let orderedFileData: [Entry] }
         let body = Body(orderedFileData: files.map { Entry(ino: $0.ino, exclude: $0.exclude) })
@@ -93,12 +103,12 @@ extension AudiobookshelfClient {
 
     // MARK: Narzędzia (ffmpeg na serwerze)
 
-    func embedMetadata(itemID: String, backup: Bool, token: String) async throws {
+    public func embedMetadata(itemID: String, backup: Bool, token: String) async throws {
         let query = [URLQueryItem(name: "backup", value: backup ? "1" : "0")]
         _ = try await send("POST", "api/tools/item/\(itemID)/embed-metadata", query: query, token: token)
     }
 
-    func encodeM4b(itemID: String, options: EncodeOptions, token: String) async throws {
+    public func encodeM4b(itemID: String, options: EncodeOptions, token: String) async throws {
         let query = [
             URLQueryItem(name: "codec", value: options.codec),
             URLQueryItem(name: "bitrate", value: options.bitrate),
@@ -107,11 +117,11 @@ extension AudiobookshelfClient {
         _ = try await send("POST", "api/tools/item/\(itemID)/encode-m4b", query: query, token: token)
     }
 
-    func cancelM4b(itemID: String, token: String) async throws {
+    public func cancelM4b(itemID: String, token: String) async throws {
         _ = try await send("DELETE", "api/tools/item/\(itemID)/encode-m4b", token: token)
     }
 
-    func itemTasks(token: String) async throws -> TaskList {
+    public func itemTasks(token: String) async throws -> TaskList {
         let query = [URLQueryItem(name: "include", value: "queue")]
         return try decode(TaskList.self, from: await send("GET", "api/tasks", query: query, token: token))
     }
@@ -121,7 +131,7 @@ extension AudiobookshelfClient {
     /// Czy `directory` (względem folderu biblioteki) już istnieje — serwer odmawia wgrania
     /// w zajęte miejsce. `itemTitle` — pozycja biblioteki, w której podfolderze to leży
     /// (albo która właśnie tam powstała po skanie).
-    func pathExists(directory: String, folderPath: String, token: String) async throws -> (exists: Bool, itemTitle: String?) {
+    public func pathExists(directory: String, folderPath: String, token: String) async throws -> (exists: Bool, itemTitle: String?) {
         struct Body: Encodable { let directory: String; let folderPath: String }
         struct Response: Decodable { let exists: Bool; let libraryItemTitle: String? }
         let data = try await send("POST", "api/filesystem/pathexists", body: Body(directory: directory, folderPath: folderPath), token: token)
@@ -132,7 +142,7 @@ extension AudiobookshelfClient {
     /// `POST /api/upload` (`multipart/form-data` jak `pages/upload/index.vue`): pola `title`,
     /// `author`, `series`, `library`, `folder` i pliki pod kluczami `0`, `1`, …
     /// Treść jest składana w pliku tymczasowym i wysyłana strumieniowo — książka może mieć gigabajty.
-    func upload(
+    public func upload(
         files: [URL],
         title: String,
         author: String?,
@@ -157,7 +167,7 @@ extension AudiobookshelfClient {
             if let series { try output.write(contentsOf: field("series", series)) }
             try output.write(contentsOf: field("library", libraryID))
             try output.write(contentsOf: field("folder", folderID))
-            let names = UploadGrouping.uploadNames(for: files)
+            let names = Self.uploadNames(for: files)
             for (index, file) in files.enumerated() {
                 try Task.checkCancellation()
                 // Nazwa pliku w nagłówku: cudzysłów i znaki nowej linii rozbiłyby nagłówek.
@@ -214,9 +224,9 @@ private final class UploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
 
 // Rozdziały pliku audio w `AudioFileEntry` (etap 9g) — lista łagodna, a wpis musi być `Hashable`.
 extension AudiobookshelfClient.LenientList: Equatable where Element: Equatable {
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.elements == rhs.elements }
+    public static func == (lhs: Self, rhs: Self) -> Bool { lhs.elements == rhs.elements }
 }
 
 extension AudiobookshelfClient.LenientList: Hashable where Element: Hashable {
-    func hash(into hasher: inout Hasher) { hasher.combine(elements) }
+    public func hash(into hasher: inout Hasher) { hasher.combine(elements) }
 }

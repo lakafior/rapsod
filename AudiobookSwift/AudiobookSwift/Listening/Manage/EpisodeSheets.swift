@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// „Odcinki z kanału”: lista odcinków z RSS z zaznaczaniem i pobieraniem wybranych —

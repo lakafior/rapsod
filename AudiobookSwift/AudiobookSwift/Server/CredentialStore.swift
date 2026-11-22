@@ -1,3 +1,4 @@
+import AudiobookshelfKit
 import Foundation
 import Security
 
@@ -81,6 +82,9 @@ struct CredentialStore<Value: Codable & Sendable & Equatable>: Sendable {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
     }
 }
+
+/// Pęk kluczy Maca jako miejsce na sekrety kont dla kodu wspólnego (`SecretStore` z AudiobookshelfKit).
+extension CredentialStore: SecretStore {}
 
 struct KeychainError: LocalizedError {
     let status: OSStatus

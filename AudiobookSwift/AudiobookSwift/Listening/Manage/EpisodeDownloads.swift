@@ -1,3 +1,4 @@
+import AudiobookshelfKit
 import SwiftUI
 
 /// Kolejka pobierania odcinków podcastów. Serwer pobiera po jednym odcinku naraz i nie podaje
@@ -7,9 +8,8 @@ import SwiftUI
 @MainActor
 @Observable
 final class EpisodeDownloads {
-    enum Phase: Sendable {
-        case queued, started, finished
-    }
+    /// Etap ze zdarzeń serwera — typ w pakiecie, bo niosą go `ListeningEvents`.
+    typealias Phase = AudiobookshelfClient.EpisodeDownloadPhase
 
     private(set) var current: AudiobookshelfClient.EpisodeDownload?
     private(set) var queue: [AudiobookshelfClient.EpisodeDownload] = []

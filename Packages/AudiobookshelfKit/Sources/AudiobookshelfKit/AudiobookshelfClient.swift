@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 
 /// Mały klient HTTP API serwera audiobookshelf.
@@ -6,101 +10,111 @@ import Foundation
 /// adres i dane logowania dostaje z zewnątrz.
 /// Endpointy i kształty odpowiedzi pochodzą z upstreamu (v2.38.0): `server/Server.js`
 /// (`/status`, `/init`), `server/Auth.js` (`/login`) i `server/controllers/LibraryController.js`.
-struct AudiobookshelfClient: Sendable {
+public struct AudiobookshelfClient: Sendable {
     /// Adres serwera razem z `ROUTER_BASE_PATH`, np. `http://127.0.0.1:13378/audiobookshelf`.
-    let baseURL: URL
-    var session: URLSession = .shared
+    public let baseURL: URL
+    public var session: URLSession = .shared
+
+    public init(baseURL: URL, session: URLSession = .shared) {
+        self.baseURL = baseURL
+        self.session = session
+    }
 
     // MARK: Modele
 
-    struct Credentials: Codable, Sendable, Equatable {
-        var username: String
-        var password: String
+    public struct Credentials: Codable, Sendable, Equatable {
+        public var username: String
+        public var password: String
+
+        public init(username: String, password: String) {
+            self.username = username
+            self.password = password
+        }
     }
 
-    struct Status: Decodable, Sendable {
-        let serverVersion: String
+    public struct Status: Decodable, Sendable {
+        public let serverVersion: String
         /// Czy istnieje konto root.
-        let isInit: Bool
+        public let isInit: Bool
     }
 
-    struct Login: Sendable {
-        let userID: String
-        let username: String
+    public struct Login: Sendable {
+        public let userID: String
+        public let username: String
         /// JWT ważny godzinę (`ACCESS_TOKEN_EXPIRY` upstreamu).
-        let accessToken: String
+        public let accessToken: String
         /// Tylko gdy prosiliśmy o niego (`x-return-tokens`); ważny 30 dni, rotowany przy odświeżeniu.
-        let refreshToken: String?
+        public let refreshToken: String?
     }
 
-    struct User: Decodable, Sendable, Equatable {
-        let id: String
-        let username: String
+    public struct User: Decodable, Sendable, Equatable {
+        public let id: String
+        public let username: String
         /// `root`, `admin`, `user` albo `guest`.
-        let type: String
+        public let type: String
     }
 
-    struct Library: Decodable, Sendable, Identifiable, Hashable {
-        struct Folder: Decodable, Sendable, Hashable {
-            let id: String
-            let fullPath: String
+    public struct Library: Decodable, Sendable, Identifiable, Hashable {
+        public struct Folder: Decodable, Sendable, Hashable {
+            public let id: String
+            public let fullPath: String
         }
 
-        let id: String
-        let name: String
-        let mediaType: String
-        let folders: [Folder]
+        public let id: String
+        public let name: String
+        public let mediaType: String
+        public let folders: [Folder]
         /// Domyślny dostawca metadanych biblioteki (`google`, `audible`, `custom-<id>`…).
-        var provider: String? = nil
+        public var provider: String? = nil
     }
 
     /// Zadanie w tle serwera (`TaskManager` upstreamu), np. skanowanie biblioteki.
-    struct ServerTask: Decodable, Sendable {
-        struct Payload: Decodable, Sendable {
-            let libraryId: String?
+    public struct ServerTask: Decodable, Sendable {
+        public struct Payload: Decodable, Sendable {
+            public let libraryId: String?
             /// Zadania pozycji (`encode-m4b`, `embed-metadata`).
-            let libraryItemId: String?
+            public let libraryItemId: String?
             /// Wynik skanu albo dopasowania (`LibraryScan.scanResults`), tylko w `task_finished`.
-            let scanResults: ScanResults?
+            public let scanResults: ScanResults?
         }
 
-        struct ScanResults: Decodable, Sendable, Equatable {
-            let added: Int?
-            let updated: Int?
-            let missing: Int?
+        public struct ScanResults: Decodable, Sendable, Equatable {
+            public let added: Int?
+            public let updated: Int?
+            public let missing: Int?
             /// Milisekundy.
-            let elapsed: Double?
+            public let elapsed: Double?
         }
 
-        let id: String
-        let action: String
-        let data: Payload?
-        let isFailed: Bool?
-        let isFinished: Bool?
+        public let id: String
+        public let action: String
+        public let data: Payload?
+        public let isFailed: Bool?
+        public let isFinished: Bool?
         /// Po anulowaniu scalania: `Task canceled by user` (`errorKey` `MessageTaskCanceledByUser`).
-        let error: String?
-        let errorKey: String?
+        public let error: String?
+        public let errorKey: String?
         /// Np. `Task canceled by user` po anulowaniu.
-        let description: String?
+        public let description: String?
     }
 
     /// Własny dostawca metadanych (`server/models/CustomMetadataProvider.js`):
     /// upstream odpytuje `GET <url>/search` z nagłówkiem `Authorization: <authHeaderValue>`.
-    struct CustomMetadataProvider: Decodable, Sendable, Identifiable, Equatable {
-        let id: String
-        let name: String
-        let url: String
-        let mediaType: String
-        let authHeaderValue: String?
+    public struct CustomMetadataProvider: Decodable, Sendable, Identifiable, Equatable {
+        public let id: String
+        public let name: String
+        public let url: String
+        public let mediaType: String
+        public let authHeaderValue: String?
     }
 
-    enum APIError: LocalizedError {
+    public enum APIError: LocalizedError {
         case unauthorized
         case rateLimited
         case http(status: Int, message: String)
         case invalidResponse
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .unauthorized:
                 "Serwer odrzucił dane logowania."
@@ -116,20 +130,20 @@ struct AudiobookshelfClient: Sendable {
 
     // MARK: Bez uwierzytelnienia
 
-    func status() async throws -> Status {
+    public func status() async throws -> Status {
         try decode(Status.self, from: await send("GET", "status"))
     }
 
     /// Zakłada konto root na niezainicjalizowanym serwerze (`POST /init`).
     /// Serwer z istniejącym rootem odpowiada 500.
-    func initialize(root: Credentials) async throws {
+    public func initialize(root: Credentials) async throws {
         struct Body: Encodable { let newRoot: Credentials }
         _ = try await send("POST", "init", body: Body(newRoot: root))
     }
 
     /// Loguje i zakłada nową sesję na serwerze. `returnRefreshToken` prosi o refresh token
     /// w odpowiedzi (jak aplikacje mobilne), zamiast w ciasteczku.
-    func login(_ credentials: Credentials, returnRefreshToken: Bool = false) async throws -> Login {
+    public func login(_ credentials: Credentials, returnRefreshToken: Bool = false) async throws -> Login {
         struct Response: Decodable {
             struct User: Decodable {
                 let id: String
@@ -152,14 +166,14 @@ struct AudiobookshelfClient: Sendable {
     // MARK: Użytkownicy
 
     /// Użytkownik, do którego należy token.
-    func me(token: String) async throws -> User {
+    public func me(token: String) async throws -> User {
         try decode(User.self, from: await send("GET", "api/me", token: token))
     }
 
     /// Zakłada zwykłe konto (`type: user`: słuchanie, postęp i pobieranie; bez edycji,
     /// usuwania, uploadu i administracji). Wymaga tokenu administratora.
     /// Zajęta nazwa: HTTP 400. Upstream tworzy konto nieaktywne, jeśli nie podać `isActive`.
-    func createUser(_ credentials: Credentials, token: String) async throws -> User {
+    public func createUser(_ credentials: Credentials, token: String) async throws -> User {
         struct Body: Encodable {
             let username: String
             let password: String
@@ -173,7 +187,7 @@ struct AudiobookshelfClient: Sendable {
 
     // MARK: Biblioteki (wymagają tokenu administratora)
 
-    func libraries(token: String) async throws -> [Library] {
+    public func libraries(token: String) async throws -> [Library] {
         struct Response: Decodable { let libraries: [Library] }
         return try decode(Response.self, from: await send("GET", "api/libraries", token: token)).libraries
     }
@@ -181,7 +195,7 @@ struct AudiobookshelfClient: Sendable {
     /// Tworzy bibliotekę z jednym folderem. Serwer jej nie skanuje — zob. `scanLibrary`.
     /// `provider` i `icon` są opcjonalne: bez nich upstream przyjmuje `google` i `database`
     /// (dobre dla książek; biblioteka podcastów potrzebuje `itunes`).
-    func createLibrary(
+    public func createLibrary(
         name: String,
         folderPath: String,
         mediaType: String = "book",
@@ -208,28 +222,28 @@ struct AudiobookshelfClient: Sendable {
 
     /// Ustawia domyślnego dostawcę metadanych biblioteki (`PATCH /api/libraries/:id`).
     /// Upstream zmienia tylko to pole, bez skanu; `custom-<id>` musi istnieć.
-    func setLibraryProvider(id: String, provider: String, token: String) async throws {
+    public func setLibraryProvider(id: String, provider: String, token: String) async throws {
         struct Body: Encodable { let provider: String }
         _ = try await send("PATCH", "api/libraries/\(id)", body: Body(provider: provider), token: token)
     }
 
     /// Usuwa bibliotekę z serwera: jej pozycje, postęp słuchania, kolekcje i metadane
     /// w bazie (`LibraryController.delete` upstreamu). Plików audio na dysku nie rusza.
-    func deleteLibrary(id: String, token: String) async throws {
+    public func deleteLibrary(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/libraries/\(id)", token: token)
     }
 
     /// Zleca skanowanie; serwer odpowiada od razu, a skan trwa jako zadanie `library-scan`.
-    func scanLibrary(id: String, token: String) async throws {
+    public func scanLibrary(id: String, token: String) async throws {
         _ = try await send("POST", "api/libraries/\(id)/scan", token: token)
     }
 
-    func tasks(token: String) async throws -> [ServerTask] {
+    public func tasks(token: String) async throws -> [ServerTask] {
         struct Response: Decodable { let tasks: [ServerTask] }
         return try decode(Response.self, from: await send("GET", "api/tasks", token: token)).tasks
     }
 
-    func itemCount(libraryID: String, token: String) async throws -> Int {
+    public func itemCount(libraryID: String, token: String) async throws -> Int {
         struct Response: Decodable { let total: Int }
         let path = "api/libraries/\(libraryID)/items"
         let response = try decode(Response.self, from: await send("GET", path, query: [URLQueryItem(name: "limit", value: "1")], token: token))
@@ -240,12 +254,12 @@ struct AudiobookshelfClient: Sendable {
 
     // `server/controllers/CustomMetadataProviderController.js`. Upstream nie ma edycji wpisu.
 
-    func customMetadataProviders(token: String) async throws -> [CustomMetadataProvider] {
+    public func customMetadataProviders(token: String) async throws -> [CustomMetadataProvider] {
         struct Response: Decodable { let providers: [CustomMetadataProvider] }
         return try decode(Response.self, from: await send("GET", "api/custom-metadata-providers", token: token)).providers
     }
 
-    func createCustomMetadataProvider(name: String, url: String, mediaType: String, authHeaderValue: String?, token: String) async throws -> CustomMetadataProvider {
+    public func createCustomMetadataProvider(name: String, url: String, mediaType: String, authHeaderValue: String?, token: String) async throws -> CustomMetadataProvider {
         struct Body: Encodable {
             let name: String
             let url: String
@@ -259,13 +273,13 @@ struct AudiobookshelfClient: Sendable {
 
     /// Usuwa wpis. Biblioteki, które miały go jako domyślnego dostawcę, upstream
     /// przestawia na `google`.
-    func deleteCustomMetadataProvider(id: String, token: String) async throws {
+    public func deleteCustomMetadataProvider(id: String, token: String) async throws {
         _ = try await send("DELETE", "api/custom-metadata-providers/\(id)", token: token)
     }
 
     // MARK: - HTTP
 
-    func send(
+    public func send(
         _ method: String,
         _ path: String,
         query: [URLQueryItem] = [],
@@ -297,7 +311,7 @@ struct AudiobookshelfClient: Sendable {
 
     /// Wysyła gotowe zapytanie i zamienia status HTTP na `APIError`
     /// (wspólne dla JSON i np. wysyłania plików w `multipart/form-data`).
-    func execute(_ request: URLRequest) async throws -> Data {
+    public func execute(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         switch http.statusCode {
@@ -313,7 +327,7 @@ struct AudiobookshelfClient: Sendable {
         }
     }
 
-    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    public func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {

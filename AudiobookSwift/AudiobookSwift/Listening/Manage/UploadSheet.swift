@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -273,24 +274,6 @@ final class UploadModel {
         } catch {
             return "\(what) " + ItemManager.message(for: error, action: "Nie udało się zlecić skanu — zeskanuj bibliotekę w ustawieniach")
         }
-    }
-}
-
-extension AudiobookshelfClient {
-    /// Czy obserwator plików pilnuje biblioteki (`scannerDisableWatcher` serwera i `disableWatcher` biblioteki).
-    func isWatcherActive(libraryID: String, token: String) async throws -> Bool {
-        struct Authorize: Decodable {
-            struct Settings: Decodable { let scannerDisableWatcher: Bool? }
-            let serverSettings: Settings
-        }
-        struct Library: Decodable {
-            struct Settings: Decodable { let disableWatcher: Bool? }
-            let settings: Settings?
-        }
-        let server = try decode(Authorize.self, from: await send("POST", "api/authorize", token: token))
-        if server.serverSettings.scannerDisableWatcher == true { return false }
-        let library = try decode(Library.self, from: await send("GET", "api/libraries/\(libraryID)", token: token))
-        return library.settings?.disableWatcher != true
     }
 }
 

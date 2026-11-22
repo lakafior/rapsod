@@ -1,28 +1,6 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
-
-/// Pliki pozycji (etap 9g): e-book podstawowy/dodatkowy, usunięcie pojedynczego pliku
-/// i dane ffprobe pliku audio. Jak reszta `Manage/` — tokenem root przez `ItemManager`.
-/// Kształty z upstreamu v2.38.0: `LibraryItemController.updateEbookFileStatus`,
-/// `deleteLibraryFile` i `getFFprobeData` (`AudioFileScanner.probeAudioFile` → surowy ffprobe).
-extension AudiobookshelfClient {
-    /// Przełącza e-book między podstawowym a dodatkowym (`PATCH /api/items/:id/ebook/:fileid/status`).
-    /// Dodatkowy staje się podstawowym (poprzedni podstawowy — dodatkowym), podstawowy — dodatkowym.
-    func toggleEbookStatus(itemID: String, ino: String, token: String) async throws {
-        _ = try await send("PATCH", "api/items/\(itemID)/ebook/\(ino)/status", token: token)
-    }
-
-    /// Usuwa plik z pozycji (`DELETE /api/items/:id/file/:fileid`). Serwer kasuje go trwale,
-    /// więc aplikacja przenosi go wcześniej do Kosza (`ItemManager.deleteFile`).
-    func deleteLibraryFile(itemID: String, ino: String, token: String) async throws {
-        _ = try await send("DELETE", "api/items/\(itemID)/file/\(ino)", token: token)
-    }
-
-    /// Surowy wynik ffprobe pliku audio (`GET /api/items/:id/ffprobe/:fileid`, tylko administrator).
-    func ffprobe(itemID: String, ino: String, token: String) async throws -> Data {
-        try await send("GET", "api/items/\(itemID)/ffprobe/\(ino)", token: token, timeout: 60)
-    }
-}
 
 extension ItemManager {
     /// Usuwa jeden plik pozycji: najpierw do Kosza (odwracalne, decyzja z etapu 9e), potem

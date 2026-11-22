@@ -1,4 +1,5 @@
 import AppKit
+import AudiobookshelfKit
 import SwiftUI
 
 /// Strona podcastu: opis i odcinki z postępem, opisem, filtrem i sortowaniem. Zarządzanie

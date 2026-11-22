@@ -6,6 +6,10 @@
 	objectVersion = 70;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4B1C0A10AB5E5F0100A1C003 /* AudiobookshelfKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4B1C0A10AB5E5F0100A1C002 /* AudiobookshelfKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		A1B2C3D4E5F60718293A4B5C /* AudiobookSwift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudiobookSwift.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -19,6 +23,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4B1C0A10AB5E5F0100A1C003 /* AudiobookshelfKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -61,6 +66,7 @@
 			);
 			name = AudiobookSwift;
 			packageProductDependencies = (
+				4B1C0A10AB5E5F0100A1C002 /* AudiobookshelfKit */,
 			);
 			productName = AudiobookSwift;
 			productReference = A1B2C3D4E5F60718293A4B5C /* AudiobookSwift.app */;
@@ -85,6 +91,9 @@
 				Base,
 			);
 			mainGroup = FD1542594312B820B21EC19E;
+			packageReferences = (
+				4B1C0A10AB5E5F0100A1C001 /* XCLocalSwiftPackageReference "../Packages/AudiobookshelfKit" */,
+			);
 			productRefGroup = A1B2C3D4E5F60718293A4B5D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -304,6 +313,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4B1C0A10AB5E5F0100A1C001 /* XCLocalSwiftPackageReference "../Packages/AudiobookshelfKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/AudiobookshelfKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4B1C0A10AB5E5F0100A1C002 /* AudiobookshelfKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AudiobookshelfKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F0E41B3E5743FEA95466887D /* Project object */;
 }

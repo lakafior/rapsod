@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 import OSLog
 
@@ -13,8 +17,8 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Audioboo
 /// oknie; zerwane połączenie wraca po kilku sekundach, a po powrocie okno odświeża dane.
 /// Token idzie wyłącznie w treści komunikatu `auth`, nigdy w adresie ani w logu.
 @MainActor
-final class ListeningEvents {
-    enum Event {
+public final class ListeningEvents {
+    public enum Event {
         case progress(AudiobookshelfClient.MediaProgress)
         case user(AudiobookshelfClient.MeState)
         /// Biblioteki i pozycje, które się zmieniły (dodane, zmienione, usunięte).
@@ -27,7 +31,7 @@ final class ListeningEvents {
         case task(AudiobookshelfClient.ServerTask, finished: Bool)
         /// Kolejka pobierania odcinków (`PodcastManager`: `episode_download_queued|started|finished`).
         /// Serwer wysyła je wszystkim zalogowanym, więc dochodzą też gniazdem słuchacza.
-        case episodeDownload(AudiobookshelfClient.EpisodeDownload, EpisodeDownloads.Phase)
+        case episodeDownload(AudiobookshelfClient.EpisodeDownload, AudiobookshelfClient.EpisodeDownloadPhase)
         /// `episode_download_queue_cleared` — kolejka jednego podcastu wyczyszczona.
         case downloadQueueCleared(itemID: String)
         /// Postęp zadania pozycji w procentach 0–100 (`task_progress` przy scalaniu i osadzaniu).
@@ -46,7 +50,7 @@ final class ListeningEvents {
     private var loop: Task<Void, Never>?
     private let session = URLSession(configuration: .ephemeral)
 
-    init(baseURL: URL, token: @escaping (String?) async throws -> String, handler: @escaping (Event) -> Void) {
+    public init(baseURL: URL, token: @escaping (String?) async throws -> String, handler: @escaping (Event) -> Void) {
         var components = URLComponents(url: baseURL.appending(path: "socket.io/"), resolvingAgainstBaseURL: false)!
         components.scheme = components.scheme == "https" ? "wss" : "ws"
         components.queryItems = [URLQueryItem(name: "EIO", value: "4"), URLQueryItem(name: "transport", value: "websocket")]
@@ -55,7 +59,7 @@ final class ListeningEvents {
         self.handler = handler
     }
 
-    func start() {
+    public func start() {
         guard loop == nil else { return }
         loop = Task { [weak self] in
             var attempt = 0
@@ -74,7 +78,7 @@ final class ListeningEvents {
         }
     }
 
-    func stop() {
+    public func stop() {
         loop?.cancel()
         loop = nil
         socket?.cancel(with: .goingAway, reason: nil)
@@ -158,7 +162,7 @@ final class ListeningEvents {
                 handler(.task(task, finished: name == "task_finished"))
             }
         case "episode_download_queued", "episode_download_started", "episode_download_finished":
-            let phase: EpisodeDownloads.Phase = switch name {
+            let phase: AudiobookshelfClient.EpisodeDownloadPhase = switch name {
             case "episode_download_queued": .queued
             case "episode_download_started": .started
             default: .finished

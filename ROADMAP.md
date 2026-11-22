@@ -1,6 +1,6 @@
 # Roadmapa
 
-Stan na 2026-11-21. Wydana wersja: 1.0.0.
+Stan na 2026-11-22. Wydana wersja: 1.0.0.
 
 ## Zrobione
 
@@ -54,6 +54,19 @@ Cel: słuchanie i codzienne zarządzanie w natywnych oknach, bez WebKit (web UI 
   - **Rekomendacja:** zostać przy (a). (b) — usunięcie samego okna — nie usuwa żadnej zależności (WebKit zostaje), daje ok. 330 wierszy Swift mniej i jedną ścieżkę z tokenem root w WebKit mniej; według kryterium użytkownika („zostaje, chyba że usunięcie zmniejsza zależności”) nie ma powodu. (c) — niepakowanie klienta web — oszczędza 3–5 MB DMG kosztem przeglądarek na innych urządzeniach, linków udostępniania i OIDC w przeglądarce; nie polecam. Decyzja należy do użytkownika.
 - **Wzorce:** odtwarzacz i widoki z Dove (własny projekt, MPL-2.0); wywołania API i modele audiobookshelf w [AudioBooth](https://github.com/AudioBooth/AudioBooth) (MPL-2.0, klient iOS) jako punkt odniesienia.
 
+### Własny klient iOS (etap 10)
+
+Decyzja z 2026-11-22: własny klient iOS na własnej bazie — wspólny pakiet Swift wydzielony z tej aplikacji plus warstwa iOS z projektu Dove (MPL-2.0); fork AudioBooth odrzucony. Klient trzyma dwa konta naraz (słuchacza i administracyjne) i łączy się z serwerem przez HTTP w sieci domowej albo przez tunel.
+
+- **10a. Wspólny pakiet — zrobione.** `Packages/AudiobookshelfKit` (macOS 27 i iOS 27): klient HTTP z modelami i wszystkimi punktami API, zdarzenia serwera, odnawianie tokenów dla wielu kont (hasło albo klucz API, sekrety za protokołem `SecretStore`), okładki niezależne od `NSImage` (HTTP domyślnie, plik z dysku tylko na Macu). Aplikacja na Maca przełączona na pakiet bez zmiany zachowania; 17 testów pakietu. Pakiet na MPL-2.0 (klient iOS do App Store), aplikacja na Maca zostaje na GPL-3.0; reguły przetłumaczone z klienta web audiobookshelf zostały w aplikacji.
+- **10b. Szkielet iOS i parowanie kodem QR.** Cel iOS w projekcie, ekran połączenia, kod QR w sekcji „Połącz telefon” na Macu, oba konta w pęku kluczy telefonu.
+- **10c. Odtwarzacz na iOS.** `AudiobookPlayer` z gałęziami `#if os(iOS)` z Dove (AVAudioSession, przerwania), strumień HTTP zamiast plików z dysku.
+- **10d. Wspólna zakładka „Audiobooki”** łącząca wszystkie biblioteki (warstwa nad `BrowseAPI`, serwer nie ma zapytań przekrojowych poza postępem).
+- **10e. Podcasty:** kanał RSS, zlecanie pobrania odcinków kontem administracyjnym, słuchanie strumienia.
+- **10f. Pobieranie offline** (background `URLSession` z Dove).
+- **10g. Czytnik** (e-book pobierany przez HTTP zamiast czytania z dysku).
+- **10h. Dystrybucja.**
+
 ### Bardziej natywna aplikacja
 
 - Angielska wersja językowa (dziś interfejs jest tylko po polsku).
@@ -63,6 +76,5 @@ Cel: słuchanie i codzienne zarządzanie w natywnych oknach, bez WebKit (web UI 
 
 ## Poza zakresem
 
-- Własny klient iOS (używamy istniejących klientów audiobookshelf).
 - Parowanie przez iCloud i Bonjour.
 - Odtwarzanie mechanizmów Tailscale/WireGuard w aplikacji; dostęp spoza domu pozostaje opcjonalny i niezależny od dostawcy.
