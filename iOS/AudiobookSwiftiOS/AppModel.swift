@@ -60,6 +60,9 @@ final class AppModel {
     /// Automatyczna próba połączenia (zmiana sieci, błąd w trakcie słuchania) się nie udała —
     /// pasek „Brak połączenia” zamiast alertu.
     private(set) var isOffline = false
+    /// Wyniki ostatniej próby połączenia, adres po adresie („Diagnostyka połączenia”).
+    private(set) var connectionAttempts: [Connector.AttemptResult] = []
+    private(set) var connectionAttemptDate: Date?
     /// Wynik odświeżenia adresów z kodu „Odśwież adresy” (komunikat bez błędu).
     var notice: String?
 
@@ -71,6 +74,9 @@ final class AppModel {
     @ObservationIgnored private var pathChange: Task<Void, Never>?
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
     @ObservationIgnored private var lastAutomaticReconnect: Date?
+    /// Telefon jest w sieci Wi-Fi albo na kablu. Bez tego (sama sieć komórkowa) adresy lokalne
+    /// są pomijane i telefon łączy się od razu przez adres spoza domu.
+    @ObservationIgnored private var hasLocalNetwork = true
 
     var currentSession: ServerSession? {
         if case .paired(let session) = phase { return session }
@@ -154,7 +160,8 @@ final class AppModel {
     private func performReconnect(silent: Bool, discovering: Bool = true) async {
         guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else { return }
         do {
-            let connection = try await Connector.connect(attempts: session.server.attempts, key: key)
+            let connection = try await Connector.connect(attempts: usableAttempts(for: session.server), key: key)
+            recordAttempts()
             // W trakcie prób użytkownik mógł się rozłączyć albo sparować telefon od nowa.
             guard isCurrent(session) else { return }
             var server = session.server
@@ -173,6 +180,7 @@ final class AppModel {
                 await performReconnect(silent: true, discovering: false)
             }
         } catch {
+            recordAttempts()
             guard isCurrent(session) else { return }
             logger.error("Ponowne połączenie: \(error.localizedDescription, privacy: .public)")
             if case Connector.ConnectError.keyRejected = error {
@@ -193,6 +201,15 @@ final class AppModel {
                 lastAttempt = { [weak self] in await self?.reconnect() }
             }
         }
+    }
+
+    private func usableAttempts(for server: PairedServer) -> [AddressSelection.Attempt] {
+        AddressSelection.usable(server.attempts, hasLocalNetwork: hasLocalNetwork)
+    }
+
+    private func recordAttempts() {
+        connectionAttempts = Connector.lastAttempts
+        connectionAttemptDate = Connector.lastAttemptDate
     }
 
     // MARK: - Adresy serwera bez ponownego parowania
@@ -266,7 +283,11 @@ final class AppModel {
     private func startPathMonitor() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let satisfied = path.status == .satisfied
-            Task { @MainActor in self?.pathChanged(satisfied: satisfied) }
+            let local = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
+            Task { @MainActor in
+                self?.hasLocalNetwork = local
+                self?.pathChanged(satisfied: satisfied)
+            }
         }
         pathMonitor.start(queue: DispatchQueue(label: "net.smigi.abswift.ios.path"))
     }
@@ -398,7 +419,7 @@ final class AppModel {
         isConnecting = true
         defer { isConnecting = false }
         do {
-            let connection = try await Connector.connect(attempts: server.attempts, key: key)
+            let connection = try await Connector.connect(attempts: usableAttempts(for: server), key: key)
             var server = server
             server.lastWorkingURL = connection.url
             server.userID = connection.user.id

@@ -166,8 +166,11 @@ public struct AudiobookshelfClient: Sendable {
     // MARK: Użytkownicy
 
     /// Użytkownik, do którego należy token.
-    public func me(token: String) async throws -> User {
-        try decode(User.self, from: await send("GET", "api/me", token: token))
+    /// `timeout` — limit czasu tego zapytania. Limit z `URLRequest` wygrywa z limitem sesji,
+    /// więc sprawdzanie adresów (telefon: sieć lokalna → tunel) musi podać go tutaj; inaczej
+    /// nieosiągalny adres lokalny blokował przejście na tunel przez pełne 30 s.
+    public func me(token: String, timeout: TimeInterval = 30) async throws -> User {
+        try decode(User.self, from: await send("GET", "api/me", token: token, timeout: timeout))
     }
 
     /// Zakłada zwykłe konto (`type: user`: słuchanie, postęp i pobieranie; bez edycji,

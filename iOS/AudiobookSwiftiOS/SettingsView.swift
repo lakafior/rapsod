@@ -27,11 +27,28 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Adres") {
-                        Text(session.baseURL.absoluteString).textSelection(.enabled).multilineTextAlignment(.trailing)
+                        Text(model.isOffline ? "brak połączenia" : session.baseURL.absoluteString)
+                            .textSelection(.enabled).multilineTextAlignment(.trailing)
                     }
-                    LabeledContent("Rodzaj", value: kindTitle)
-                    if model.isOffline {
-                        Label("Brak połączenia", systemImage: "wifi.slash").foregroundStyle(.secondary)
+                    if !model.isOffline {
+                        LabeledContent("Rodzaj", value: kindTitle)
+                    }
+                    // Wynik ostatniej próby dla każdego zapisanego adresu (z `main`, diagnostyka połączenia).
+                    DisclosureGroup("Diagnostyka połączenia") {
+                        ForEach(session.server.addresses, id: \.url) { address in
+                            let attempt = model.connectionAttempts.first { $0.url == address.url }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(address.url.absoluteString, systemImage: attempt?.succeeded == true ? "checkmark.circle.fill" : (attempt == nil ? "circle" : "xmark.circle"))
+                                    .font(.callout)
+                                Text(attempt?.detail ?? "nie próbowano (bez Wi-Fi adresy lokalne są pomijane)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        if let date = model.connectionAttemptDate {
+                            Text("Ostatnia próba: \(date.formatted(date: .omitted, time: .standard))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Button("Połącz ponownie", systemImage: "arrow.clockwise") {
                         Task { await model.reconnect() }

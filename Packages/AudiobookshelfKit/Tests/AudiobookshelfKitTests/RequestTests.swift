@@ -24,6 +24,16 @@ extension Stubbed {
         #expect(body == .init(username: "ola", password: "tajne"))
     }
 
+    /// Sprawdzanie adresu serwera musi mieć własny, krótki limit czasu w samym zapytaniu
+    /// (limit z `URLRequest` wygrywa z limitem sesji): inaczej nieosiągalny adres lokalny
+    /// trzymał telefon 30 s przed próbą tunelu.
+    @Test func meUsesGivenTimeout() async throws {
+        StubServer.on("GET api/me", .json(#"{"id":"u1","username":"ola","type":"user"}"#))
+        let user: AudiobookshelfClient.User = try await StubServer.client().me(token: "T", timeout: 2.5)
+        #expect(user.id == "u1")
+        #expect(StubServer.requests.first?.request.timeoutInterval == 2.5)
+    }
+
     @Test func itemsPageQueryAndBearerToken() async throws {
         StubServer.on("GET api/libraries/lib1/items", .json(#"{"results":[],"total":0}"#))
         let filter = AudiobookshelfClient.filter("authors", "a1")

@@ -80,6 +80,18 @@ enum Connector {
         return session
     }
 
+    /// Wynik próby jednego adresu — do „Diagnostyki połączenia” w aplikacji.
+    struct AttemptResult: Identifiable, Equatable {
+        let url: URL
+        let succeeded: Bool
+        let detail: String
+        var id: URL { url }
+    }
+
+    /// Wyniki ostatniego wywołania `connect`, w kolejności prób.
+    @MainActor private(set) static var lastAttempts: [AttemptResult] = []
+    @MainActor private(set) static var lastAttemptDate: Date?
+
     /// Zwykłe HTTP przepuszcza tylko sieć lokalna (ATS: `NSAllowsLocalNetworking`).
     static func isAllowedByATS(_ url: URL) -> Bool {
         if url.scheme?.lowercased() == "https" { return true }
@@ -90,20 +102,35 @@ enum Connector {
     }
 
     @MainActor static func connect(attempts: [AddressSelection.Attempt], key: String) async throws -> Connection {
+        lastAttempts = []
+        lastAttemptDate = .now
         do {
-            let found = try await AddressSelection.firstReachable(attempts) { attempt -> AddressSelection.Outcome<AudiobookshelfClient.User> in
+            let found = try await AddressSelection.preferringLocal(attempts) { @MainActor attempt -> AddressSelection.Outcome<AudiobookshelfClient.User> in
                 guard isAllowedByATS(attempt.url) else {
+                    lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "pominięty — poza siecią lokalną wymagany jest adres https"))
                     return .unreachable("pominięty — poza siecią lokalną wymagany jest adres https.")
                 }
                 let client = AudiobookshelfClient(baseURL: attempt.url, session: probeSession(timeout: attempt.timeout))
+                let started = Date.now
+                func elapsed() -> String { Date.now.timeIntervalSince(started).formatted(.number.precision(.fractionLength(1))) + " s" }
                 do {
-                    let user: AudiobookshelfClient.User = try await client.me(token: key)
+                    let user: AudiobookshelfClient.User = try await client.me(token: key, timeout: attempt.timeout)
+                    lastAttempts.append(.init(url: attempt.url, succeeded: true, detail: "odpowiada (\(elapsed()))"))
                     return .reached(user)
                 } catch AudiobookshelfClient.APIError.unauthorized {
+                    lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "odpowiedź 401 — klucz odrzucony (\(elapsed()))"))
                     return .stop(ConnectError.keyRejected)
                 } catch AudiobookshelfClient.APIError.http(status: 403, _) {
+                    lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "odpowiedź 403 — odmowa dostępu (\(elapsed()))"))
                     return .stop(ConnectError.keyRejected)
                 } catch {
+                    if Task.isCancelled || (error as? URLError)?.code == .cancelled || error is CancellationError {
+                        lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "przerwano — inny adres odpowiedział wcześniej"))
+                        return .unreachable("przerwano")
+                    }
+                    // Kod błędu sieci obok opisu: po nim widać, czy to limit czasu, DNS czy TLS.
+                    let code = (error as? URLError).map { " [URLError \($0.code.rawValue)]" } ?? " [\(type(of: error))]"
+                    lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "\(error.localizedDescription)\(code) (\(elapsed()))"))
                     return .unreachable(error.localizedDescription)
                 }
             }
