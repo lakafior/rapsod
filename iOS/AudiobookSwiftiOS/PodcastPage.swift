@@ -419,24 +419,30 @@ private struct EpisodeRowView: View {
     let order: () -> Void
     let info: () -> Void
     @Environment(\.editMode) private var editMode
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var podcasts: PodcastStore { session.library.podcasts }
 
     var body: some View {
         let download = podcasts.downloadState(itemID: row.itemID, identity: row.identity, feedKey: row.feedKey)
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(row.title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                meta
-                EpisodeStateLabel(row: row, download: download)
-                EpisodeProgressLine(row: row, session: session)
-            }
-            Spacer(minLength: 0)
-            if editMode?.wrappedValue.isEditing != true {
-                PlayEpisodeButton(row: row, playback: model.playback, action: play)
+        let showsButton = editMode?.wrappedValue.isEditing != true
+        Group {
+            if typeSize.isAccessibilitySize {
+                // Największy tekst: cała szerokość na tekst, przycisk pod nim.
+                VStack(alignment: .leading, spacing: 6) {
+                    details(download: download, lineLimit: nil)
+                    if showsButton {
+                        PlayEpisodeButton(row: row, playback: model.playback, action: play)
+                    }
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    details(download: download, lineLimit: 3)
+                    Spacer(minLength: 0)
+                    if showsButton {
+                        PlayEpisodeButton(row: row, playback: model.playback, action: play)
+                    }
+                }
             }
         }
         .contentShape(.rect)
@@ -458,6 +464,18 @@ private struct EpisodeRowView: View {
             if row.canOrder, download == nil, podcasts.permission.canOrder {
                 Button("Pobierz na serwer", action: order)
             }
+        }
+    }
+
+    private func details(download: PodcastStore.DownloadState?, lineLimit: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(row.title)
+                .font(.body.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(lineLimit)
+            meta
+            EpisodeStateLabel(row: row, download: download)
+            EpisodeProgressLine(row: row, session: session)
         }
     }
 
@@ -545,8 +563,11 @@ private struct ProgressCaption: View {
         return parts.joined(separator: " · ")
     }
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: 6) {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 6))
+        layout {
             if finished {
                 Image(systemName: "checkmark.circle.fill")
             } else if fraction > 0 {

@@ -249,21 +249,35 @@ struct CompactEpisodeRow: View {
     let play: () -> Void
     @ScaledMetric(relativeTo: .body) private var coverSide: CGFloat = 48
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         let isCurrent = !playback.nowPlayingKeys.isDisjoint(with: keys)
+        let icon = Image(systemName: isCurrent && playback.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+            .font(.title2)
+            .foregroundStyle(.tint)
+        let cover = ItemCover(itemID: itemID, session: session, points: 60)
+            .frame(width: min(coverSide, 72), height: min(coverSide, 72))
         Button(action: play) {
-            HStack(spacing: 12) {
-                ItemCover(itemID: itemID, session: session, points: 60)
-                    .frame(width: min(coverSide, 72), height: min(coverSide, 72))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(2).multilineTextAlignment(.leading)
-                    Text(localOnly ? "\(podcastTitle) · postęp na tym telefonie" : podcastTitle)
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Group {
+                if typeSize.isAccessibilitySize {
+                    // Największy tekst: tytuł pod okładką, bez ucinania.
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            cover
+                            Spacer(minLength: 0)
+                            icon
+                        }
+                        texts(lineLimit: nil)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        cover
+                        texts(lineLimit: 2)
+                        Spacer(minLength: 0)
+                        icon
+                    }
                 }
-                Spacer(minLength: 0)
-                Image(systemName: isCurrent && playback.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
             }
             .padding(.vertical, 6)
             .contentShape(.rect)
@@ -273,6 +287,14 @@ struct CompactEpisodeRow: View {
         .accessibilityLabel(Text("\(title), \(podcastTitle)\(localOnly ? ", postęp tylko na tym telefonie" : "")"))
         .accessibilityHint(Text(isCurrent && playback.player.isPlaying ? "Wstrzymuje odtwarzanie" : "Odtwarza odcinek"))
         .accessibilityAddTraits(.isButton)
+    }
+
+    private func texts(lineLimit: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(lineLimit).multilineTextAlignment(.leading)
+            Text(localOnly ? "\(podcastTitle) · postęp na tym telefonie" : podcastTitle)
+                .font(.caption).foregroundStyle(.secondary).lineLimit(lineLimit == nil ? nil : 1)
+        }
     }
 }
 
