@@ -17,10 +17,12 @@ extension AudiobookshelfClient {
 
     // MARK: Autor
 
+    /// Wszystkie trzy pola zawsze w treści: serwer zmienia tylko obecne klucze, więc pominięty
+    /// (nil) opis albo ASIN nie dałby się wyczyścić. Puste pole to pusty napis.
     struct AuthorUpdate: Encodable, Sendable {
         let name: String
-        let description: String?
-        let asin: String?
+        let description: String
+        let asin: String
     }
 
     struct AuthorChange: Decodable, Sendable {

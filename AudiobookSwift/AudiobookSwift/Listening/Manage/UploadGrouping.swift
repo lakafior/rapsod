@@ -52,10 +52,12 @@ enum UploadGrouping {
 
     /// Nazwy plików do wysłania. Serwer kładzie każdy plik płasko w folderze książki pod jego samą
     /// nazwą (`MiscController.handleUpload`: `sanitizeFilename(file.name)`), więc `CD1/01.mp3`
-    /// i `Disc 2/01.mp3` nadpisałyby się nawzajem. Plik z podfolderu dostaje nazwę z prefiksem
-    /// folderu (`CD1 - 01.mp3`) — kolejność płyt zostaje, nic nie ginie. Pozostałe powtórki
-    /// dostają numer.
+    /// i `Disc 2/01.mp3` nadpisałyby się nawzajem. Gdy nazwy się powtarzają, każdy plik z podfolderu
+    /// dostaje prefiks folderu (`CD1 - 01.mp3`) — wszystkie, żeby kolejność płyt została. Bez powtórek
+    /// nazwy zostają (np. `Extras/cover.jpg` to dalej `cover.jpg`). Co się wciąż powtarza, dostaje numer.
     static func uploadNames(for files: [URL]) -> [String] {
+        let plain = files.map(\.lastPathComponent)
+        guard Set(plain.map { $0.lowercased() }).count < plain.count else { return plain }
         let parents = files.map { $0.deletingLastPathComponent().standardizedFileURL.path }
         // Wspólny folder nadrzędny (książka z samymi podfolderami płyt nie ma plików na wierzchu).
         let split = parents.map { $0.split(separator: "/", omittingEmptySubsequences: false) }

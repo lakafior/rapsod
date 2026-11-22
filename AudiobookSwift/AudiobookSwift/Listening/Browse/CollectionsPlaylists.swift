@@ -13,7 +13,7 @@ struct CollectionsSection: View {
         Group {
             if let collections {
                 if collections.isEmpty {
-                    ContentUnavailableView("Brak kolekcji", systemImage: "rectangle.stack", description: Text("Kolekcje tworzy administrator serwera."))
+                    ContentUnavailableView("Brak kolekcji", systemImage: "rectangle.stack", description: Text("Kolekcję tworzy się z trybu „Zaznacz” w sekcji Książki (Działania → Dodaj do kolekcji…)."))
                 } else {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 240), spacing: 18, alignment: .top)], alignment: .leading, spacing: 22) {

@@ -78,7 +78,7 @@ struct AuthorEditSheet: View {
             } header: {
                 Text("Dopasowanie")
             } footer: {
-                Text("Szuka po ASIN, a bez niego po nazwie. Uzupełnia opis i ASIN; zdjęcie tylko, gdy autor go nie ma albo zmienił się ASIN.")
+                Text("Szuka po ASIN, a bez niego (albo z niepoprawnym) po nazwie. Uzupełnia opis i ASIN; zdjęcie tylko, gdy autor go nie ma albo zmienił się ASIN.")
                     .foregroundStyle(.secondary)
             }
 
@@ -110,7 +110,7 @@ struct AuthorEditSheet: View {
     }
 
     private func update() -> AudiobookshelfClient.AuthorUpdate {
-        .init(name: trimmedName, description: description.isEmpty ? nil : description, asin: asin.trimmingCharacters(in: .whitespaces).isEmpty ? nil : asin.trimmingCharacters(in: .whitespaces))
+        .init(name: trimmedName, description: description, asin: asin.trimmingCharacters(in: .whitespaces))
     }
 
     private func save() async {
@@ -133,7 +133,7 @@ struct AuthorEditSheet: View {
         let region = region
         await status.run("Szukanie w Audible…", failure: "Dopasowanie") {
             do {
-                let result = try await manager.run { try await $0.matchAuthor(id: id, query: asin.isEmpty ? query : nil, asin: asin.isEmpty ? nil : asin, region: region, token: $1) }
+                let result = try await manager.run { try await $0.matchAuthor(id: id, query: query, asin: asin.isEmpty ? nil : asin, region: region, token: $1) }
                 browser.listening.authorImageChanged(id: id)
                 // Pola formularza dostają dane z Audible — inaczej „Zapisz” przywróciłby stary opis.
                 self.asin = result.author.asin ?? self.asin
