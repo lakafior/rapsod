@@ -129,7 +129,7 @@ final class PhonePairing {
                         isExpired: $0.isExpired
                     )
                 }
-            listenerIsAdmin = listener.type == "admin"
+            listenerIsAdmin = Self.canOrderDownloads(listener)
             loadError = nil
         } catch {
             logger.error("Lista sparowanych telefonów: \(error.localizedDescription, privacy: .public)")
@@ -148,8 +148,8 @@ final class PhonePairing {
         guard !addresses.isEmpty else { throw PairingError.noAddresses }
 
         var listener = try await listener()
-        if grantAdmin, listener.type != "admin" {
-            listener = try await setType("admin", of: listener)
+        if grantAdmin, !Self.canOrderDownloads(listener) {
+            listener = try await setType("admin", update: true, of: listener)
         }
         let created = try await account.withAdminToken {
             try await $0.createApiKey(name: Self.keyPrefix + deviceName, userID: listener.id, expiresIn: nil, isActive: true, token: $1)
@@ -184,14 +184,22 @@ final class PhonePairing {
         await refresh()
     }
 
-    /// Nadaje albo odbiera kontu słuchacza uprawnienia administratora.
+    /// Nadaje albo odbiera kontu słuchacza uprawnienia administratora. Serwer przy zlecaniu
+    /// pobrań odcinków (`download-episodes`) sprawdza i typ konta, i „Edycję pozycji”
+    /// (`permissions.update`), więc oba zmieniają się razem.
     func setListenerAdmin(_ admin: Bool) async throws {
         let listener = try await listener()
         let type = admin ? "admin" : "user"
-        if listener.type != type {
-            _ = try await setType(type, of: listener)
+        if listener.type != type || listener.permissions.update != admin {
+            _ = try await setType(type, update: admin, of: listener)
         }
         await refresh()
+    }
+
+    /// Telefon może zlecać pobrania: administrator z „Edycją pozycji”. Sam typ administratora
+    /// (nadany przed etapem 10e) nie wystarcza — wtedy przełącznik pokazuje „Nie” i „Nadaj…” to naprawia.
+    private static func canOrderDownloads(_ user: AudiobookshelfClient.ManagedUser) -> Bool {
+        user.type == "admin" && user.permissions.update
     }
 
     // MARK: - Pomocnicze
@@ -203,17 +211,20 @@ final class PhonePairing {
         return user
     }
 
-    /// Zmienia tylko typ konta: `UserChanges` zawsze wysyła uprawnienia, więc odsyłamy obecne.
-    private func setType(_ type: String, of user: AudiobookshelfClient.ManagedUser) async throws -> AudiobookshelfClient.ManagedUser {
+    /// Zmienia typ konta i „Edycję pozycji”; pozostałe uprawnienia odsyłamy bez zmian
+    /// (`UserChanges` zawsze wysyła komplet).
+    private func setType(_ type: String, update: Bool, of user: AudiobookshelfClient.ManagedUser) async throws -> AudiobookshelfClient.ManagedUser {
+        var permissions = user.permissions
+        permissions.update = update
         let changes = AudiobookshelfClient.UserChanges(
             type: type,
-            permissions: user.permissions,
+            permissions: permissions,
             librariesAccessible: user.librariesAccessible,
             itemTagsSelected: user.itemTagsSelected
         )
         let updated = try await account.withAdminToken { try await $0.updateUser(id: user.id, changes, token: $1) }
         logger.notice("Konto słuchacza ma teraz typ \(type, privacy: .public)")
-        listenerIsAdmin = updated.type == "admin"
+        listenerIsAdmin = Self.canOrderDownloads(updated)
         account.listenerPermissionsChanged()
         return updated
     }

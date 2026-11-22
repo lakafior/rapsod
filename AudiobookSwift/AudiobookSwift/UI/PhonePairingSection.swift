@@ -150,7 +150,7 @@ private struct DeviceRow: View {
 /// Wspólny opis pytania o uprawnienia administratora (arkusz parowania i ustawienia).
 enum AdminExplanation {
     static func text(username: String) -> String {
-        "Uprawnienia administratora są potrzebne tylko do zlecania z telefonu pobierania odcinków podcastów na serwer. Oznaczają jednak, że konto „\(username)” może zarządzać całym serwerem (użytkownicy, biblioteki, ustawienia) z każdego klienta — z każdego sparowanego telefonu i z każdej aplikacji, w której wpisano jego hasło. Konto root nigdy nie trafia do telefonu. Uprawnienia odbierzesz tutaj w każdej chwili."
+        "Uprawnienia administratora (razem z „Edycją pozycji”, której serwer też wymaga) są potrzebne tylko do zlecania z telefonu pobierania odcinków podcastów na serwer. Oznaczają jednak, że konto „\(username)” może zarządzać całym serwerem (użytkownicy, biblioteki, ustawienia) z każdego klienta — z każdego sparowanego telefonu i z każdej aplikacji, w której wpisano jego hasło. Konto root nigdy nie trafia do telefonu. Uprawnienia odbierzesz tutaj w każdej chwili."
     }
 }
 
