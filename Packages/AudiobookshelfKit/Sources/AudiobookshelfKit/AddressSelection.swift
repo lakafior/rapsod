@@ -49,6 +49,7 @@ public enum AddressSelection {
     /// lokalny zawsze wygrywał z tunelem, gdy oba działają.
     public static func firstReachable<Value: Sendable>(
         _ attempts: [Attempt],
+        isolation: isolated (any Actor)? = #isolation,
         probe: (Attempt) async -> Outcome<Value>
     ) async throws -> (url: URL, value: Value) {
         var details: [String] = []

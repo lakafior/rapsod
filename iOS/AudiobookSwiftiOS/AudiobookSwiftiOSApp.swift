@@ -7,6 +7,7 @@ import SwiftUI
 @main
 struct AudiobookSwiftiOSApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,10 @@ struct AudiobookSwiftiOSApp: App {
                 // Adres `abswift://pair?d=…` z aparatu systemowego albo z innej aplikacji.
                 .onOpenURL { model.handle(url: $0) }
                 .task { await model.start() }
+        }
+        .onChange(of: scenePhase) { old, new in
+            // Powrót do aplikacji (np. po wyjściu z domu): adres od nowa, najpierw lokalny.
+            if new == .active, old == .background { Task { await model.reconnect(silent: true) } }
         }
     }
 }

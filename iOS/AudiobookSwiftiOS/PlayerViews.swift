@@ -1,0 +1,372 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+import SwiftUI
+import AudiobookshelfKit
+import AudiobookshelfPlayback
+
+// Pozycja zmienia się dwa razy na sekundę, więc czytają ją tylko małe widoki z czasem
+// (`ChapterScrubber`, `MiniProgress`) — reszta ekranu odświeża się przy zmianie rozdziału i stanu.
+
+/// Pasek na dole ekranu, gdy coś jest załadowane: okładka, tytuł, rozdział, pauza i +30 s.
+struct MiniPlayerBar: View {
+    let model: AppModel
+    @Binding var showsPlayer: Bool
+    @Environment(\.displayScale) private var displayScale
+    @State private var cover: UIImage?
+
+    var body: some View {
+        let player = model.playback.player
+        if let book = player.book {
+            HStack(spacing: 12) {
+                Button {
+                    showsPlayer = true
+                } label: {
+                    HStack(spacing: 12) {
+                        CoverImage(image: cover)
+                            .frame(width: 44, height: 44)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text(player.currentChapter?.title ?? book.author ?? "")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Odtwarzacz: \(book.title)"))
+                .accessibilityHint(Text("Otwiera pełny ekran odtwarzacza"))
+
+                PlayPauseButton(player: player, size: .title2)
+                Button {
+                    player.skip(by: AudiobookPlayer.skipForward)
+                } label: {
+                    Image(systemName: "goforward.30").font(.title3)
+                }
+                .accessibilityLabel(Text("30 sekund do przodu"))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .overlay(alignment: .bottom) { MiniProgress(player: player) }
+            .background(.regularMaterial, in: .rect(cornerRadius: 16))
+            .padding(.horizontal, 8)
+            .padding(.bottom, 4)
+            .task(id: book.key) {
+                cover = await model.currentSession?.cover(itemID: book.itemID, path: nil, size: 44, scale: displayScale)
+            }
+        }
+    }
+}
+
+private struct MiniProgress: View {
+    let player: AudiobookPlayer
+
+    var body: some View {
+        let duration = player.duration
+        ProgressView(value: duration > 0 ? min(1, player.currentTime / duration) : 0)
+            .progressViewStyle(.linear)
+            .padding(.horizontal, 16)
+            .accessibilityHidden(true)
+    }
+}
+
+struct PlayPauseButton: View {
+    let player: AudiobookPlayer
+    var size: Font = .largeTitle
+
+    var body: some View {
+        Button {
+            player.togglePlayPause()
+        } label: {
+            ZStack {
+                if player.isLoading {
+                    ProgressView()
+                } else {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                }
+            }
+            .font(size)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(.rect)
+        }
+        .accessibilityLabel(Text(player.isPlaying ? "Pauza" : "Odtwarzaj"))
+    }
+}
+
+/// Pełny ekran odtwarzacza.
+struct PlayerScreen: View {
+    let model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
+    @State private var cover: UIImage?
+    @State private var showsChapters = false
+
+    private var player: AudiobookPlayer { model.playback.player }
+
+    var body: some View {
+        NavigationStack {
+            if let book = player.book {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        CoverImage(image: cover)
+                            .frame(maxWidth: 320, maxHeight: 320)
+                            .aspectRatio(1, contentMode: .fit)
+                            .shadow(radius: 8, y: 4)
+                            .accessibilityHidden(true)
+                            .task(id: book.key) {
+                                cover = await model.currentSession?.cover(itemID: book.itemID, path: nil, size: 320, scale: displayScale)
+                            }
+
+                        VStack(spacing: 4) {
+                            Text(book.title).font(.title3.bold()).multilineTextAlignment(.center)
+                            if let author = book.author {
+                                Text(author).foregroundStyle(.secondary)
+                            }
+                            if let chapter = player.currentChapter, player.chapters.count > 1 {
+                                Button {
+                                    showsChapters = true
+                                } label: {
+                                    Label(chapter.title, systemImage: "list.bullet")
+                                        .font(.subheadline)
+                                }
+                                .padding(.top, 4)
+                                .accessibilityLabel(Text("Rozdział: \(chapter.title)"))
+                                .accessibilityHint(Text("Pokazuje listę rozdziałów"))
+                            }
+                        }
+
+                        ChapterScrubber(player: player)
+
+                        controls
+
+                        if let error = player.error ?? model.playback.loadError {
+                            Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+                        }
+                        if model.isOffline {
+                            Label("Brak połączenia z serwerem — pozycja zostanie wysłana po powrocie sieci.", systemImage: "wifi.slash")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+
+                        options
+                    }
+                    .padding()
+                }
+                .navigationTitle("Teraz odtwarzane")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Zamknij", systemImage: "chevron.down") { dismiss() }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu("Więcej", systemImage: "ellipsis.circle") {
+                            Button("Oznacz jako ukończone", systemImage: "checkmark.circle") {
+                                Task { await model.playback.markFinished() }
+                                dismiss()
+                            }
+                            Button("Zakończ słuchanie", systemImage: "stop.circle", role: .destructive) {
+                                Task { await model.playback.stop() }
+                                dismiss()
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showsChapters) {
+                    ChapterList(player: player)
+                }
+            } else {
+                ContentUnavailableView("Nic nie gra", systemImage: "headphones")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Zamknij") { dismiss() }
+                        }
+                    }
+            }
+        }
+    }
+
+    private var controls: some View {
+        HStack {
+            Button {
+                player.previousChapter()
+            } label: {
+                Image(systemName: "backward.end.fill").font(.title2)
+            }
+            .accessibilityLabel(Text("Poprzedni rozdział"))
+            .disabled(player.chapters.count < 2)
+            Spacer()
+            Button {
+                player.skip(by: -AudiobookPlayer.skipBack)
+            } label: {
+                Image(systemName: "gobackward.15").font(.largeTitle)
+            }
+            .accessibilityLabel(Text("15 sekund wstecz"))
+            Spacer()
+            PlayPauseButton(player: player, size: .system(size: 56))
+            Spacer()
+            Button {
+                player.skip(by: AudiobookPlayer.skipForward)
+            } label: {
+                Image(systemName: "goforward.30").font(.largeTitle)
+            }
+            .accessibilityLabel(Text("30 sekund do przodu"))
+            Spacer()
+            Button {
+                player.nextChapter()
+            } label: {
+                Image(systemName: "forward.end.fill").font(.title2)
+            }
+            .accessibilityLabel(Text("Następny rozdział"))
+            .disabled(PlaybackTimeline.nextChapter(in: player.chapters, at: player.currentChapter?.start ?? 0) == nil)
+        }
+        .frame(maxWidth: 420)
+        .buttonStyle(.plain)
+    }
+
+    private var options: some View {
+        HStack(spacing: 24) {
+            Menu {
+                Picker("Prędkość", selection: Binding(get: { player.rate }, set: { player.rate = $0 })) {
+                    ForEach(AudiobookPlayer.rates, id: \.self) { rate in
+                        Text(Self.rateLabel(rate)).tag(rate)
+                    }
+                }
+            } label: {
+                Label(Self.rateLabel(player.rate), systemImage: "gauge.with.dots.needle.67percent")
+            }
+            .accessibilityLabel(Text("Prędkość: \(Self.rateLabel(player.rate))"))
+
+            SleepTimerMenu(player: player)
+
+            if player.chapters.count > 1 {
+                Button("Rozdziały", systemImage: "list.bullet") { showsChapters = true }
+            }
+        }
+        .font(.subheadline)
+    }
+
+    static func rateLabel(_ rate: Float) -> String {
+        rate.formatted(.number.precision(.fractionLength(0...2))) + "×"
+    }
+}
+
+/// Suwak w obrębie rozdziału, czas od początku i do końca rozdziału oraz pozycja w całej książce.
+private struct ChapterScrubber: View {
+    let player: AudiobookPlayer
+    /// Wartość w trakcie przeciągania (sekundy od początku rozdziału); `nil` = pokazuje odtwarzacz.
+    @State private var dragging: Double?
+
+    var body: some View {
+        let position = PlaybackTimeline.chapterPosition(in: player.chapters, at: player.currentTime, duration: player.duration)
+        let elapsed = dragging ?? position.elapsed
+        VStack(spacing: 6) {
+            Slider(
+                value: Binding(get: { elapsed }, set: { dragging = $0 }),
+                in: 0...max(position.length, 1)
+            ) { editing in
+                if !editing, let value = dragging {
+                    player.seek(to: position.bookTime(forElapsed: value))
+                    dragging = nil
+                }
+            }
+            .accessibilityLabel(Text(position.chapter == nil ? "Pozycja w książce" : "Pozycja w rozdziale"))
+            .accessibilityValue(Text("\(TimeText.long(elapsed)) z \(TimeText.long(position.length))"))
+
+            HStack {
+                Text(TimeText.clock(elapsed))
+                Spacer()
+                Text("−" + TimeText.clock(max(0, position.length - elapsed)))
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+
+            if position.chapter != nil {
+                let bookTime = position.start + elapsed
+                Text("Całość: \(TimeText.clock(bookTime)) z \(TimeText.clock(player.duration)) · zostało \(TimeText.long((player.duration - bookTime) / Double(player.rate)))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct SleepTimerMenu: View {
+    let player: AudiobookPlayer
+
+    var body: some View {
+        Menu {
+            ForEach(SleepTimer.choices, id: \.self) { choice in
+                Button(choice.label) { player.setSleepTimer(choice) }
+            }
+            if player.sleepTimer != nil {
+                Button("Wyłącz", role: .destructive) { player.setSleepTimer(nil) }
+            }
+        } label: {
+            if let deadline = player.sleepDeadline {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Label(TimeText.clock(deadline.timeIntervalSince(context.date)), systemImage: "moon.zzz.fill")
+                        .monospacedDigit()
+                }
+            } else if player.sleepTimer == .endOfChapter {
+                Label("Koniec rozdziału", systemImage: "moon.zzz.fill")
+            } else {
+                Label("Wyłącznik", systemImage: "moon.zzz")
+            }
+        }
+        .accessibilityLabel(Text(accessibilityText))
+    }
+
+    private var accessibilityText: String {
+        switch player.sleepTimer {
+        case nil: "Wyłącznik czasowy: wyłączony"
+        case .endOfChapter: "Wyłącznik czasowy: do końca rozdziału"
+        case .minutes: "Wyłącznik czasowy: włączony"
+        }
+    }
+}
+
+private struct ChapterList: View {
+    let player: AudiobookPlayer
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                List(player.chapters) { chapter in
+                    let isCurrent = chapter.id == player.currentChapterID
+                    Button {
+                        player.jump(to: chapter)
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text(chapter.title)
+                                .foregroundStyle(isCurrent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                                .fontWeight(isCurrent ? .semibold : .regular)
+                            Spacer()
+                            Text(TimeText.clock(chapter.duration))
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .id(chapter.id)
+                    .accessibilityLabel(Text("\(chapter.title), \(TimeText.long(chapter.duration))"))
+                    .accessibilityAddTraits(isCurrent ? .isSelected : [])
+                }
+                .onAppear {
+                    if let id = player.currentChapterID { proxy.scrollTo(id, anchor: .center) }
+                }
+            }
+            .navigationTitle("Rozdziały")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Gotowe") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}

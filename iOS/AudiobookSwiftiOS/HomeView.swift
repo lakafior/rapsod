@@ -4,9 +4,10 @@
 
 import SwiftUI
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 
-/// Po sparowaniu: serwer, konto, biblioteki i kilka ostatnio dodanych pozycji z okładkami.
-/// Na razie dowód, że pakiet działa na iOS; pełne zakładki i odtwarzacz to kolejne etapy.
+/// Po sparowaniu: „Słuchaj dalej”, biblioteki z kilkoma ostatnio dodanymi pozycjami i serwer.
+/// Pozycja otwiera prostą stronę z „Odtwarzaj”; pełne przeglądanie to następny etap.
 struct HomeView: View {
     let model: AppModel
     let session: ServerSession
@@ -16,10 +17,29 @@ struct HomeView: View {
     @State private var loadError: String?
     @State private var isLoading = true
     @State private var confirmsDisconnect = false
+    @State private var inProgress: [AudiobookshelfClient.LibraryItem] = []
+    @State private var showsPlayer = false
 
     var body: some View {
         NavigationStack {
             List {
+                if model.isOffline {
+                    Section {
+                        Label("Brak połączenia z serwerem. Telefon spróbuje ponownie po zmianie sieci.", systemImage: "wifi.slash")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !inProgress.isEmpty {
+                    Section("Słuchaj dalej") {
+                        ForEach(inProgress) { item in
+                            NavigationLink(value: item.id) {
+                                ItemRow(item: item, session: session)
+                            }
+                        }
+                    }
+                }
+
                 Section("Serwer") {
                     LabeledContent("Nazwa", value: session.server.serverName)
                     LabeledContent("Konto", value: session.server.username)
@@ -47,7 +67,9 @@ struct HomeView: View {
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(entries) { item in
-                            ItemRow(item: item, session: session)
+                            NavigationLink(value: item.id) {
+                                ItemRow(item: item, session: session)
+                            }
                         }
                     }
                 }
@@ -59,17 +81,37 @@ struct HomeView: View {
                 }
             }
             .navigationTitle(session.server.serverName)
+            .navigationDestination(for: String.self) { itemID in
+                ItemDetailView(itemID: itemID, model: model, session: session)
+            }
+            .task(id: model.playback.progressRevision) { await loadInProgress() }
             .refreshable {
                 await model.reconnect()
                 await load()
             }
-            .task(id: session.id) { await load() }
+            .task(id: session.id) {
+                await load()
+                await loadInProgress()
+            }
             .confirmationDialog("Rozłączyć ten telefon?", isPresented: $confirmsDisconnect, titleVisibility: .visible) {
                 Button("Rozłącz", role: .destructive) { model.disconnect() }
             } message: {
                 Text("Klucz dostępu zostanie usunięty z telefonu.")
             }
         }
+        // Na stosie nawigacji, nie na liście: pasek zostaje też na stronie pozycji.
+        .safeAreaInset(edge: .bottom) {
+            MiniPlayerBar(model: model, showsPlayer: $showsPlayer)
+        }
+        .sheet(isPresented: $showsPlayer) {
+            PlayerScreen(model: model)
+        }
+    }
+
+    /// „Słuchaj dalej” ze wszystkich bibliotek (bez podcastów — odcinki pokazuje strona podcastu).
+    private func loadInProgress() async {
+        guard let items = try? await session.auth.perform({ try await $0.itemsInProgress(token: $1) }) else { return }
+        inProgress = items.filter { !$0.isPodcast }.prefix(10).map(\.self)
     }
 
     private func load() async {
@@ -91,6 +133,7 @@ struct HomeView: View {
             loadError = Connector.ConnectError.keyRejected.localizedDescription
         } catch {
             loadError = error.localizedDescription
+            if AddressSelection.isConnectionError(error) { model.connectionTroubled() }
         }
     }
 }

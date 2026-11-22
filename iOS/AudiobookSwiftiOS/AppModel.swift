@@ -3,9 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import Foundation
+import Network
 import Observation
 import OSLog
+import UIKit
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 
 private let logger = Logger(subsystem: "net.smigi.abswift.ios", category: "Pairing")
 
@@ -51,6 +54,56 @@ final class AppModel {
     /// Sparowany serwer odrzucił klucz — alert proponuje rozłączenie.
     private(set) var offersDisconnect = false
     @ObservationIgnored private var lastAttempt: (@MainActor () async -> Void)?
+    /// Automatyczna próba połączenia (zmiana sieci, błąd w trakcie słuchania) się nie udała —
+    /// pasek „Brak połączenia” zamiast alertu.
+    private(set) var isOffline = false
+
+    /// Odtwarzacz żyje ponad połączeniem: przejście sieć lokalna ↔ tunel podmienia `ServerSession`,
+    /// a słuchanie trwa dalej.
+    let playback: PlaybackCoordinator
+    @ObservationIgnored private let audio: AudioSessionController
+    @ObservationIgnored private let pathMonitor = NWPathMonitor()
+    @ObservationIgnored private var pathChange: Task<Void, Never>?
+    @ObservationIgnored private var reconnectTask: Task<Void, Never>?
+    @ObservationIgnored private var lastAutomaticReconnect: Date?
+
+    var currentSession: ServerSession? {
+        if case .paired(let session) = phase { return session }
+        return nil
+    }
+
+    init() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let device = AudiobookshelfClient.DeviceInfo(
+            deviceId: Self.deviceID(),
+            clientName: "AudiobookSwift",
+            clientVersion: version,
+            manufacturer: "Apple",
+            model: UIDevice.current.model
+        )
+        playback = PlaybackCoordinator(device: device) { nil }
+        audio = AudioSessionController(player: playback.player)
+        playback.authProvider = { [weak self] in self?.currentSession?.auth }
+        playback.coverLoader = { [weak self] itemID, _ in
+            await self?.currentSession?.cover(itemID: itemID, path: nil, size: 600, scale: 1)
+        }
+        playback.beginBackgroundWork = { AudioSessionController.beginBackgroundWork($0) }
+        playback.onConnectionError = { [weak self] in self?.connectionTroubled() }
+        playback.onServerReached = { [weak self] in
+            if self?.isOffline == true { self?.isOffline = false }
+        }
+        startPathMonitor()
+    }
+
+    /// Stały identyfikator tego telefonu dla serwera: nowa sesja tego samego urządzenia zamyka
+    /// poprzednią, więc musi się różnić od Maca i nie zmieniać przy każdym uruchomieniu.
+    private static func deviceID() -> String {
+        let key = "playbackDeviceID"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = "abswift-ios-" + UUID().uuidString.lowercased()
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
 
     var pairedServerName: String? {
         if case .paired(let session) = phase { return session.server.serverName }
@@ -75,36 +128,88 @@ final class AppModel {
             phase = .unpaired
             return
         }
-        // Ekran serwera od razu z ostatnim adresem; połączenie sprawdzamy w tle.
-        let url = server.addressesToTry.first ?? server.addresses[0].url
+        // Ekran serwera od razu z pierwszym adresem (lokalnym); połączenie sprawdzamy w tle.
+        let url = server.attempts.first?.url ?? server.addresses[0].url
         phase = .paired(ServerSession(server: server, baseURL: url, key: key))
     }
 
-    /// Ponowny wybór adresu (np. po wyjściu z domu albo powrocie do sieci domowej).
-    func reconnect() async {
+    /// Ponowny wybór adresu: zawsze od sieci lokalnej. `silent` — próba automatyczna (zmiana sieci,
+    /// powrót do aplikacji, błąd w trakcie słuchania): bez alertu, najwyżej pasek „Brak połączenia”.
+    func reconnect(silent: Bool = false) async {
+        if let reconnectTask {
+            await reconnectTask.value
+            return
+        }
+        let task = Task { await performReconnect(silent: silent) }
+        reconnectTask = task
+        await task.value
+        reconnectTask = nil
+    }
+
+    private func performReconnect(silent: Bool) async {
         guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else { return }
         do {
-            let connection = try await Connector.connect(urls: session.server.addressesToTry, key: key)
+            let connection = try await Connector.connect(attempts: session.server.attempts, key: key)
             // W trakcie prób użytkownik mógł się rozłączyć albo sparować telefon od nowa.
             guard isCurrent(session) else { return }
             var server = session.server
             server.lastWorkingURL = connection.url
             server.save()
-            if connection.url != session.baseURL {
+            isOffline = false
+            let changed = connection.url != session.baseURL
+            if changed {
+                logger.notice("Nowy adres serwera: \(connection.url.absoluteString, privacy: .public)")
                 phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
             }
+            await playback.connectionChanged(baseURLChanged: changed)
         } catch {
             guard isCurrent(session) else { return }
             logger.error("Ponowne połączenie: \(error.localizedDescription, privacy: .public)")
-            self.error = error.localizedDescription
             if case Connector.ConnectError.keyRejected = error {
                 // Klucz unieważniony: ponawianie nic nie da, zostaje rozłączenie i nowe parowanie.
+                self.error = error.localizedDescription
                 canRetry = false
                 offersDisconnect = true
+            } else if silent {
+                isOffline = true
             } else {
+                isOffline = true
+                self.error = error.localizedDescription
                 canRetry = true
                 lastAttempt = { [weak self] in await self?.reconnect() }
             }
+        }
+    }
+
+    /// Zapytanie (np. synchronizacja postępu) nie doszło do serwera: może zmieniła się sieć.
+    /// Nie częściej niż co 10 s, żeby przy braku sieci nie próbować bez końca.
+    func connectionTroubled() {
+        if let lastAutomaticReconnect, Date.now.timeIntervalSince(lastAutomaticReconnect) < 10 { return }
+        lastAutomaticReconnect = .now
+        Task { await reconnect(silent: true) }
+    }
+
+    /// Zmiana sieci (Wi-Fi ↔ komórkowa, inna sieć Wi-Fi): adres sprawdzany od nowa,
+    /// najpierw lokalny. Krótkie odczekanie, bo system zgłasza kilka zmian pod rząd.
+    private func startPathMonitor() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied
+            Task { @MainActor in self?.pathChanged(satisfied: satisfied) }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "net.smigi.abswift.ios.path"))
+    }
+
+    private func pathChanged(satisfied: Bool) {
+        pathChange?.cancel()
+        guard satisfied, currentSession != nil else {
+            if !satisfied { isOffline = currentSession != nil }
+            return
+        }
+        pathChange = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            lastAutomaticReconnect = .now
+            await reconnect(silent: true)
         }
     }
 
@@ -213,7 +318,7 @@ final class AppModel {
         isConnecting = true
         defer { isConnecting = false }
         do {
-            let connection = try await Connector.connect(urls: server.addressesToTry, key: key)
+            let connection = try await Connector.connect(attempts: server.attempts, key: key)
             var server = server
             server.lastWorkingURL = connection.url
             server.userID = connection.user.id
@@ -221,8 +326,10 @@ final class AppModel {
             // Najpierw klucz, potem opis serwera: bez klucza zapis opisu nic by nie dał.
             try PairedServer.secretStore.save(.apiKey(key))
             server.save()
+            if playback.player.book != nil { await playback.stop() }
             phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
             offersDisconnect = false
+            isOffline = false
         } catch {
             logger.error("Parowanie nieudane: \(error.localizedDescription, privacy: .public)")
             throw error
@@ -238,6 +345,18 @@ final class AppModel {
 
     /// Usuwa klucz i opis serwera z telefonu. Klucz na serwerze unieważnia się na Macu.
     func disconnect() {
+        guard playback.player.book != nil else {
+            forgetServer()
+            return
+        }
+        // Pozycja na serwer, zanim zniknie klucz (bez sieci nie ma po co czekać).
+        Task {
+            if isOffline { playback.player.stop() } else { await playback.stop() }
+            forgetServer()
+        }
+    }
+
+    private func forgetServer() {
         do {
             try PairedServer.secretStore.delete()
         } catch {

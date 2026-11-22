@@ -43,6 +43,8 @@ public final class PlaybackCoordinator {
     @ObservationIgnored public var beginBackgroundWork: (@MainActor (_ name: String) -> (@MainActor () -> Void))?
     /// Zapytanie nie doszło do serwera — warto sprawdzić adres od nowa.
     @ObservationIgnored public var onConnectionError: (@MainActor () -> Void)?
+    /// Zapis postępu doszedł do serwera — połączenie znowu działa.
+    @ObservationIgnored public var onServerReached: (@MainActor () -> Void)?
 
     public static let syncInterval: Duration = .seconds(15)
 
@@ -336,6 +338,7 @@ public final class PlaybackCoordinator {
                 lastAgreed = data.currentTime
                 pending[book.key] = nil
                 progressRevision += 1
+                onServerReached?()
             } catch {
                 logger.error("Synchronizacja postępu: \(error.localizedDescription, privacy: .public)")
                 if player.book?.key == book.key { player.isDirty = true }

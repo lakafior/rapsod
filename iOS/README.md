@@ -12,3 +12,10 @@ projekt nie może niczego tam zmienić; granica licencji przebiega też po grani
 Etap 10b: parowanie z Makiem kodem QR (`abswift://pair?d=…`, format w `PairingPayload`
 pakietu) albo ręcznie (adres i klucz API), wybór działającego adresu (najpierw sieć lokalna,
 potem dostęp spoza domu), klucz w pęku kluczy iOS oraz prosty ekran z bibliotekami i okładkami.
+
+Etap 10c: odtwarzanie strumienia z serwera (cel pakietu `AudiobookshelfPlayback`): strona
+pozycji z „Odtwarzaj”/„Kontynuuj”, „Słuchaj dalej”, pasek mini-odtwarzacza i pełny ekran,
+sesja audio iOS z odtwarzaniem w tle, przerwaniami i odłączaniem słuchawek, „Teraz odtwarzane”
+i sterowanie z ekranu blokady, synchronizacja postępu z serwerem (wspólny z Makiem). Wybór
+adresu zawsze od sieci lokalnej, ponawiany przy zmianie sieci i po błędzie połączenia.
+Szczegóły w głównym `README.md` („Odtwarzacz na iOS”).
