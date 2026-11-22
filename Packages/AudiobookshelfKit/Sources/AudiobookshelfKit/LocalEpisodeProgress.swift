@@ -54,10 +54,23 @@ public struct LocalEpisodeRecord: Codable, Sendable, Hashable, Identifiable {
 
 /// Trwały magazyn `LocalEpisodeRecord` (plik JSON) dla jednego serwera. Zapis po każdej zmianie —
 /// zmiany przychodzą najwyżej co kilkanaście sekund (synchronizacja odtwarzacza).
+///
+/// Obserwacja jest wąska: zmiana pozycji jednego odcinka powiadamia tylko widoki jego `Entry`;
+/// listy obserwują `membershipRevision` (dodanie albo usunięcie wpisu).
 @MainActor
 @Observable
 public final class LocalEpisodeStore {
-    public private(set) var records: [String: LocalEpisodeRecord] = [:]
+    @MainActor
+    @Observable
+    public final class Entry {
+        public fileprivate(set) var value: LocalEpisodeRecord?
+        init(_ value: LocalEpisodeRecord?) { self.value = value }
+    }
+
+    @ObservationIgnored public private(set) var records: [String: LocalEpisodeRecord] = [:]
+    /// Rośnie, gdy wpis dochodzi albo znika (nie przy zmianie pozycji).
+    public private(set) var membershipRevision = 0
+    @ObservationIgnored private var entries: [String: Entry] = [:]
     @ObservationIgnored private let fileURL: URL?
 
     /// `fileURL == nil` — tylko w pamięci (testy).
@@ -77,23 +90,39 @@ public final class LocalEpisodeStore {
         records[LocalEpisodeRecord.id(itemID: itemID, feedKey: feedKey)]
     }
 
+    /// Obiekt wpisu do obserwacji w widoku (tworzony przy pierwszym pytaniu).
+    public func entry(itemID: String, feedKey: String) -> Entry {
+        let id = LocalEpisodeRecord.id(itemID: itemID, feedKey: feedKey)
+        if let entry = entries[id] { return entry }
+        let entry = Entry(records[id])
+        entries[id] = entry
+        return entry
+    }
+
     public func records(itemID: String) -> [LocalEpisodeRecord] {
         records.values.filter { $0.itemID == itemID }
     }
 
-    /// Odcinki w trakcie (nieukończone, z postępem), od ostatnio słuchanego.
+    /// Odcinki zaczęte i nieukończone, od ostatnio słuchanego (obserwuje tylko dodanie i usunięcie).
     public var inProgress: [LocalEpisodeRecord] {
-        records.values.filter { !$0.isFinished && $0.currentTime > 0 }.sorted { $0.updatedAt > $1.updatedAt }
+        _ = membershipRevision
+        return records.values.filter { !$0.isFinished }.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     public func save(_ record: LocalEpisodeRecord) {
         guard records[record.id] != record else { return }
+        let isNew = records[record.id] == nil
         records[record.id] = record
+        if let entry = entries[record.id] { entry.value = record }
+        if isNew { membershipRevision += 1 }
         persist()
     }
 
     public func remove(itemID: String, feedKey: String) {
-        guard records.removeValue(forKey: LocalEpisodeRecord.id(itemID: itemID, feedKey: feedKey)) != nil else { return }
+        let id = LocalEpisodeRecord.id(itemID: itemID, feedKey: feedKey)
+        guard records.removeValue(forKey: id) != nil else { return }
+        entries[id]?.value = nil
+        membershipRevision += 1
         persist()
     }
 
@@ -128,7 +157,19 @@ public enum EpisodeHandover {
         if !record.isFinished, record.currentTime < 1 { return .discardLocal }
         // Długość według serwera (plik po pobraniu) bywa inna niż ze strumienia.
         let duration = serverDuration.flatMap { $0 > 0 ? $0 : nil } ?? record.duration
-        return .send(currentTime: min(record.currentTime, duration), duration: duration, isFinished: record.isFinished)
+        let time = record.isFinished ? duration : serverTime(record.currentTime, streamDuration: record.duration, serverDuration: duration)
+        return .send(currentTime: time, duration: duration, isFinished: record.isFinished)
+    }
+
+    /// Miejsce w pliku na serwerze odpowiadające miejscu w strumieniu. Wydawcy wstawiają reklamy
+    /// dynamicznie (przekierowania śledzące), więc plik pobrany przez serwer potrafi być o kilkanaście
+    /// sekund krótszy albo dłuższy niż ten, który grał telefon. Gdy długości różnią się o ponad 1%,
+    /// pozycja jest przeliczana proporcjonalnie — to tylko przybliżenie (dokładne miejsce reklam
+    /// nie jest znane), ale nie przeskakuje końcówki i nie oznacza odcinka jako ukończonego za wcześnie.
+    public static func serverTime(_ time: Double, streamDuration: Double, serverDuration: Double) -> Double {
+        guard streamDuration > 0, serverDuration > 0 else { return time }
+        let scaled = abs(streamDuration - serverDuration) / streamDuration > 0.01 ? time * serverDuration / streamDuration : time
+        return min(max(0, scaled), serverDuration)
     }
 
     /// Odcinek serwera, który na pewno jest tym lokalnym (guid albo dokładny adres), albo `nil`.

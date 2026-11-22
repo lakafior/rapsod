@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var confirmsDisconnect = false
     @State private var showsScanner = false
     @State private var scanned: String?
+    @AppStorage("orderDownloadWhenStreaming") private var orderWhenStreaming = true
 
     var body: some View {
         NavigationStack {
@@ -60,6 +61,20 @@ struct SettingsView: View {
                     Text("Telefon zawsze najpierw próbuje adresu w sieci lokalnej, potem dostępu spoza domu.")
                 }
 
+                if let combined = session.library.combined, !combined.podcastLibraries.isEmpty {
+                    Section {
+                        LabeledContent("Pobieranie odcinków na serwer", value: podcastPermission)
+                        Toggle("Pobieraj na serwer odcinki słuchane ze strumienia", isOn: $orderWhenStreaming)
+                            .disabled(!session.library.podcasts.permission.canOrder)
+                    } header: {
+                        Text("Podcasty")
+                    } footer: {
+                        Text(!session.library.podcasts.permission.canOrder
+                             ? PodcastStore.permissionHelp(session.library.podcasts.permission)
+                             : "Odcinek spoza serwera gra od razu ze strumienia wydawcy, a serwer pobiera go w tle. Postęp przechodzi na serwer, gdy odcinek się pobierze.")
+                    }
+                }
+
                 if let combined = session.library.combined {
                     Section("Biblioteki") {
                         ForEach(combined.libraries) { library in
@@ -101,6 +116,14 @@ struct SettingsView: View {
                     showsScanner = false
                 }
             }
+        }
+    }
+
+    private var podcastPermission: String {
+        switch session.library.podcasts.permission {
+        case .admin: "Dozwolone"
+        case .listener, .needsEditPermission: "Wymaga uprawnień"
+        case .unknown: "Sprawdzanie…"
         }
     }
 

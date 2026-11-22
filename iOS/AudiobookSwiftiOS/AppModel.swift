@@ -23,11 +23,11 @@ final class ServerSession: Identifiable {
     /// Biblioteki połączone w jedną, postęp i zdarzenia serwera (etap 10d).
     let library: LibraryStore
 
-    init(server: PairedServer, baseURL: URL, key: String) {
+    init(server: PairedServer, baseURL: URL, key: String, podcasts: PodcastContext) {
         self.server = server
         self.baseURL = baseURL
         auth = ListeningAuth(client: AudiobookshelfClient(baseURL: baseURL), secret: .apiKey(key))
-        library = LibraryStore(auth: auth)
+        library = LibraryStore(auth: auth, playback: podcasts.playback, localEpisodes: podcasts.localEpisodes, feeds: podcasts.feeds)
     }
 
     func cover(itemID: String, path: String?, size: CGFloat, scale: CGFloat) async -> PlatformImage? {
@@ -35,6 +35,16 @@ final class ServerSession: Identifiable {
             try? await auth.perform { try await $0.cover(itemID: itemID, width: width, token: $1) }
         }
     }
+}
+
+/// To, co żyje dłużej niż jedno połączenie, a potrzebne jest podcastom sesji: odtwarzacz,
+/// lokalny postęp odcinków (jeden plik na serwer — dwie kopie magazynu nadpisywałyby się nawzajem)
+/// i pamięć kanałów RSS.
+@MainActor
+struct PodcastContext {
+    let playback: PlaybackCoordinator
+    let localEpisodes: LocalEpisodeStore
+    let feeds: PodcastFeedLoader
 }
 
 /// Stan aplikacji: niesparowana, łączenie, sparowana.
@@ -70,6 +80,11 @@ final class AppModel {
     /// a słuchanie trwa dalej.
     let playback: PlaybackCoordinator
     @ObservationIgnored private let audio: AudioSessionController
+    /// Lokalny postęp odcinków, według serwera.
+    @ObservationIgnored private var localEpisodeStores: [String: LocalEpisodeStore] = [:]
+    @ObservationIgnored private let feeds = PodcastFeedLoader(
+        directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appending(path: "PodcastFeeds")
+    )
     @ObservationIgnored private let pathMonitor = NWPathMonitor()
     @ObservationIgnored private var pathChange: Task<Void, Never>?
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
@@ -141,7 +156,7 @@ final class AppModel {
         }
         // Ekran serwera od razu z pierwszym adresem (lokalnym); połączenie sprawdzamy w tle.
         let url = server.attempts.first?.url ?? server.addresses[0].url
-        phase = .paired(ServerSession(server: server, baseURL: url, key: key))
+        phase = .paired(makeSession(server: server, baseURL: url, key: key))
     }
 
     /// Ponowny wybór adresu: zawsze od sieci lokalnej. `silent` — próba automatyczna (zmiana sieci,
@@ -171,7 +186,7 @@ final class AppModel {
             let changed = connection.url != session.baseURL
             if changed {
                 logger.notice("Nowy adres serwera: \(connection.url.absoluteString, privacy: .public)")
-                phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
+                phase = .paired(makeSession(server: server, baseURL: connection.url, key: key))
             }
             await playback.connectionChanged(baseURLChanged: changed)
             // Połączenie poza siecią lokalną: może Mac jest obok, tylko pod nowym adresem.
@@ -267,7 +282,7 @@ final class AppModel {
         var server = session.server
         server.addresses = addresses
         server.save()
-        phase = .paired(ServerSession(server: server, baseURL: session.baseURL, key: key))
+        phase = .paired(makeSession(server: server, baseURL: session.baseURL, key: key))
     }
 
     /// Zapytanie (np. synchronizacja postępu) nie doszło do serwera: może zmieniła się sieć.
@@ -304,6 +319,31 @@ final class AppModel {
             lastAutomaticReconnect = .now
             await reconnect(silent: true)
         }
+    }
+
+    /// Nowe połączenie z serwerem; odtwarzacz zapisuje lokalny postęp odcinków do magazynu tego serwera.
+    private func makeSession(server: PairedServer, baseURL: URL, key: String) -> ServerSession {
+        let scope = server.serverID ?? server.addresses.first?.url.absoluteString ?? "serwer"
+        let store: LocalEpisodeStore
+        if let existing = localEpisodeStores[scope] {
+            store = existing
+        } else {
+            let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appending(path: "LocalEpisodeProgress")
+            store = LocalEpisodeStore(fileURL: directory?.appending(path: Self.fileName(scope)))
+            localEpisodeStores[scope] = store
+        }
+        playback.localEpisodes = store
+        return ServerSession(server: server, baseURL: baseURL, key: key, podcasts: PodcastContext(playback: playback, localEpisodes: store, feeds: feeds))
+    }
+
+    /// Stała nazwa pliku z identyfikatora serwera (FNV-1a) — bez adresu w nazwie.
+    private static func fileName(_ scope: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in scope.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16) + ".json"
     }
 
     private func isCurrent(_ session: ServerSession) -> Bool {
@@ -428,7 +468,7 @@ final class AppModel {
             try PairedServer.secretStore.save(.apiKey(key))
             server.save()
             if playback.player.book != nil { await playback.stop() }
-            phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
+            phase = .paired(makeSession(server: server, baseURL: connection.url, key: key))
             offersDisconnect = false
             isOffline = false
         } catch {

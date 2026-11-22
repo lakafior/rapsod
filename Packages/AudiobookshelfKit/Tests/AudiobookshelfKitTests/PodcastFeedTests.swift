@@ -307,7 +307,7 @@ private let standardFeed = """
         defer { try? FileManager.default.removeItem(at: file) }
         let store = LocalEpisodeStore(fileURL: file)
         store.save(record())
-        store.save(LocalEpisodeRecord(itemID: "li", feedKey: "u:https://cdn/b.mp3", title: "B", podcastTitle: nil, guid: nil, enclosureURL: "https://cdn/b.mp3", published: nil, duration: 10, currentTime: 0, isFinished: true, updatedAt: .now))
+        store.save(LocalEpisodeRecord(itemID: "li", feedKey: "u:https://cdn/b.mp3", title: "B", podcastTitle: nil, guid: nil, enclosureURL: "https://cdn/b.mp3", published: nil, duration: 10, currentTime: 10, isFinished: true, updatedAt: .now))
         let reopened = LocalEpisodeStore(fileURL: file)
         #expect(reopened.records.count == 2)
         #expect(reopened.record(itemID: "li", feedKey: "g:ep")?.currentTime == 120)
@@ -324,6 +324,18 @@ private let standardFeed = """
         #expect(EpisodeHandover.decide(local, serverLastUpdate: (local.updatedAt.timeIntervalSince1970 + 5) * 1000, serverDuration: 600) == .discardLocal)
         // Starszy zapis na serwerze — wygrywa telefon.
         #expect(EpisodeHandover.decide(local, serverLastUpdate: (local.updatedAt.timeIntervalSince1970 - 60) * 1000, serverDuration: nil) == .send(currentTime: 120, duration: 600, isFinished: false))
+        // Plik na serwerze krótszy niż strumień (inne reklamy): pozycja proporcjonalnie, bez fałszywego „ukończone”.
+        let streamed = LocalEpisodeRecord(itemID: "li", feedKey: "g:ep", title: "O", podcastTitle: nil, guid: "ep", enclosureURL: "https://cdn/ep.mp3",
+                                          published: nil, duration: 304.7, currentTime: 282, isFinished: false, updatedAt: local.updatedAt)
+        if case .send(let time, let duration, let finished) = EpisodeHandover.decide(streamed, serverLastUpdate: nil, serverDuration: 286.7) {
+            #expect(abs(time - 282 * 286.7 / 304.7) < 0.01)
+            #expect(duration == 286.7)
+            #expect(!finished)
+        } else {
+            Issue.record("oczekiwano wysłania")
+        }
+        // Różnica poniżej 1% — bez przeliczania.
+        #expect(EpisodeHandover.serverTime(100, streamDuration: 600, serverDuration: 598) == 100)
         // Ukończony lokalnie.
         #expect(EpisodeHandover.decide(record(time: 600, finished: true), serverLastUpdate: nil, serverDuration: 590) == .send(currentTime: 590, duration: 590, isFinished: true))
         // Nic nie przesłuchano.

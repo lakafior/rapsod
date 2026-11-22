@@ -177,6 +177,21 @@ extension Stubbed {
         coordinator.player.stop()
     }
 
+    @Test func mapsPositionToShorterServerFile() async throws {
+        StubServer.on("PATCH api/me/progress/li/se1", .json("{}"))
+        let store = LocalEpisodeStore(fileURL: nil)
+        let coordinator = makeCoordinator(store)
+        await coordinator.play(external: episode)
+        coordinator.player.seek(to: 300)
+        // Serwer pobrał wersję z innymi reklamami: 540 s zamiast 600.
+        await coordinator.serverEpisodeAvailable(itemID: "li", feedKey: "g:ep1", episodeID: "se1", serverDuration: 540)
+        let patch = try #require(StubServer.requests.last { $0.request.url!.path().hasSuffix("api/me/progress/li/se1") }?.body)
+        let json = try #require(try JSONSerialization.jsonObject(with: patch) as? [String: Any])
+        #expect(json["currentTime"] as? Double == 270)
+        #expect(json["duration"] as? Double == 540)
+        coordinator.player.stop()
+    }
+
     @Test func finishingLocallyMarksRecordFinished() async throws {
         let store = LocalEpisodeStore(fileURL: nil)
         let coordinator = makeCoordinator(store)

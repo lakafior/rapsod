@@ -43,6 +43,8 @@ public final class PlaybackCoordinator {
     public private(set) var progressRevision = 0
     /// Odcinki z kanału, których postęp idzie już do odcinka na serwerze: klucz odtwarzacza → id odcinka.
     public private(set) var redirected: [String: String] = [:]
+    /// Długość pliku na serwerze dla przekierowanych odcinków (pozycja przeliczana proporcjonalnie).
+    @ObservationIgnored private var redirectedDurations: [String: Double] = [:]
 
     /// Postęp odcinków słuchanych prosto z kanału (trwały, na telefonie).
     @ObservationIgnored public var localEpisodes: LocalEpisodeStore?
@@ -165,6 +167,7 @@ public final class PlaybackCoordinator {
             player.stop()
         }
         redirected = [:]
+        redirectedDurations = [:]
         externalTemplate = nil
 
         do {
@@ -291,6 +294,7 @@ public final class PlaybackCoordinator {
             player.stop()
         }
         redirected = [:]
+        redirectedDurations = [:]
         externalTemplate = nil
         do {
             guard let original = URL(string: episode.enclosureURL.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -345,11 +349,12 @@ public final class PlaybackCoordinator {
     /// do odcinka na serwerze (zapis bez sesji, od razu), dźwięk dalej od wydawcy. Zwraca `true`,
     /// gdy to był bieżący odcinek (lokalnym wpisem zajmuje się wtedy koordynator).
     @discardableResult
-    public func serverEpisodeAvailable(itemID: String, feedKey: String, episodeID: String) async -> Bool {
+    public func serverEpisodeAvailable(itemID: String, feedKey: String, episodeID: String, serverDuration: Double? = nil) async -> Bool {
         guard let book = player.book, book.itemID == itemID, book.feedKey == feedKey else { return false }
         guard redirected[book.key] == nil else { return true }
         logger.notice("Odcinek z kanału jest już na serwerze — postęp idzie od teraz na serwer")
         redirected[book.key] = episodeID
+        if let serverDuration, serverDuration > 0 { redirectedDurations[book.key] = serverDuration }
         player.isDirty = true
         await sync()
         return true
@@ -430,6 +435,7 @@ public final class PlaybackCoordinator {
         end?()
         player.stop()
         redirected = [:]
+        redirectedDurations = [:]
     }
 
     /// Oznacza bieżącą książkę jako ukończoną.
@@ -606,7 +612,8 @@ public final class PlaybackCoordinator {
         guard let auth = authProvider() else { return }
         let task = Task { [weak self] in
             guard let self else { return }
-            let data = AudiobookshelfClient.SyncData(currentTime: player.currentTime, timeListened: player.takeListenedTime(), duration: book.duration)
+            let (time, duration) = serverPosition(book, time: player.currentTime)
+            let data = AudiobookshelfClient.SyncData(currentTime: time, timeListened: player.takeListenedTime(), duration: duration)
             player.isDirty = false
             do {
                 if let session, session.key == book.key {
@@ -641,15 +648,23 @@ public final class PlaybackCoordinator {
 
     private func saveProgress(_ book: PlaybackBook, time: Double, auth: ListeningAuth) async throws {
         guard case .server(let itemID, let episodeID) = target(for: book) else { return }
+        let duration = redirectedDurations[book.key] ?? book.duration
         try await auth.perform {
-            try await $0.updateProgress(itemID: itemID, episodeID: episodeID, currentTime: time, duration: book.duration, token: $1)
+            try await $0.updateProgress(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration, token: $1)
         }
+    }
+
+    /// Pozycja i długość do wysłania na serwer: dla odcinka ze strumienia, który serwer pobrał,
+    /// przeliczone na plik serwera (`EpisodeHandover.serverTime`); dla reszty — bez zmian.
+    private func serverPosition(_ book: PlaybackBook, time: Double) -> (Double, Double) {
+        guard let serverDuration = redirectedDurations[book.key] else { return (time, book.duration) }
+        return (EpisodeHandover.serverTime(time, streamDuration: book.duration, serverDuration: serverDuration), serverDuration)
     }
 
     private func remember(_ book: PlaybackBook, time: Double) {
         switch target(for: book) {
         case .server(let itemID, let episodeID):
-            pending[book.key] = PendingPosition(itemID: itemID, episodeID: episodeID, currentTime: time, duration: book.duration, savedAt: .now)
+            pending[book.key] = PendingPosition(itemID: itemID, episodeID: episodeID, currentTime: time, duration: redirectedDurations[book.key] ?? book.duration, savedAt: .now)
         case .local(let record):
             saveLocal(record, book: book, time: time)
         }
@@ -661,7 +676,8 @@ public final class PlaybackCoordinator {
         endSyncLoop()
         guard let book = player.book else { return }
         let dirty = player.isDirty
-        let data = AudiobookshelfClient.SyncData(currentTime: player.currentTime, timeListened: player.takeListenedTime(), duration: book.duration)
+        let (closeTime, closeDuration) = serverPosition(book, time: player.currentTime)
+        let data = AudiobookshelfClient.SyncData(currentTime: closeTime, timeListened: player.takeListenedTime(), duration: closeDuration)
         player.isDirty = false
         defer { session = nil; lastAgreed = nil }
         if case .local(let record) = target(for: book) {
@@ -713,10 +729,11 @@ public final class PlaybackCoordinator {
             itemID = item
             episodeID = episode
         }
+        let finalDuration = redirectedDurations[book.key] ?? book.duration
         guard let auth = authProvider() else { return }
         do {
             try await auth.perform {
-                try await $0.updateProgress(itemID: itemID, episodeID: episodeID, currentTime: book.duration, duration: book.duration, isFinished: true, token: $1)
+                try await $0.updateProgress(itemID: itemID, episodeID: episodeID, currentTime: finalDuration, duration: finalDuration, isFinished: true, token: $1)
             }
             if let feedKey = book.feedKey { localEpisodes?.remove(itemID: book.itemID, feedKey: feedKey) }
             if let session, session.key == book.key {

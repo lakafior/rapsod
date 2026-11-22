@@ -8,15 +8,13 @@ import AudiobookshelfPlayback
 
 /// Strona pozycji: okładka, tytuł, autorzy, seria i lektorzy jako odnośniki, czas, postęp
 /// z „Oznacz jako ukończone” i „Usuń postęp”, opis, rozdziały (dotknięcie zaczyna od rozdziału)
-/// i odtwarzanie. Podcast — lista pobranych odcinków. Bez edycji metadanych.
+/// i odtwarzanie. Podcast — strona podcastu (`PodcastPage`, etap 10e). Bez edycji metadanych.
 struct ItemDetailView: View {
     let itemID: String
     let model: AppModel
     let session: ServerSession
 
     @State private var item: AudiobookshelfClient.ItemDetail?
-    /// Postęp odcinków podcastu (książki mają postęp w `ProgressStore`).
-    @State private var episodeProgress: [String: AudiobookshelfClient.MediaProgress] = [:]
     @State private var loadError: String?
     @State private var actionError: String?
     @State private var confirmsRemoval = false
@@ -28,20 +26,24 @@ struct ItemDetailView: View {
     private var playback: PlaybackCoordinator { model.playback }
 
     var body: some View {
+        if let item, item.isPodcast {
+            PodcastPage(item: item, model: model, session: session)
+        } else {
+            bookPage
+        }
+    }
+
+    private var bookPage: some View {
         List {
             if let item {
                 header(item)
-                if !item.isPodcast {
-                    details(item)
-                }
+                details(item)
                 if let text = HTMLText.plain(item.media.metadata.description), !text.isEmpty {
                     Section("Opis") {
                         ExpandableText(text: text, lineLimit: 5)
                     }
                 }
-                if item.isPodcast {
-                    episodes(item)
-                } else if let chapters = item.media.chapters, chapters.count > 1 {
+                if let chapters = item.media.chapters, chapters.count > 1 {
                     chapterList(item, chapters)
                 }
             } else if let loadError {
@@ -169,38 +171,6 @@ struct ItemDetailView: View {
         .disabled(isWorking)
     }
 
-    @ViewBuilder
-    private func episodes(_ item: AudiobookshelfClient.ItemDetail) -> some View {
-        let list = (item.media.episodes?.elements ?? []).sorted { ($0.publishedAt ?? 0) > ($1.publishedAt ?? 0) }
-        Section("Odcinki") {
-            if list.isEmpty {
-                Text("Na serwerze nie ma pobranych odcinków.").foregroundStyle(.secondary)
-            }
-            ForEach(list) { episode in
-                let key = PlaybackTimeline.key(item.id, episode.id)
-                Button {
-                    Task { await playback.play(itemID: item.id, episodeID: episode.id) }
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(episode.title ?? "Odcinek").foregroundStyle(.primary)
-                            if let published = episode.published {
-                                Text(published, format: .dateTime.day().month().year())
-                                    .font(.footnote).foregroundStyle(.secondary)
-                            }
-                            ProgressSummary(progress: episodeProgress[key], duration: episode.length, compact: true)
-                        }
-                        Spacer()
-                        Image(systemName: playback.nowPlayingKey == key && playback.player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.title)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .accessibilityLabel(Text("Odtwarzaj \(episode.title ?? "odcinek")"))
-            }
-        }
-    }
-
     // MARK: Działania
 
     /// Od początku rozdziału: bieżąca książka — przeskok; inna — start i przeskok po wczytaniu.
@@ -246,18 +216,6 @@ struct ItemDetailView: View {
             if item == nil { loadError = LibraryStore.message(error) }
             if AddressSelection.isConnectionError(error) { model.connectionTroubled() }
         }
-        if item?.isPodcast == true { await loadEpisodeProgress() }
-    }
-
-    /// Postęp odcinków z serwera (ten sam, który widzi Mac).
-    private func loadEpisodeProgress() async {
-        let state: AudiobookshelfClient.MeState? = try? await session.auth.perform { try await $0.me(token: $1) }
-        guard let me = state else { return }
-        var entries: [String: AudiobookshelfClient.MediaProgress] = [:]
-        for entry in me.mediaProgress.elements where entry.libraryItemId == itemID {
-            entries[PlaybackTimeline.key(itemID, entry.episodeId)] = entry
-        }
-        episodeProgress = entries
     }
 }
 

@@ -30,7 +30,7 @@ struct MainTabs: View {
             // Bez bibliotek podcastów zakładka nie ma sensu — znika.
             if session.library.combined?.podcastLibraries.isEmpty == false {
                 Tab("Podcasty", systemImage: "dot.radiowaves.left.and.right", value: AppTab.podcasts) {
-                    PodcastsPlaceholder()
+                    PodcastsTab(model: model, session: session)
                 }
             }
             Tab("Ustawienia", systemImage: "gearshape", value: AppTab.settings) {
@@ -53,16 +53,5 @@ struct MainTabs: View {
         }
         // Biblioteki, postęp i gniazdo zdarzeń żyją tyle, co to połączenie.
         .task(id: session.id) { await session.library.run() }
-    }
-}
-
-/// Zakładka „Podcasty” do czasu etapu 10e.
-private struct PodcastsPlaceholder: View {
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView("Podcasty wkrótce", systemImage: "dot.radiowaves.left.and.right",
-                                   description: Text("Wszystkie biblioteki podcastów w jednej zakładce dojdą w następnej wersji aplikacji."))
-                .navigationTitle("Podcasty")
-        }
     }
 }

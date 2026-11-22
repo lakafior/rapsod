@@ -6,6 +6,7 @@ import Foundation
 import Observation
 import OSLog
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 
 private let logger = Logger(subsystem: "net.smigi.abswift.ios", category: "Library")
 
@@ -25,13 +26,19 @@ final class LibraryStore {
     private(set) var itemsRevision = 0
     /// Rośnie po wczytaniu postępu z serwera (np. po powrocie połączenia).
     private(set) var progressRevision = 0
-    @ObservationIgnored let progress = ProgressStore()
+    @ObservationIgnored let progress: ProgressStore
+    /// Podcasty: uprawnienia, kolejka pobierania serwera, przekazanie lokalnego postępu (etap 10e).
+    @ObservationIgnored let podcasts: PodcastStore
     @ObservationIgnored private let auth: ListeningAuth
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var itemsChange: Task<Void, Never>?
 
-    init(auth: ListeningAuth) {
+    init(auth: ListeningAuth, playback: PlaybackCoordinator, localEpisodes: LocalEpisodeStore, feeds: PodcastFeedLoader) {
         self.auth = auth
+        let progress = ProgressStore()
+        self.progress = progress
+        podcasts = PodcastStore(auth: auth, playback: playback, progress: progress, localEpisodes: localEpisodes, feeds: feeds)
+        podcasts.onProgressSent = { [weak self] in await self?.refreshProgress() }
     }
 
     var combined: CombinedLibraries? {
@@ -60,6 +67,12 @@ final class LibraryStore {
             // Postęp przed pokazaniem list: „Ostatnio słuchane” bierze z niego kolejność.
             await refreshProgress()
             state = .ready(combined)
+            if !combined.podcastLibraries.isEmpty {
+                Task {
+                    await podcasts.loadQueue(libraries: combined.podcastLibraries)
+                    await podcasts.reconcileAll()
+                }
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -73,6 +86,7 @@ final class LibraryStore {
     func refreshProgress() async {
         guard let me: AudiobookshelfClient.MeState = try? await auth.perform({ try await $0.me(token: $1) }) else { return }
         progress.replaceAll(me.mediaProgress.elements)
+        podcasts.setAccount(me)
         progressRevision += 1
     }
 
@@ -107,7 +121,11 @@ final class LibraryStore {
             progress.update(entry)
         case .user(let me):
             progress.replaceAll(me.mediaProgress.elements)
-        case .itemsChanged(let libraries, _):
+            podcasts.setAccount(me)
+        case .itemsChanged(let libraries, let items):
+            if let combined, libraries.contains(where: { id in combined.podcastLibraries.contains { $0.id == id } }) {
+                for item in items { podcasts.itemChanged(item) }
+            }
             guard combined.map({ store in libraries.contains { id in store.libraries.contains { $0.id == id } } }) ?? false else { return }
             // Skan dodaje pozycje seriami — jedno odświeżenie po chwili ciszy.
             itemsChange?.cancel()
@@ -116,8 +134,18 @@ final class LibraryStore {
                 guard !Task.isCancelled else { return }
                 itemsRevision += 1
             }
+        case .episodeDownload(let download, let phase):
+            podcasts.apply(download, phase)
+        case .downloadQueueCleared(let itemID):
+            podcasts.cleared(itemID: itemID)
         case .reconnected:
-            Task { await refreshProgress() }
+            Task {
+                await refreshProgress()
+                if let combined, !combined.podcastLibraries.isEmpty {
+                    await podcasts.loadQueue(libraries: combined.podcastLibraries)
+                    await podcasts.reconcileAll()
+                }
+            }
         default:
             break
         }
@@ -159,12 +187,18 @@ final class ProgressStore {
     func value(_ itemID: String) -> AudiobookshelfClient.MediaProgress? { values[itemID] }
 
     /// Czas ostatniego słuchania (ms) — do sortowania „Ostatnio słuchane” i półki „Słuchaj dalej”.
-    var lastUpdate: [String: Double] { values.mapValues(\.lastUpdate) }
+    /// Tylko pozycje (bez odcinków podcastów).
+    var lastUpdate: [String: Double] { values.filter { $0.value.episodeId == nil }.mapValues(\.lastUpdate) }
+
+    /// Książki pod identyfikatorem pozycji, odcinki — pod `PlaybackTimeline.key(pozycja, odcinek)`.
+    private static func key(_ entry: AudiobookshelfClient.MediaProgress) -> String? {
+        entry.libraryItemId.map { PlaybackTimeline.key($0, entry.episodeId) }
+    }
 
     func replaceAll(_ list: [AudiobookshelfClient.MediaProgress]) {
         var fresh: [String: AudiobookshelfClient.MediaProgress] = [:]
-        for entry in list where entry.episodeId == nil {
-            guard let id = entry.libraryItemId else { continue }
+        for entry in list {
+            guard let id = Self.key(entry) else { continue }
             fresh[id] = entry
         }
         let removed = Set(values.keys).subtracting(fresh.keys)
@@ -174,7 +208,7 @@ final class ProgressStore {
     }
 
     func update(_ entry: AudiobookshelfClient.MediaProgress) {
-        guard entry.episodeId == nil, let id = entry.libraryItemId else { return }
+        guard let id = Self.key(entry) else { return }
         values[id] = entry
         set(id, entry)
     }

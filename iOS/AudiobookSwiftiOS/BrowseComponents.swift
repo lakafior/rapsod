@@ -226,4 +226,5 @@ enum PolishCount {
 
     static func books(_ n: Int) -> String { form(n, one: "książka", few: "książki", many: "książek") }
     static func series(_ n: Int) -> String { form(n, one: "seria", few: "serie", many: "serii") }
+    static func episodes(_ n: Int) -> String { form(n, one: "odcinek", few: "odcinki", many: "odcinków") }
 }
