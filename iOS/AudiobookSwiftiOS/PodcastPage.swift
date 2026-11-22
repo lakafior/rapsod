@@ -387,7 +387,7 @@ struct PodcastPage: View {
     private func play(_ row: PodcastEpisodeRow) {
         Task {
             if let server = row.server {
-                await model.playback.play(itemID: item.id, episodeID: server.id)
+                await podcasts.play(itemID: item.id, episode: server, weakLocal: podcasts.weakLocal(itemID: item.id, feedKey: row.feedKey, match: row.match))
                 return
             }
             guard let url = row.enclosureURL, let feedKey = row.feedKey else { return }

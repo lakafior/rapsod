@@ -247,6 +247,17 @@ final class PodcastStore {
         guard !records.isEmpty else { return }
         let episodes = item.media.episodes?.elements ?? []
         var sent = false
+        // Słabe dopasowania (bez pewności, że to ten sam odcinek): postęp nie przechodzi sam, ale
+        // wpis znika, gdy serwer ma nowszy zapis — inaczej wracałby na półce jako osobny odcinek.
+        let weak = EpisodeMatching.match(records.map(\.identity), episodes.map(EpisodeIdentity.init))
+        for (index, match) in weak where !match.strength.isCertain {
+            let record = records[index]
+            guard playback.nowPlayingKeys.isDisjoint(with: [PlaybackTimeline.feedKey(item.id, record.feedKey)]) else { continue }
+            let server = progress.value(PlaybackTimeline.key(item.id, episodes[match.other].id))
+            if EpisodeHandover.weakMatchIsStale(record, serverLastUpdate: server?.lastUpdate) {
+                localEpisodes.remove(itemID: item.id, feedKey: record.feedKey)
+            }
+        }
         for record in records {
             guard let server = EpisodeHandover.serverEpisode(for: record, in: episodes) else { continue }
             if await playback.serverEpisodeAvailable(itemID: item.id, feedKey: record.feedKey, episodeID: server.id, serverDuration: server.length) { continue }
@@ -269,6 +280,45 @@ final class PodcastStore {
             }
         }
         if sent { await onProgressSent?() }
+    }
+
+    /// Pozycje, których lokalne wpisy właśnie są przekazywane (żeby nie pytać serwera kilka razy).
+    @ObservationIgnored private var handingOver: Set<String> = []
+
+    /// Lokalne wpisy, które półka „Słuchaj dalej” rozpoznała jako odcinki serwera — przekazanie
+    /// od razu, a nie dopiero po wejściu na stronę podcastu albo po ponownym połączeniu.
+    func handOver(_ records: [LocalEpisodeRecord]) {
+        for itemID in Set(records.map(\.itemID)) where handingOver.insert(itemID).inserted {
+            Task {
+                defer { handingOver.remove(itemID) }
+                guard let item = try? await auth.perform({ try await $0.item(id: itemID, token: $1) }) else { return }
+                await reconcile(item)
+            }
+        }
+    }
+
+    /// Odtwarza odcinek serwera. Gdy telefon ma do niego „słabo” dopasowany wpis ze strumienia
+    /// (pokazany razem z nim jako jeden odcinek), jawne odtworzenie rozstrzyga: nowszy zapis
+    /// wygrywa — z telefonu start od jego miejsca, potem wpis lokalny znika (postęp idzie już
+    /// do odcinka serwera).
+    func play(itemID: String, episode: Client.PodcastEpisode, weakLocal: LocalEpisodeRecord?) async {
+        guard let weakLocal, !playback.isLoaded(itemID: itemID, episodeID: episode.id) else {
+            await playback.play(itemID: itemID, episodeID: episode.id)
+            return
+        }
+        let server = progress.value(PlaybackTimeline.key(itemID, episode.id))
+        let start = EpisodeHandover.adoptedStart(weakLocal, serverLastUpdate: server?.lastUpdate, serverDuration: episode.length)
+        await playback.play(itemID: itemID, episodeID: episode.id, from: start)
+        if playback.isLoaded(itemID: itemID, episodeID: episode.id) {
+            localEpisodes.remove(itemID: itemID, feedKey: weakLocal.feedKey)
+            logger.notice("Słabo dopasowany odcinek ze strumienia przejęty przez odcinek serwera")
+        }
+    }
+
+    /// Lokalny wpis odcinka, gdy pasuje do odcinka serwera tylko słabo (do `play(…weakLocal:)`).
+    func weakLocal(itemID: String, feedKey: String?, match: EpisodeMatching.Strength?) -> LocalEpisodeRecord? {
+        guard let feedKey, let match, !match.isCertain else { return nil }
+        return localEpisodes.record(itemID: itemID, feedKey: feedKey)
     }
 
     /// Po starcie i po powrocie połączenia: podcasty z lokalnym postępem sprawdzone na serwerze.

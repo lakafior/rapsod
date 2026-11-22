@@ -204,6 +204,8 @@ final class ProgressStore {
     /// Czas ostatniego słuchania (ms) — do sortowania „Ostatnio słuchane” i półki „Słuchaj dalej”.
     /// Tylko pozycje (bez odcinków podcastów).
     var lastUpdate: [String: Double] { values.filter { $0.value.episodeId == nil }.mapValues(\.lastUpdate) }
+    /// Czas ostatniego słuchania pozycji i odcinków (klucz jak `PlaybackTimeline.key`).
+    var lastUpdateByKey: [String: Double] { values.mapValues(\.lastUpdate) }
 
     /// Książki pod identyfikatorem pozycji, odcinki — pod `PlaybackTimeline.key(pozycja, odcinek)`.
     private static func key(_ entry: AudiobookshelfClient.MediaProgress) -> String? {

@@ -206,7 +206,8 @@ struct PodcastCard: View {
     }
 }
 
-/// Odcinki w trakcie: z serwera (`items-in-progress`) i słuchane ze strumienia (postęp na telefonie).
+/// Odcinki w trakcie: z serwera (`items-in-progress`) i słuchane ze strumienia (postęp na telefonie),
+/// połączone bez powtórzeń (`ContinueListening`): każdy zaczęty odcinek raz, od ostatnio słuchanego.
 struct ContinueEpisodes: View {
     var title = "Słuchaj dalej"
     let serverItems: [Client.LibraryItem]
@@ -215,38 +216,52 @@ struct ContinueEpisodes: View {
     let failed: (String) -> Void
 
     var body: some View {
-        let local = session.library.podcasts.localEpisodes.inProgress
-        if !serverItems.isEmpty || !local.isEmpty {
+        let podcasts = session.library.podcasts
+        let merged = ContinueListening.merge(books: [], serverEpisodes: serverItems, local: podcasts.localEpisodes.inProgress,
+                                             lastUpdate: session.library.progress.lastUpdateByKey, limit: 8)
+        if !merged.entries.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
                     .font(.title3.bold())
                     .padding(.horizontal)
                     .accessibilityAddTraits(.isHeader)
                 VStack(spacing: 0) {
-                    ForEach(serverItems.prefix(8)) { item in
-                        if let episode = item.recentEpisode {
-                            CompactEpisodeRow(itemID: item.id, title: episode.title ?? "Odcinek", podcastTitle: item.title,
-                                              keys: [PlaybackTimeline.key(item.id, episode.id)], localOnly: false, session: session, playback: model.playback,
-                                              download: .episode(episode, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId)) {
-                                Task { await model.playback.play(itemID: item.id, episodeID: episode.id) }
-                            }
-                        }
-                    }
-                    ForEach(local.prefix(8)) { record in
-                        CompactEpisodeRow(itemID: record.itemID, title: record.title, podcastTitle: record.podcastTitle ?? "",
-                                          keys: [PlaybackTimeline.feedKey(record.itemID, record.feedKey)], localOnly: true, session: session, playback: model.playback) {
-                            Task {
-                                let key = PlaybackTimeline.feedKey(record.itemID, record.feedKey)
-                                await model.playback.play(external: .init(
-                                    itemID: record.itemID, feedKey: record.feedKey, title: record.title, podcastTitle: record.podcastTitle,
-                                    guid: record.guid, enclosureURL: record.enclosureURL, published: record.published, feedDuration: record.duration))
-                                if let error = model.playback.loadError, !model.playback.nowPlayingKeys.contains(key) { failed(error) }
-                            }
-                        }
+                    ForEach(merged.entries) { entry in
+                        row(entry)
                     }
                 }
                 .padding(.horizontal)
             }
+            // Pewne dopasowania ukryte na półce — ich postęp trafia na serwer.
+            .task(id: merged.handover.map(\.id)) {
+                if !merged.handover.isEmpty { podcasts.handOver(merged.handover) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ entry: ContinueListening.Entry) -> some View {
+        switch entry.kind {
+        case .serverEpisode(let item, let episode, let weakLocal):
+            CompactEpisodeRow(itemID: item.id, title: episode.title ?? "Odcinek", podcastTitle: item.title,
+                              keys: Set([PlaybackTimeline.key(item.id, episode.id)] + (weakLocal.map { [PlaybackTimeline.feedKey(item.id, $0.feedKey)] } ?? [])),
+                              localOnly: false, session: session, playback: model.playback,
+                              download: .episode(episode, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId)) {
+                Task { await session.library.podcasts.play(itemID: item.id, episode: episode, weakLocal: weakLocal) }
+            }
+        case .localEpisode(let record):
+            CompactEpisodeRow(itemID: record.itemID, title: record.title, podcastTitle: record.podcastTitle ?? "",
+                              keys: [PlaybackTimeline.feedKey(record.itemID, record.feedKey)], localOnly: true, session: session, playback: model.playback) {
+                Task {
+                    let key = PlaybackTimeline.feedKey(record.itemID, record.feedKey)
+                    await model.playback.play(external: .init(
+                        itemID: record.itemID, feedKey: record.feedKey, title: record.title, podcastTitle: record.podcastTitle,
+                        guid: record.guid, enclosureURL: record.enclosureURL, published: record.published, feedDuration: record.duration))
+                    if let error = model.playback.loadError, !model.playback.nowPlayingKeys.contains(key) { failed(error) }
+                }
+            }
+        case .book:
+            EmptyView()
         }
     }
 }
