@@ -120,6 +120,7 @@ extension AudiobookshelfClient {
 
         public struct Enclosure: Decodable, Sendable, Hashable {
             public let url: String?
+            public var type: String? = nil
         }
 
         public var length: Double? { duration ?? audioFile?.duration }

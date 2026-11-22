@@ -294,6 +294,11 @@ extension AudiobookshelfClient {
     public struct MeState: Decodable, Sendable {
         public let mediaProgress: LenientList<MediaProgress>
         public let bookmarks: LenientList<Bookmark>?
+        /// `root`, `admin`, `user`, `guest` — od tego zależy np. zlecanie pobrań odcinków (etap 10e).
+        public var type: String? = nil
+
+        /// Konto może zarządzać serwerem (`isAdminOrUp` w upstreamie).
+        public var isAdmin: Bool { type == "root" || type == "admin" }
     }
 
     /// Statystyki słuchania (`GET /api/me/listening-stats`).
