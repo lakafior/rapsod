@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import AudiobookshelfKit
+import AudiobookshelfKit
 
 /// Budowanie zapytań i zamiana statusów HTTP na błędy — przez zaślepkę `URLProtocol`.
 extension Stubbed {

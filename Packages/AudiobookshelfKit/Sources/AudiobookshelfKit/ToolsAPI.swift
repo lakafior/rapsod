@@ -206,13 +206,13 @@ extension AudiobookshelfClient {
 
 /// Postęp wysyłania treści zapytania (`didSendBodyData`).
 private final class UploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
-    public let report: @Sendable (Double) -> Void
+    let report: @Sendable (Double) -> Void
 
-    public init(report: @escaping @Sendable (Double) -> Void) {
+    init(report: @escaping @Sendable (Double) -> Void) {
         self.report = report
     }
 
-    public func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
         guard totalBytesExpectedToSend > 0 else { return }
         report(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }

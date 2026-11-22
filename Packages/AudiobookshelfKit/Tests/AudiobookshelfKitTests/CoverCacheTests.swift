@@ -3,7 +3,7 @@ import Foundation
 import ImageIO
 import Testing
 import UniformTypeIdentifiers
-@testable import AudiobookshelfKit
+import AudiobookshelfKit
 
 /// Okładki: pobranie przez HTTP jako droga domyślna, skalowanie i pamięć podręczna.
 @MainActor

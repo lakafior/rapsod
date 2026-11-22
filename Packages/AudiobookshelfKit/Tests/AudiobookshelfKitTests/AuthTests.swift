@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import AudiobookshelfKit
+import AudiobookshelfKit
 
 /// Sekret w pamięci zamiast pęku kluczy.
 final class MemoryStore<Value: Codable & Sendable & Equatable>: SecretStore, @unchecked Sendable {

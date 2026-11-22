@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import AudiobookshelfKit
+import AudiobookshelfKit
 
 /// Zaślepka serwera dla `URLSession`: zapisuje zapytania i odpowiada z tabeli.
 /// Testy z jej użyciem są w grupie `Stubbed` i idą po kolei, bo stan jest wspólny.

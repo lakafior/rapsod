@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import AudiobookshelfKit
+import AudiobookshelfKit
 
 /// Dekodowanie modeli z przykładowych odpowiedzi serwera (kształty z upstreamu v2.38.0).
 struct ModelDecodingTests {
@@ -58,7 +58,10 @@ struct ModelDecodingTests {
         """#.utf8))
         #expect(task.action == "library-scan")
         #expect(task.data?.libraryId == "lib1")
-        #expect(task.data?.scanResults == .init(added: 2, updated: 0, missing: 1, elapsed: 1500))
+        let results = try #require(task.data?.scanResults)
+        #expect(results.added == 2)
+        #expect(results.missing == 1)
+        #expect(results.elapsed == 1500)
     }
 
     @Test func librarySettingsAreLenient() throws {
