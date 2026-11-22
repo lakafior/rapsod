@@ -16,9 +16,14 @@ let package = Package(
     products: [
         // Biblioteka statyczna (typ nieokreślony): nic do osadzania ani osobnego podpisywania w paczce.
         .library(name: "AudiobookshelfKit", targets: ["AudiobookshelfKit"]),
+        // Odtwarzacz strumienia z serwera (etap 10c): kolejka plików, rozdziały, synchronizacja
+        // postępu, „Teraz odtwarzane”. AVFoundation i MediaPlayer — osobny cel, żeby sam klient
+        // API został bez nich. Na razie używa go tylko aplikacja iOS.
+        .library(name: "AudiobookshelfPlayback", targets: ["AudiobookshelfPlayback"]),
     ],
     targets: [
         .target(name: "AudiobookshelfKit"),
-        .testTarget(name: "AudiobookshelfKitTests", dependencies: ["AudiobookshelfKit"]),
+        .target(name: "AudiobookshelfPlayback", dependencies: ["AudiobookshelfKit"]),
+        .testTarget(name: "AudiobookshelfKitTests", dependencies: ["AudiobookshelfKit", "AudiobookshelfPlayback"]),
     ]
 )

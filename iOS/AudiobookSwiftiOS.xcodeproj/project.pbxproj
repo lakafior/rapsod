@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		10B0000000000000000000A3 /* AudiobookshelfKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10B0000000000000000000A2 /* AudiobookshelfKit */; };
+		10B0000000000000000000A5 /* AudiobookshelfPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = 10B0000000000000000000A4 /* AudiobookshelfPlayback */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				10B0000000000000000000A3 /* AudiobookshelfKit in Frameworks */,
+				10B0000000000000000000A5 /* AudiobookshelfPlayback in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,6 +69,7 @@
 			name = AudiobookSwiftiOS;
 			packageProductDependencies = (
 				10B0000000000000000000A2 /* AudiobookshelfKit */,
+				10B0000000000000000000A4 /* AudiobookshelfPlayback */,
 			);
 			productName = AudiobookSwiftiOS;
 			productReference = 10B000000000000000000001 /* AudiobookSwiftiOS.app */;
@@ -260,6 +263,10 @@
 		10B0000000000000000000A2 /* AudiobookshelfKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AudiobookshelfKit;
+		};
+		10B0000000000000000000A4 /* AudiobookshelfPlayback */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AudiobookshelfPlayback;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

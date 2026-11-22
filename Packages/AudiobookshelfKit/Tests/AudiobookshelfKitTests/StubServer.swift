@@ -30,6 +30,11 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         }
     }
 
+    /// Zapomina zapisane zapytania, trasy zostają.
+    static func clearRequests() {
+        lock.withLock { recorded = [] }
+    }
+
     /// Kolejne odpowiedzi dla `METODA ścieżka` (ostatnia się powtarza).
     static func on(_ key: String, _ responses: Response...) {
         lock.withLock { routes[key] = responses }

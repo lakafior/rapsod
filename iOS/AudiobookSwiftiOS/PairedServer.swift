@@ -11,29 +11,16 @@ struct PairedServer: Codable, Equatable {
     var serverID: String?
     var serverName: String
     var addresses: [PairingPayload.Address]
-    /// Adres, który ostatnio odpowiedział — próbowany jako pierwszy.
+    /// Adres, który ostatnio odpowiedział — tylko do pokazania; nie zmienia kolejności prób
+    /// (etap 10c: po połączeniu przez tunel telefon wracał do tunelu także w domu).
     var lastWorkingURL: URL?
     var userID: String
     var username: String
     var deviceName: String?
     var keyID: String?
 
-    /// Kolejność prób: ostatnio działający, potem sieć lokalna, potem spoza domu.
-    var addressesToTry: [URL] {
-        let ordered = addresses.enumerated()
-            .sorted { (priority($0.element.kind), $0.offset) < (priority($1.element.kind), $1.offset) }
-            .map(\.element.url)
-        guard let lastWorkingURL, ordered.contains(lastWorkingURL) else { return ordered }
-        return [lastWorkingURL] + ordered.filter { $0 != lastWorkingURL }
-    }
-
-    private func priority(_ kind: PairingPayload.Address.Kind) -> Int {
-        switch kind {
-        case .local: 0
-        case .remote: 1
-        case .other: 2
-        }
-    }
+    /// Kolejność prób: zawsze najpierw sieć lokalna (krótki limit czasu), potem spoza domu.
+    var attempts: [AddressSelection.Attempt] { AddressSelection.attempts(for: addresses) }
 
     private static let defaultsKey = "pairedServer"
 
@@ -79,13 +66,19 @@ enum Connector {
         }
     }
 
-    /// Sesja z krótkim limitem: niedostępny adres lokalny poza domem nie może blokować minuty.
-    static let probeSession: URLSession = {
+    /// Sesje z limitem czasu jednej próby: niedostępny adres lokalny poza domem nie może
+    /// blokować tunelu. Po jednej na limit, tworzone raz.
+    @MainActor private static var probeSessions: [TimeInterval: URLSession] = [:]
+
+    @MainActor static func probeSession(timeout: TimeInterval) -> URLSession {
+        if let session = probeSessions[timeout] { return session }
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 6
+        configuration.timeoutIntervalForRequest = timeout
         configuration.waitsForConnectivity = false
-        return URLSession(configuration: configuration)
-    }()
+        let session = URLSession(configuration: configuration)
+        probeSessions[timeout] = session
+        return session
+    }
 
     /// Zwykłe HTTP przepuszcza tylko sieć lokalna (ATS: `NSAllowsLocalNetworking`).
     static func isAllowedByATS(_ url: URL) -> Bool {
@@ -96,25 +89,27 @@ enum Connector {
         return host.allSatisfy { $0.isNumber || $0 == "." } || host.contains(":")
     }
 
-    static func connect(urls: [URL], key: String) async throws -> Connection {
-        var details: [String] = []
-        for url in urls {
-            guard isAllowedByATS(url) else {
-                details.append("\(url.absoluteString): pominięty — poza siecią lokalną wymagany jest adres https.")
-                continue
+    @MainActor static func connect(attempts: [AddressSelection.Attempt], key: String) async throws -> Connection {
+        do {
+            let found = try await AddressSelection.firstReachable(attempts) { attempt -> AddressSelection.Outcome<AudiobookshelfClient.User> in
+                guard isAllowedByATS(attempt.url) else {
+                    return .unreachable("pominięty — poza siecią lokalną wymagany jest adres https.")
+                }
+                let client = AudiobookshelfClient(baseURL: attempt.url, session: probeSession(timeout: attempt.timeout))
+                do {
+                    let user: AudiobookshelfClient.User = try await client.me(token: key)
+                    return .reached(user)
+                } catch AudiobookshelfClient.APIError.unauthorized {
+                    return .stop(ConnectError.keyRejected)
+                } catch AudiobookshelfClient.APIError.http(status: 403, _) {
+                    return .stop(ConnectError.keyRejected)
+                } catch {
+                    return .unreachable(error.localizedDescription)
+                }
             }
-            let client = AudiobookshelfClient(baseURL: url, session: probeSession)
-            do {
-                let user: AudiobookshelfClient.User = try await client.me(token: key)
-                return Connection(url: url, user: user)
-            } catch AudiobookshelfClient.APIError.unauthorized {
-                throw ConnectError.keyRejected
-            } catch AudiobookshelfClient.APIError.http(status: 403, _) {
-                throw ConnectError.keyRejected
-            } catch {
-                details.append("\(url.absoluteString): \(error.localizedDescription)")
-            }
+            return Connection(url: found.url, user: found.value)
+        } catch let error as AddressSelection.Unreachable {
+            throw ConnectError.unreachable(details: error.details)
         }
-        throw ConnectError.unreachable(details: details)
     }
 }
