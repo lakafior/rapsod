@@ -133,10 +133,14 @@ final class PodcastStore {
     func downloadState(itemID: String, identity: EpisodeIdentity, feedKey: String?) -> DownloadState? {
         if current.values.contains(where: { $0.libraryItemId == itemID && EpisodeMatching.isSame($0, as: identity) }) { return .downloading }
         if queued.contains(where: { $0.libraryItemId == itemID && EpisodeMatching.isSame($0, as: identity) }) { return .queued }
-        if let feedKey, requested[Self.requestKey(itemID: itemID, feedKey: feedKey)] != nil { return .queued }
+        // Nieudane przed „zleconym”: ponowne zlecenie usuwa wpis nieudanego.
         if failed.contains(where: { $0.libraryItemId == itemID && EpisodeMatching.isSame($0, as: identity) }) { return .failed }
+        if let feedKey, requested[Self.requestKey(itemID: itemID, feedKey: feedKey)] != nil { return .queued }
         return nil
     }
+
+    /// Odcinek w tym stanie można (ponownie) zlecić do pobrania.
+    nonisolated static func canRequest(_ state: DownloadState?) -> Bool { state == nil || state == .failed }
 
     /// Zlecenia, które serwer już widzi (albo sprzed 2 minut — mogły przepaść), nie są „zlecone”.
     private func pruneRequested() {
@@ -150,11 +154,14 @@ final class PodcastStore {
         case notAllowed(Permission)
         case noFeedURL
         case notInServerFeed(Int)
+        /// Serwer nie pobrał kanału (wydawca nie odpowiada, a adresy lokalne serwer blokuje).
+        case serverFeedUnavailable
 
         var errorDescription: String? {
             switch self {
             case .notAllowed(let permission): PodcastStore.permissionHelp(permission)
             case .noFeedURL: "Ten podcast nie ma na serwerze adresu kanału RSS."
+            case .serverFeedUnavailable: "Serwer nie mógł pobrać kanału RSS tego podcastu (wydawca nie odpowiada albo serwer nie łączy się z tym adresem). Spróbuj ponownie później."
             case .notInServerFeed(let count):
                 count == 1 ? "Serwer nie widzi tego odcinka w kanale (wydawca mógł go zmienić albo usunąć). Odśwież listę i spróbuj ponownie."
                     : "Serwer nie widzi \(count) z wybranych odcinków w kanale. Odśwież listę i spróbuj ponownie."
@@ -177,8 +184,10 @@ final class PodcastStore {
     func order(_ episodes: [RSSEpisode], item: Client.ItemDetail) async throws -> Int {
         guard permission.canOrder else { throw OrderError.notAllowed(permission) }
         guard let feedURL = item.media.metadata.feedUrl, !feedURL.isEmpty else { throw OrderError.noFeedURL }
+        // Nieudane można zlecić ponownie; pobierane, w kolejce i właśnie zlecone — nie.
         let wanted = episodes.filter { episode in
-            downloadState(itemID: item.id, identity: EpisodeIdentity(episode), feedKey: episode.id) == nil
+            let state = downloadState(itemID: item.id, identity: EpisodeIdentity(episode), feedKey: episode.id)
+            return state == nil || state == .failed
         }
         guard !wanted.isEmpty else { return 0 }
         var serverEpisodes: [Client.FeedEpisode]
@@ -191,6 +200,8 @@ final class PodcastStore {
         } catch AudiobookshelfClient.APIError.http(status: 403, _) {
             permission = .listener
             throw OrderError.notAllowed(.listener)
+        } catch AudiobookshelfClient.APIError.http(status: 404, _) {
+            throw OrderError.serverFeedUnavailable
         }
         var found: [Client.FeedEpisode] = []
         var keys: [String] = []
@@ -213,6 +224,7 @@ final class PodcastStore {
             }
             if permission == .unknown { permission = .admin }
             for key in keys { requested[key] = .now }
+            failed.removeAll { download in download.libraryItemId == item.id && found.contains { EpisodeMatching.isSame(download, as: $0.identity) } }
             logger.notice("Zlecono pobranie \(found.count) odcinków")
         }
         if missing > 0, found.isEmpty { throw OrderError.notInServerFeed(missing) }

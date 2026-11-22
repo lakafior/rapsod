@@ -40,6 +40,7 @@ private struct PodcastsContent: View {
     @State private var inProgress: [Client.LibraryItem] = []
     @State private var failures: [LibraryFailure] = []
     @State private var error: String?
+    @State private var playError: String?
     @AppStorage("podcastSort") private var sort: CombinedLibraries.PodcastSort = .title
     @AppStorage("podcastSortDescending") private var descending = false
     @ScaledMetric(relativeTo: .body) private var cardMinimum: CGFloat = 104
@@ -55,7 +56,7 @@ private struct PodcastsContent: View {
                         .font(.footnote).foregroundStyle(.secondary).padding(.horizontal)
                 }
                 FailureNotice(failures: failures).padding(.horizontal)
-                ContinueEpisodes(serverItems: inProgress, model: model, session: session)
+                ContinueEpisodes(serverItems: inProgress, model: model, session: session) { playError = $0 }
                 if !recent.isEmpty {
                     EpisodeShelf(title: "Najnowsze odcinki", episodes: recent, combined: combined, model: model, session: session)
                 }
@@ -90,6 +91,11 @@ private struct PodcastsContent: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { sortMenu }
+        }
+        .alert("Nie udało się odtworzyć", isPresented: Binding(get: { playError != nil }, set: { if !$0 { playError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text((playError ?? "") + " Na stronie podcastu możesz zlecić pobranie na serwer.")
         }
         .refreshable {
             await model.reconnect()
@@ -202,6 +208,7 @@ private struct ContinueEpisodes: View {
     let serverItems: [Client.LibraryItem]
     let model: AppModel
     let session: ServerSession
+    let failed: (String) -> Void
 
     var body: some View {
         let local = session.library.podcasts.localEpisodes.inProgress
@@ -224,9 +231,11 @@ private struct ContinueEpisodes: View {
                         CompactEpisodeRow(itemID: record.itemID, title: record.title, podcastTitle: record.podcastTitle ?? "",
                                           keys: [PlaybackTimeline.feedKey(record.itemID, record.feedKey)], localOnly: true, session: session, playback: model.playback) {
                             Task {
+                                let key = PlaybackTimeline.feedKey(record.itemID, record.feedKey)
                                 await model.playback.play(external: .init(
                                     itemID: record.itemID, feedKey: record.feedKey, title: record.title, podcastTitle: record.podcastTitle,
                                     guid: record.guid, enclosureURL: record.enclosureURL, published: record.published, feedDuration: record.duration))
+                                if let error = model.playback.loadError, !model.playback.nowPlayingKeys.contains(key) { failed(error) }
                             }
                         }
                     }
@@ -281,12 +290,12 @@ struct CompactEpisodeRow: View {
             }
             .padding(.vertical, 6)
             .contentShape(.rect)
+            // Na zawartości przycisku, nie na nim — inaczej VoiceOver widzi dwa elementy (etap 10d).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("\(title), \(podcastTitle)\(localOnly ? ", postęp tylko na tym telefonie" : "")"))
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(title), \(podcastTitle)\(localOnly ? ", postęp tylko na tym telefonie" : "")"))
         .accessibilityHint(Text(isCurrent && playback.player.isPlaying ? "Wstrzymuje odtwarzanie" : "Odtwarza odcinek"))
-        .accessibilityAddTraits(.isButton)
     }
 
     private func texts(lineLimit: Int?) -> some View {

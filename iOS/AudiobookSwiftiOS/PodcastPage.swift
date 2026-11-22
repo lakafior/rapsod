@@ -201,6 +201,8 @@ struct PodcastPage: View {
     @State private var cover: UIImage?
     @ScaledMetric(relativeTo: .title) private var coverSize: CGFloat = 200
     @AppStorage("orderDownloadWhenStreaming") private var orderWhenStreaming = true
+    /// Odcinek ze strumienia nie ruszył (ATS, brak zakresów bajtów, plik zniknął…).
+    @State private var streamFailure: (row: PodcastEpisodeRow, message: String)?
 
     init(item: Client.ItemDetail, model: AppModel, session: ServerSession) {
         self.model = model
@@ -226,7 +228,7 @@ struct PodcastPage: View {
                 ForEach(page.visibleRows) { row in
                     EpisodeRowView(row: row, model: model, session: session,
                                    play: { play(row) }, order: { Task { await order([row]) } }, info: { detail = row })
-                        .selectionDisabled(!row.canOrder || podcasts.downloadState(itemID: item.id, identity: row.identity, feedKey: row.feedKey) != nil)
+                        .selectionDisabled(!row.canOrder || !PodcastStore.canRequest(podcasts.downloadState(itemID: item.id, identity: row.identity, feedKey: row.feedKey)))
                 }
                 if page.visibleRows.isEmpty, !page.isLoadingFeed {
                     Text(page.filter == .all ? "Brak odcinków." : "Brak odcinków w tym widoku.")
@@ -254,6 +256,15 @@ struct PodcastPage: View {
         }
         .sheet(item: $detail) { row in
             EpisodeDetailSheet(row: row, podcastTitle: item.title)
+        }
+        .alert("Nie udało się odtworzyć", isPresented: Binding(get: { streamFailure != nil }, set: { if !$0 { streamFailure = nil } }), presenting: streamFailure) { failure in
+            // Plik zniknął u wydawcy — serwer też go nie pobierze.
+            if failure.row.canOrder, podcasts.permission.canOrder, failure.message != PlaybackCoordinator.StreamError.notFound.errorDescription {
+                Button("Pobierz na serwer") { Task { await order([failure.row]) } }
+            }
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text(failure.message)
         }
         .alert("Pobieranie na serwer", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
             Button("OK", role: .cancel) {}
@@ -387,6 +398,10 @@ struct PodcastPage: View {
             )
             let wasPlaying = model.playback.nowPlayingKeys.contains(PlaybackTimeline.feedKey(item.id, feedKey))
             await model.playback.play(external: episode)
+            if !wasPlaying, let error = model.playback.loadError, !model.playback.nowPlayingKeys.contains(PlaybackTimeline.feedKey(item.id, feedKey)) {
+                streamFailure = (row, error)
+                return
+            }
             // Słuchanie ze strumienia + pobranie na serwer w tle (gdy konto może i nikt jeszcze nie zlecił).
             if !wasPlaying, orderWhenStreaming, row.canOrder, podcasts.permission.canOrder, model.playback.loadError == nil,
                podcasts.downloadState(itemID: item.id, identity: row.identity, feedKey: feedKey) == nil, let feedEpisode = row.feed {
@@ -448,20 +463,20 @@ private struct EpisodeRowView: View {
         .contentShape(.rect)
         .contextMenu {
             Button("Opis odcinka", systemImage: "info.circle", action: info)
-            if row.canOrder, download == nil {
+            if row.canOrder, PodcastStore.canRequest(download) {
                 Button("Pobierz na serwer", systemImage: "arrow.down.circle", action: order)
                     .disabled(!podcasts.permission.canOrder)
             }
         }
         .swipeActions(edge: .trailing) {
-            if row.canOrder, download == nil, podcasts.permission.canOrder {
+            if row.canOrder, PodcastStore.canRequest(download), podcasts.permission.canOrder {
                 Button("Pobierz na serwer", systemImage: "arrow.down.circle", action: order).tint(.accentColor)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Opis odcinka", info)
         .accessibilityActions {
-            if row.canOrder, download == nil, podcasts.permission.canOrder {
+            if row.canOrder, PodcastStore.canRequest(download), podcasts.permission.canOrder {
                 Button("Pobierz na serwer", action: order)
             }
         }
