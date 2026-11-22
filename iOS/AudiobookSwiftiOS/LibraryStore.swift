@@ -57,14 +57,16 @@ final class LibraryStore {
         if case .failed = state { state = .loading }
         do {
             let combined = try await CombinedLibraries.load(auth: auth)
+            // Postęp przed pokazaniem list: „Ostatnio słuchane” bierze z niego kolejność.
+            await refreshProgress()
             state = .ready(combined)
         } catch is CancellationError {
             return
         } catch {
             logger.error("Biblioteki: \(error.localizedDescription, privacy: .public)")
             if combined == nil { state = .failed(Self.message(error)) }
+            await refreshProgress()
         }
-        await refreshProgress()
     }
 
     /// Postęp konta z `GET /api/me` (ten sam, który widzi Mac i web UI).

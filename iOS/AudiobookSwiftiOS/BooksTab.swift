@@ -196,6 +196,8 @@ private struct BookQuery: Hashable {
     var descending: Bool
     var filter: CombinedLibraries.ProgressFilter?
     var libraryID: String?
+    /// Przy „Ostatnio słuchane” lista zależy od postępu z serwera — wczytany od nowa przebudowuje ją.
+    var progressStamp = 0
 }
 
 private struct BooksGrid: View {
@@ -212,7 +214,10 @@ private struct BooksGrid: View {
 
     private var filter: CombinedLibraries.ProgressFilter? { CombinedLibraries.ProgressFilter(rawValue: filterRaw) }
     private var scopedLibrary: String? { combined.libraries.contains { $0.id == libraryID } ? libraryID : nil }
-    private var query: BookQuery { BookQuery(sort: sort, descending: descending, filter: filter, libraryID: scopedLibrary) }
+    private var query: BookQuery {
+        BookQuery(sort: sort, descending: descending, filter: filter, libraryID: scopedLibrary,
+                  progressStamp: sort == .lastListened ? session.library.progressRevision : 0)
+    }
 
     var body: some View {
         ScrollView {

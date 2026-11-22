@@ -102,12 +102,12 @@ struct BookCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .contentShape(.rect)
+            // Jedna etykieta na całej zawartości — odnośnik jest wtedy jednym przyciskiem dla VoiceOver.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(BookAccessibility.label(item: item, libraryName: libraryName))
+            .accessibilityValue(ProgressText(entry: session.library.progress.entry(item.id)))
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(BookAccessibility.label(item: item, libraryName: libraryName))
-        .accessibilityValue(ProgressText(entry: session.library.progress.entry(item.id)))
-        .accessibilityAddTraits(.isButton)
     }
 }
 

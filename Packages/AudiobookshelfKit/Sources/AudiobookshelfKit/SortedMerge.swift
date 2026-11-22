@@ -106,7 +106,8 @@ public struct MergeSource<Element: Decodable & Sendable> {
 /// Błędy: biblioteka, która nie odpowie na pierwszą stronę, wypada z listy (jest w `failures`).
 /// Błąd dalszej strony zatrzymuje scalanie (`stalled`) — pominięcie biblioteki w środku
 /// zepsułoby kolejność po jej powrocie; kolejne `next` próbuje ją pobrać od nowa.
-/// Anulowanie zadania nie zmienia stanu: niepobrana strona zostanie pobrana przy następnym `next`.
+/// Anulowanie nie gubi niczego: niepobrana strona zostanie pobrana przy następnym `next`, a gdy
+/// część porcji była już wydana, `next` zwraca ją (krótszą) zamiast rzucać błąd.
 @MainActor
 public final class SortedMerge<Element: Decodable & Sendable & Identifiable> where Element.ID == String {
     public struct Batch: Sendable {
@@ -171,7 +172,12 @@ public final class SortedMerge<Element: Decodable & Sendable & Identifiable> whe
         var out: [Tagged<Element>] = []
         out.reserveCapacity(count)
         while out.count < count {
-            try await refill()
+            do {
+                try await refill()
+            } catch is CancellationError where !out.isEmpty {
+                // Wydane już elementy zniknęły z buforów — oddajemy je, zamiast zgubić.
+                return Batch(elements: out, isFinished: false, stalled: nil)
+            }
             if let stalled = streams.first(where: { $0.pendingError != nil })?.pendingError {
                 return Batch(elements: out, isFinished: false, stalled: stalled)
             }

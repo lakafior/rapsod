@@ -210,6 +210,32 @@ extension Stubbed {
         #expect(ids == ["A0", "A1", "A2", "A3"])
     }
 
+    @Test func cancellationMidBatchReturnsWhatWasTaken() async throws {
+        // Druga strona czeka, aż ktoś anuluje — wtedy pierwsze pozycje porcji są już wydane.
+        @MainActor final class Gate { var blocks = true }
+        let gate = Gate()
+        func page(_ ids: [String]) -> AudiobookshelfClient.Page<AudiobookshelfClient.LibraryItem> {
+            let json = ids.map { FakeItem(id: $0, title: $0, author: "", addedAt: 0, duration: 1).json }.joined(separator: ",")
+            return try! JSONDecoder().decode(AudiobookshelfClient.Page<AudiobookshelfClient.LibraryItem>.self, from: Data(#"{"results":[\#(json)],"total":4}"#.utf8))
+        }
+        let source = MergeSource<AudiobookshelfClient.LibraryItem>(libraryID: "A", libraryName: "A") { number, _ in
+            if number == 0 { return page(["a0", "a1"]) }
+            if gate.blocks { try await Task.sleep(for: .seconds(30)) }
+            return page(["a2", "a3"])
+        }
+        let merge = SortedMerge(sources: [source], pageSize: 2) { $0.title < $1.title }
+        let task = Task { @MainActor in try await merge.next(10) }
+        try await Task.sleep(for: .milliseconds(200))
+        task.cancel()
+        let first = try await task.value
+        #expect(first.elements.map(\.value.id) == ["a0", "a1"])
+        #expect(!first.isFinished)
+        gate.blocks = false
+        let rest = try await merge.next(10)
+        #expect(rest.elements.map(\.value.id) == ["a2", "a3"])
+        #expect(rest.isFinished)
+    }
+
     // MARK: Serie i autorzy
 
     @Test func seriesWithTheSameNameAreOne() async throws {
