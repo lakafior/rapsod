@@ -11,6 +11,8 @@ struct NarratorsSection: View {
     @State private var newName = ""
     @State private var deleting: AudiobookshelfClient.Narrator?
     @State private var failure: String?
+    /// Zaznaczony wiersz: strzałki przesuwają zaznaczenie, Return (albo dwuklik) otwiera.
+    @State private var selection: Set<String> = []
 
     var body: some View {
         Group {
@@ -18,9 +20,9 @@ struct NarratorsSection: View {
                 if narrators.isEmpty {
                     ContentUnavailableView("Brak lektorów", systemImage: "waveform")
                 } else {
-                    // Wiersz to przycisk: kliknięcie otwiera listę książek lektora, jak link w web UI
-                    // (zaznaczenie listy nie służy już do nawigacji — strzałki nie przeskakują stron).
-                    List(narrators) { narrator in
+                    // Wiersz to przycisk: kliknięcie otwiera listę książek lektora, jak link w web UI.
+                    // Z klawiatury: strzałki zaznaczają wiersz, Return go otwiera.
+                    List(narrators, selection: $selection) { narrator in
                         Button { browser.open(.filtered(.narrator(narrator.name))) } label: {
                             HStack {
                                 Text(narrator.name)
@@ -30,8 +32,14 @@ struct NarratorsSection: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
+                    }
+                    .contextMenu(forSelectionType: String.self) { ids in
+                        if let narrator = narrators.first(where: { ids.contains($0.id) }) {
                             NarratorManageMenu(browser: browser, libraryID: libraryID, narrator: narrator, renaming: $renaming, deleting: $deleting)
+                        }
+                    } primaryAction: { ids in
+                        if let narrator = narrators.first(where: { ids.contains($0.id) }) {
+                            browser.open(.filtered(.narrator(narrator.name)))
                         }
                     }
                 }

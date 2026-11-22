@@ -20,8 +20,10 @@ struct SeriesSection: View {
                     ContentUnavailableView("Brak serii", systemImage: "square.stack")
                 } else {
                     PagedGrid(count: total, cellWidth: 210) { index in
-                        SeriesCard(browser: browser, series: list.element(at: index))
+                        let series = list.element(at: index)
+                        SeriesCard(browser: browser, series: series)
                             .onAppear { list.ensureLoaded(index) }
+                            .onChange(of: series == nil) { if series == nil { list.ensureLoaded(index) } }
                     }
                 }
             } else {

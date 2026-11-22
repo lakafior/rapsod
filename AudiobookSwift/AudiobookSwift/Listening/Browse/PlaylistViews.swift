@@ -5,6 +5,8 @@ import SwiftUI
 struct PlaylistsSection: View {
     let browser: LibraryBrowser
     let libraryID: String
+    /// Zaznaczony wiersz: strzałki przesuwają zaznaczenie, Return (albo dwuklik) otwiera.
+    @State private var selection: Set<String> = []
 
     var body: some View {
         Group {
@@ -13,9 +15,9 @@ struct PlaylistsSection: View {
                     ContentUnavailableView("Brak playlist", systemImage: "music.note.list",
                                            description: Text("Dodaj książkę albo odcinek do playlisty z menu „Więcej” na jego stronie albo z menu podręcznego karty."))
                 } else {
-                    // Wiersz to przycisk: kliknięcie otwiera playlistę, jak dotąd, a z klawiatury
-                    // (pełny dostęp z klawiatury) i VoiceOver działa jak każdy przycisk.
-                    List(playlists) { playlist in
+                    // Wiersz to przycisk: kliknięcie otwiera playlistę, jak dotąd. Z klawiatury:
+                    // strzałki zaznaczają wiersz, Return go otwiera.
+                    List(playlists, selection: $selection) { playlist in
                         Button { browser.open(.playlist(playlist.id)) } label: {
                             HStack {
                                 Image(systemName: "music.note.list").foregroundStyle(.secondary)
@@ -26,6 +28,10 @@ struct PlaylistsSection: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                    }
+                    .contextMenu(forSelectionType: String.self) { _ in
+                    } primaryAction: { ids in
+                        if let id = ids.first { browser.open(.playlist(id)) }
                     }
                 }
             } else {

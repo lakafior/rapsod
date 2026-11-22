@@ -195,7 +195,9 @@ struct EpubReaderView: NSViewRepresentable {
 
         func load(into webView: WKWebView) {
             // Wszystko z http(s) zablokowane — także obrazki i czcionki, do których odwołuje się książka.
-            let rules = #"[{"trigger":{"url-filter":"^(https?|wss?|ftp)://"},"action":{"type":"block"}}]"#
+            // Osobna reguła na każdy schemat: wyrażenia reguł treści WebKit nie obsługują alternatywy
+            // („a|b”) — reguła z alternatywą nie kompilowała się i blokada w ogóle nie działała.
+            let rules = #"[{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^wss?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^ftp://"},"action":{"type":"block"}}]"#
             WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "AudiobookSwiftReaderOffline", encodedContentRuleList: rules) { list, error in
                 MainActor.assumeIsolated {
                     guard let list else {
@@ -252,6 +254,14 @@ struct EpubReaderView: NSViewRepresentable {
 final class ReaderWebView: WKWebView {
     enum Key { case left, right, previous, next }
     var onKey: ((Key) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Strzałki przewracają strony od razu po otwarciu, bez klikania w tekst.
+        DispatchQueue.main.async { [weak self] in
+            if let self { self.window?.makeFirstResponder(self) }
+        }
+    }
 
     override func keyDown(with event: NSEvent) {
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return super.keyDown(with: event) }

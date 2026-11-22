@@ -150,7 +150,7 @@ struct PDFReaderView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
 
     func makeNSView(context: Context) -> PDFView {
-        let view = PDFView()
+        let view = FocusingPDFView()
         view.autoScales = true
         view.displayMode = twoPages ? .twoUp : .singlePage
         view.displaysPageBreaks = true
@@ -201,6 +201,16 @@ struct PDFReaderView: NSViewRepresentable {
         @objc func pageChanged(_ notification: Notification) {
             guard let view = notification.object as? PDFView, let page = view.currentPage, let document = view.document else { return }
             controller.pdfMoved(to: document.index(for: page))
+        }
+    }
+}
+
+/// `PDFView`, który po pokazaniu bierze fokus — strzałki działają od razu po otwarciu okna.
+final class FocusingPDFView: PDFView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in
+            if let self { self.window?.makeFirstResponder(self) }
         }
     }
 }

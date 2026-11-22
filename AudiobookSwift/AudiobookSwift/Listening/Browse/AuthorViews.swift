@@ -19,8 +19,10 @@ struct AuthorsSection: View {
                     ContentUnavailableView("Brak autorów", systemImage: "person.2")
                 } else {
                     PagedGrid(count: total, cellWidth: 130) { index in
-                        AuthorCard(browser: browser, author: list.element(at: index))
+                        let author = list.element(at: index)
+                        AuthorCard(browser: browser, author: author)
                             .onAppear { list.ensureLoaded(index) }
+                            .onChange(of: author == nil) { if author == nil { list.ensureLoaded(index) } }
                     }
                 }
             } else {
