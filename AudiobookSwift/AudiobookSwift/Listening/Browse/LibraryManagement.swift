@@ -45,6 +45,7 @@ struct MetadataValuesSection: View {
                 let shown = filter.isEmpty ? values : values.filter { $0.localizedCaseInsensitiveContains(filter) }
                 if values.isEmpty {
                     ContentUnavailableView(list == .tags ? "Brak tagów" : "Brak gatunków", systemImage: "tag")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(shown, id: \.self) { value in
                         HStack {
@@ -161,9 +162,14 @@ struct LibraryStatsView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Najczęstsze gatunki").font(.title2.weight(.semibold))
                                 Chart(genres) { genre in
-                                    BarMark(x: .value("Pozycje", genre.count ?? 0), y: .value("Gatunek", genre.title))
+                                    BarMark(x: .value("Pozycje", genre.count ?? 0), y: .value("Gatunek", genre.title), height: .fixed(16))
+                                        .annotation(position: .trailing) {
+                                            Text("\(genre.count ?? 0)").font(.caption).foregroundStyle(.secondary)
+                                        }
                                 }
-                                .frame(height: CGFloat(genres.count) * 26 + 20)
+                                .chartXAxis(.hidden)
+                                .chartYAxis { AxisMarks(position: .leading) { _ in AxisValueLabel() } }
+                                .frame(height: CGFloat(genres.count) * 30 + 10)
                             }
                         }
                         ranking("Autorzy z największą liczbą książek", stats.authorsWithCount?.elements ?? []) { author in

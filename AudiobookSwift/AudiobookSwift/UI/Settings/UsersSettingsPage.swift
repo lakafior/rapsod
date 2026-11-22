@@ -195,7 +195,7 @@ private struct UserStatsSheet: View {
                 }
             }
         }
-        .frame(width: 760, height: 620)
+        .frame(width: 520, height: 600)
         .task {
             do {
                 stats = try await model.listeningStats(user)

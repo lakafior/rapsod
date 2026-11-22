@@ -292,7 +292,7 @@ struct ShareLinkSheet: View {
                     LabeledContent("Link") {
                         Text(link(share.slug)).textSelection(.enabled).font(.callout.monospaced())
                     }
-                    LabeledContent("Wygasa", value: share.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "nigdy")
+                    LabeledContent("Wygasa", value: share.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(Locale(identifier: "pl_PL"))) } ?? "nigdy")
                     LabeledContent("Pobieranie", value: share.isDownloadable == true ? "dozwolone" : "wyłączone")
                     AdminStatusRows(status: status)
                     HStack {

@@ -19,6 +19,10 @@ struct LibrarySettingsSheet: View {
 
     var body: some View {
         Form {
+            // Komunikaty na górze — dół długiego arkusza jest zwykle schowany.
+            if model.status.isBusy || model.status.error != nil || model.status.notice != nil {
+                Section { AdminStatusRows(status: model.status) }
+            }
             if model.settings != nil {
                 general
                 display
@@ -27,7 +31,6 @@ struct LibrarySettingsSheet: View {
                 finished
                 tools
             }
-            Section { AdminStatusRows(status: model.status) }
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 640)

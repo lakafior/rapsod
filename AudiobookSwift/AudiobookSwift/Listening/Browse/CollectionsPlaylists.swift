@@ -32,6 +32,8 @@ struct CollectionsSection: View {
         }
         .navigationTitle("Kolekcje")
         .task(id: libraryID) { await load() }
+        // Zmiana nazwy, pozycji albo usunięcie kolekcji (etap 9i) i zdarzenia z serwera.
+        .onChange(of: browser.revision) { Task { await load() } }
     }
 
     private func load() async {
@@ -414,7 +416,7 @@ struct ListeningStatsContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack(spacing: 16) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16)], alignment: .leading, spacing: 16) {
                     StatTile(title: "Łącznie", value: Formats.duration(stats.totalTime))
                     StatTile(title: "Dzisiaj", value: Formats.duration(stats.today ?? 0))
                     StatTile(title: "Dni słuchania", value: "\(stats.days.values.filter { $0 > 0 }.count)")
