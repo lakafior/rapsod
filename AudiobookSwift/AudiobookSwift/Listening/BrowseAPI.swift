@@ -52,6 +52,7 @@ extension AudiobookshelfClient {
         let name: String
         let description: String?
         let imagePath: String?
+        let asin: String?
         let libraryItems: LenientList<LibraryItem>?
         let series: LenientList<AuthorSeries>?
     }

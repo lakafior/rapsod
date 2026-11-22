@@ -9,6 +9,8 @@ enum ItemAction: Identifiable {
     /// Etap 9f: kanał RSS pozycji i wysłanie e-booka na czytnik.
     case rssFeed
     case sendEbook
+    /// Etap 9i: publiczny link do książki.
+    case shareLink
     var id: Self { self }
 }
 
@@ -56,6 +58,9 @@ private struct ItemActionsModifier: ViewModifier {
             }
             .sheet(isPresented: Binding(get: { action == .rssFeed }, set: { if !$0, action == .rssFeed { action = nil } })) {
                 RSSFeedSheet(manager: manager, target: .item(item))
+            }
+            .sheet(isPresented: Binding(get: { action == .shareLink }, set: { if !$0, action == .shareLink { action = nil } })) {
+                ShareLinkSheet(manager: manager, item: item)
             }
             .sheet(isPresented: Binding(get: { action == .sendEbook }, set: { if !$0, action == .sendEbook { action = nil } })) {
                 SendEbookSheet(manager: manager, item: item) {

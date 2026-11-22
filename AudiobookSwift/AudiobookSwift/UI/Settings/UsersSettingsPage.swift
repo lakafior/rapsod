@@ -29,6 +29,7 @@ private struct UsersContent: View {
     @Bindable var model: UsersModel
     @State private var editing: UsersModel.Draft?
     @State private var userToDelete: AudiobookshelfClient.ManagedUser?
+    @State private var statsUser: AudiobookshelfClient.ManagedUser?
 
     var body: some View {
         Section {
@@ -51,7 +52,8 @@ private struct UsersContent: View {
                     isListener: model.isListener(user),
                     isDeleting: model.deleting == user.id,
                     edit: { editing = UsersModel.Draft(user) },
-                    delete: { userToDelete = user }
+                    delete: { userToDelete = user },
+                    stats: { statsUser = user }
                 )
             }
             HStack {
@@ -72,6 +74,9 @@ private struct UsersContent: View {
             set: { editing = $0?.draft }
         )) { item in
             UserEditorSheet(model: model, draft: item.draft, isListener: item.draft.id.flatMap { id in model.users.first { $0.id == id } }.map(model.isListener) ?? false)
+        }
+        .sheet(item: $statsUser) { user in
+            UserStatsSheet(model: model, user: user)
         }
         .confirmationDialog(
             "Usunąć konto „\(userToDelete?.username ?? "")”?",
@@ -104,6 +109,7 @@ private struct UserRow: View {
     let isDeleting: Bool
     let edit: () -> Void
     let delete: () -> Void
+    let stats: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -132,6 +138,10 @@ private struct UserRow: View {
             if isDeleting {
                 ProgressView().controlSize(.small)
             }
+            Button("Statystyki słuchania „\(user.username)”", systemImage: "chart.bar", action: stats)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help("Statystyki słuchania i ostatnie sesje tego konta")
             Button("Edytuj konto „\(user.username)”", systemImage: "pencil", action: edit)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
@@ -155,6 +165,44 @@ private struct UserRow: View {
             parts.append("jeszcze się nie logowało")
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Statystyki słuchania wybranego konta (etap 9i; wzorzec: `pages/config/users/_id/index.vue`).
+private struct UserStatsSheet: View {
+    let model: UsersModel
+    let user: AudiobookshelfClient.ManagedUser
+    @Environment(\.dismiss) private var dismiss
+    @State private var stats: AudiobookshelfClient.ListeningStats?
+    @State private var error: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Label("Słuchanie: \(user.username)", systemImage: "chart.bar").font(.headline)
+                Spacer()
+                Button("Gotowe") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(14)
+            Divider()
+            Group {
+                if let stats {
+                    ListeningStatsContent(stats: stats, finished: nil)
+                } else if let error {
+                    ContentUnavailableView("Nie udało się wczytać", systemImage: "exclamationmark.triangle", description: Text(error))
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .frame(width: 760, height: 620)
+        .task {
+            do {
+                stats = try await model.listeningStats(user)
+            } catch {
+                self.error = ItemManager.message(for: error, action: "Statystyki słuchania")
+            }
+        }
     }
 }
 

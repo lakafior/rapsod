@@ -441,6 +441,17 @@ final class ServerAccount {
         try await refreshLibraries()
     }
 
+    /// Kolejność bibliotek na serwerze (etap 9i; `POST /api/libraries/order`) — taka sama w telefonie i web UI.
+    func moveLibrary(_ library: AudiobookshelfClient.Library, by offset: Int) async throws {
+        guard state == .ready, let index = libraries.firstIndex(of: library) else { return }
+        let target = index + offset
+        guard libraries.indices.contains(target) else { return }
+        var ids = libraries.map(\.id)
+        ids.swapAt(index, target)
+        try await authorized { try await $0.reorderLibraries(ids, token: $1) }
+        try await refreshLibraries()
+    }
+
     private enum LibraryError: LocalizedError {
         case overlaps(String)
 

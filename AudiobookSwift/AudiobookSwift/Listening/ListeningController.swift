@@ -282,6 +282,11 @@ final class ListeningController {
         }
     }
 
+    /// Zdjęcie autora się zmieniło (etap 9i) — `AuthorPhoto` wczyta je od nowa.
+    func authorImageChanged(id: String) {
+        forgetCover(itemID: "author-" + id)
+    }
+
     /// Okładka pozycji się zmieniła: widoki wczytują ją od nowa, odtwarzacz (dla bieżącej
     /// książki) odświeża obrazek w „Teraz odtwarzane”.
     func coverChanged(itemID: String, path: String?) {
@@ -407,6 +412,12 @@ final class ListeningController {
     func release(itemID: String) async {
         guard player.book?.itemID == itemID else { return }
         await stopPlayback()
+    }
+
+    /// Coś w bibliotece zmieniło się bez zdarzenia o pozycjach (autor, kolekcja, tagi — etap 9i):
+    /// listy wczytują się od nowa.
+    func libraryChanged(_ libraryID: String) {
+        libraryRevision[libraryID, default: 0] += 1
     }
 
     /// Pozycja usunięta z biblioteki: serwer skasował jej postęp, więc i lokalna kopia znika

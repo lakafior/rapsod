@@ -49,6 +49,9 @@ struct CollectionPage: View {
     let collectionID: String
     @State private var collection: AudiobookshelfClient.Collection?
     @State private var feed: FeedTarget?
+    @State private var editing = false
+    @State private var confirmDelete = false
+    @State private var failure: String?
 
     var body: some View {
         ScrollView {
@@ -73,18 +76,145 @@ struct CollectionPage: View {
             }
             if browser.manager.isAvailable {
                 ToolbarItem {
-                    Button("Kanał RSS kolekcji…", systemImage: "dot.radiowaves.up.forward") {
-                        feed = FeedTarget(kind: .collection, id: collectionID, title: collection?.name ?? "Kolekcja")
-                    }
-                    .help("Kanał RSS kolekcji")
+                    Menu {
+                        Button("Edytuj kolekcję…") { editing = true }
+                        Button("Kanał RSS kolekcji…") {
+                            feed = FeedTarget(kind: .collection, id: collectionID, title: collection?.name ?? "Kolekcja")
+                        }
+                        Divider()
+                        Button("Usuń kolekcję…", role: .destructive) { confirmDelete = true }
+                    } label: { Label("Kolekcja", systemImage: "ellipsis.circle") }
+                    .disabled(collection == nil)
+                    .help("Nazwa, opis i pozycje kolekcji, kanał RSS")
+                    .accessibilityIdentifier("collection.more")
                 }
             }
         }
         .sheet(item: $feed) { RSSFeedSheet(manager: browser.manager, target: $0) }
-        .task(id: collectionID) {
-            guard let libraryID = browser.libraryID else { return }
-            let all = try? await browser.listening.api { try await $0.collections(libraryID: libraryID, token: $1) }
-            collection = all?.first { $0.id == collectionID }
+        .sheet(isPresented: $editing) {
+            if let collection {
+                CollectionEditSheet(manager: browser.manager, listening: browser.listening, collection: collection) {
+                    changed()
+                    Task { await load() }
+                }
+            }
+        }
+        .confirmationDialog("Usunąć kolekcję „\(collection?.name ?? "")”?", isPresented: $confirmDelete) {
+            Button("Usuń kolekcję", role: .destructive) { Task { await delete() } }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Kolekcja zniknie dla wszystkich kont. Książki zostają w bibliotece.")
+        }
+        .alert("Nie udało się", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK") {}
+        } message: { Text(failure ?? "") }
+        .task(id: collectionID) { await load() }
+        .onChange(of: browser.revision) { Task { await load() } }
+    }
+
+    private func load() async {
+        guard let libraryID = browser.libraryID else { return }
+        let all = try? await browser.listening.api { try await $0.collections(libraryID: libraryID, token: $1) }
+        collection = all?.first { $0.id == collectionID }
+    }
+
+    private func changed() {
+        if let libraryID = browser.libraryID { browser.listening.libraryChanged(libraryID) }
+    }
+
+    private func delete() async {
+        do {
+            try await browser.manager.run { try await $0.deleteCollection(id: collectionID, token: $1) }
+            changed()
+            browser.path.removeAll { $0 == .collection(collectionID) }
+        } catch {
+            failure = ItemManager.message(for: error, action: "Usuwanie kolekcji")
+        }
+    }
+}
+
+/// Edycja kolekcji (etap 9i; wzorzec: `components/modals/collections/EditModal.vue` i lista na
+/// `pages/collection/_id.vue`): nazwa, opis i usunięcie wybranych pozycji. Tokenem root.
+struct CollectionEditSheet: View {
+    let manager: ItemManager
+    let listening: ListeningController
+    let collection: AudiobookshelfClient.Collection
+    let saved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var description = ""
+    @State private var removed: Set<String> = []
+    @State private var status = AdminStatus()
+
+    var body: some View {
+        Form {
+            Section("Kolekcja") {
+                TextField("Nazwa", text: $name)
+                TextField("Opis", text: $description, axis: .vertical).lineLimit(3...8)
+            }
+            Section {
+                ForEach(collection.books.elements) { book in
+                    let isRemoved = removed.contains(book.id)
+                    HStack(spacing: 10) {
+                        AsyncCover(listening: listening, itemID: book.id, path: book.media.coverPath, size: 36).frame(width: 36, height: 36)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(book.title).lineLimit(1).strikethrough(isRemoved)
+                            Text(book.author ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Button(isRemoved ? "Przywróć" : "Usuń z kolekcji", systemImage: isRemoved ? "arrow.uturn.backward" : "minus.circle") {
+                            if isRemoved { removed.remove(book.id) } else { removed.insert(book.id) }
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help(isRemoved ? "Zostaw w kolekcji" : "Usuń z kolekcji (książka zostaje w bibliotece)")
+                    }
+                    .opacity(isRemoved ? 0.5 : 1)
+                }
+            } header: {
+                Text("Pozycje (\(collection.books.elements.count - removed.count))")
+            } footer: {
+                if !removed.isEmpty {
+                    Text("Do usunięcia z kolekcji: \(removed.count). Książki zostają w bibliotece.").foregroundStyle(.secondary)
+                }
+            }
+            if status.error != nil || status.isBusy {
+                Section { AdminStatusRows(status: status) }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 520, height: 560)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Anuluj") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Zapisz") { Task { await save() } }
+                    .disabled(status.isBusy || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .onAppear {
+            name = collection.name
+            description = collection.description ?? ""
+        }
+    }
+
+    private func save() async {
+        let id = collection.id
+        let name = name.trimmingCharacters(in: .whitespaces)
+        let description = description
+        let removed = Array(removed)
+        let changedText = name != collection.name || description != (collection.description ?? "")
+        let ok = await status.run("Zapisywanie…", failure: "Nie udało się zapisać kolekcji") {
+            if changedText {
+                try await manager.run { try await $0.updateCollection(id: id, name: name, description: description, token: $1) }
+            }
+            if !removed.isEmpty {
+                try await manager.run { try await $0.removeFromCollection(id: id, books: removed, token: $1) }
+            }
+        }
+        if ok {
+            saved()
+            dismiss()
         }
     }
 }
@@ -246,65 +376,10 @@ struct StatsView: View {
     @State private var stats: AudiobookshelfClient.ListeningStats?
     @State private var error: String?
 
-    private struct Day: Identifiable {
-        let date: Date
-        let minutes: Double
-        var id: Date { date }
-    }
-
     var body: some View {
         Group {
             if let stats {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        HStack(spacing: 16) {
-                            tile("Łącznie", Formats.duration(stats.totalTime))
-                            tile("Dzisiaj", Formats.duration(stats.today ?? 0))
-                            tile("Dni słuchania", "\(stats.days.values.filter { $0 > 0 }.count)")
-                            tile("Ukończone", "\(listening.progress.values.filter(\.isFinished).count)")
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Ostatnie 30 dni").font(.title2.weight(.semibold))
-                            Chart(lastDays(stats)) { day in
-                                BarMark(x: .value("Dzień", day.date, unit: .day), y: .value("Minuty", day.minutes))
-                            }
-                            .chartYAxisLabel("min")
-                            .environment(\.locale, Locale(identifier: "pl_PL"))
-                            .frame(height: 180)
-                        }
-                        let top = stats.items.values.sorted { $0.timeListening > $1.timeListening }.prefix(10)
-                        if !top.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Najdłużej słuchane").font(.title2.weight(.semibold))
-                                ForEach(Array(top)) { item in
-                                    HStack {
-                                        Text(item.mediaMetadata?.title ?? "—").lineLimit(1)
-                                        Text(item.mediaMetadata?.authorName ?? item.mediaMetadata?.author ?? "").foregroundStyle(.secondary).lineLimit(1)
-                                        Spacer()
-                                        Text(Formats.duration(item.timeListening)).monospacedDigit()
-                                    }
-                                    Divider()
-                                }
-                            }
-                        }
-                        if let sessions = stats.recentSessions?.elements, !sessions.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Ostatnie sesje").font(.title2.weight(.semibold))
-                                ForEach(sessions) { session in
-                                    HStack {
-                                        Text(session.displayTitle ?? "—").lineLimit(1)
-                                        Spacer()
-                                        if let date = Formats.date(ms: session.updatedAt) { Text(date).foregroundStyle(.secondary) }
-                                        Text(Formats.duration(session.timeListening)).monospacedDigit().frame(width: 110, alignment: .trailing)
-                                    }
-                                    Divider()
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 820, alignment: .leading)
-                    .padding(24)
-                }
+                ListeningStatsContent(stats: stats, finished: listening.progress.values.filter(\.isFinished).count)
             } else {
                 LoadingState(error: error) { await load() }
             }
@@ -313,17 +388,83 @@ struct StatsView: View {
         .task { await load() }
     }
 
-    private func tile(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.semibold)).monospacedDigit()
+    private func load() async {
+        do {
+            stats = try await listening.api { try await $0.listeningStats(token: $1) }
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
         }
-        .padding(12)
-        .frame(minWidth: 150, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+/// Statystyki słuchania jednego konta: kafelki, ostatnie 30 dni, najdłużej słuchane i ostatnie sesje.
+/// Wspólne dla „Twoje słuchanie” i Ustawień → Konta (etap 9i, `pages/config/users/_id/index.vue`).
+struct ListeningStatsContent: View {
+    let stats: AudiobookshelfClient.ListeningStats
+    /// Liczba ukończonych — znana tylko dla własnego konta (postęp słuchacza).
+    let finished: Int?
+
+    private struct Day: Identifiable {
+        let date: Date
+        let minutes: Double
+        var id: Date { date }
     }
 
-    private func lastDays(_ stats: AudiobookshelfClient.ListeningStats) -> [Day] {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(spacing: 16) {
+                    StatTile(title: "Łącznie", value: Formats.duration(stats.totalTime))
+                    StatTile(title: "Dzisiaj", value: Formats.duration(stats.today ?? 0))
+                    StatTile(title: "Dni słuchania", value: "\(stats.days.values.filter { $0 > 0 }.count)")
+                    if let finished { StatTile(title: "Ukończone", value: "\(finished)") }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Ostatnie 30 dni").font(.title2.weight(.semibold))
+                    Chart(lastDays) { day in
+                        BarMark(x: .value("Dzień", day.date, unit: .day), y: .value("Minuty", day.minutes))
+                    }
+                    .chartYAxisLabel("min")
+                    .environment(\.locale, Locale(identifier: "pl_PL"))
+                    .frame(height: 180)
+                }
+                let top = stats.items.values.sorted { $0.timeListening > $1.timeListening }.prefix(10)
+                if !top.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Najdłużej słuchane").font(.title2.weight(.semibold))
+                        ForEach(Array(top)) { item in
+                            HStack {
+                                Text(item.mediaMetadata?.title ?? "—").lineLimit(1)
+                                Text(item.mediaMetadata?.authorName ?? item.mediaMetadata?.author ?? "").foregroundStyle(.secondary).lineLimit(1)
+                                Spacer()
+                                Text(Formats.duration(item.timeListening)).monospacedDigit()
+                            }
+                            Divider()
+                        }
+                    }
+                }
+                if let sessions = stats.recentSessions?.elements, !sessions.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Ostatnie sesje").font(.title2.weight(.semibold))
+                        ForEach(sessions) { session in
+                            HStack {
+                                Text(session.displayTitle ?? "—").lineLimit(1)
+                                Spacer()
+                                if let date = Formats.date(ms: session.updatedAt) { Text(date).foregroundStyle(.secondary) }
+                                Text(Formats.duration(session.timeListening)).monospacedDigit().frame(width: 110, alignment: .trailing)
+                            }
+                            Divider()
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 820, alignment: .leading)
+            .padding(24)
+        }
+    }
+
+    private var lastDays: [Day] {
         let calendar = Calendar.current
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -332,15 +473,6 @@ struct StatsView: View {
         return (0..<30).reversed().compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
             return Day(date: date, minutes: (stats.days[formatter.string(from: date)] ?? 0) / 60)
-        }
-    }
-
-    private func load() async {
-        do {
-            stats = try await listening.api { try await $0.listeningStats(token: $1) }
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
         }
     }
 }

@@ -26,6 +26,12 @@ final class UsersModel {
 
     var libraries: [AudiobookshelfClient.Library] { account.libraries }
 
+    /// Statystyki słuchania wybranego konta (etap 9i; `GET /api/users/:id/listening-stats`).
+    func listeningStats(_ user: AudiobookshelfClient.ManagedUser) async throws -> AudiobookshelfClient.ListeningStats {
+        let id = user.id
+        return try await account.withAdminToken { try await $0.listeningStats(userID: id, token: $1) }
+    }
+
     /// Czy to konto do słuchania, którego używa aplikacja (Mac i telefon).
     func isListener(_ user: AudiobookshelfClient.ManagedUser) -> Bool {
         guard let name = account.listeningUsername else { return false }

@@ -11,6 +11,7 @@ struct LibrarySection: View {
     @State private var libraryToMatch: AudiobookshelfClient.Library?
     @State private var libraryToEdit: AudiobookshelfClient.Library?
     @State private var removing = false
+    @State private var reordering = false
     @State private var removalError: String?
 
     var body: some View {
@@ -57,6 +58,19 @@ struct LibrarySection: View {
                     }
                 }
                 Spacer()
+                if tasks != nil, account.libraries.count > 1 {
+                    let index = account.libraries.firstIndex(of: library) ?? 0
+                    ControlGroup {
+                        Button("Wyżej", systemImage: "chevron.up") { move(library, by: -1) }
+                            .disabled(index == 0)
+                        Button("Niżej", systemImage: "chevron.down") { move(library, by: 1) }
+                            .disabled(index == account.libraries.count - 1)
+                    }
+                    .controlGroupStyle(.navigation)
+                    .fixedSize()
+                    .disabled(reordering)
+                    .help("Kolejność bibliotek — ta sama w oknie „Biblioteka”, w telefonie i w web UI")
+                }
                 if let tasks {
                     taskMenu(for: library, tasks: tasks)
                     Button("Ustawienia biblioteki „\(library.name)”", systemImage: "slider.horizontal.3") {
@@ -156,6 +170,18 @@ struct LibrarySection: View {
                 tasks?.forget(library.id)
             } catch {
                 removalError = "Nie udało się usunąć biblioteki „\(library.name)”: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func move(_ library: AudiobookshelfClient.Library, by offset: Int) {
+        reordering = true
+        Task {
+            defer { reordering = false }
+            do {
+                try await account.moveLibrary(library, by: offset)
+            } catch {
+                removalError = "Nie udało się zmienić kolejności bibliotek: \(error.localizedDescription)"
             }
         }
     }

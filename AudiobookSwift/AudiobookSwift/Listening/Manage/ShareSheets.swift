@@ -28,6 +28,26 @@ struct FeedTarget: Identifiable, Hashable {
     }
 }
 
+/// Adresy, pod którymi serwer jest widoczny: spoza domu, w sieci lokalnej, ten Mac (kanały RSS, linki).
+enum ServerAddresses {
+    @MainActor
+    static func list(sharing: SharingController?) -> [(url: String, label: String)] {
+        var list: [(String, String)] = []
+        if let external = sharing?.externalURL { list.append((trim(external), "spoza domu")) }
+        if sharing?.isEnabled == true {
+            list += (sharing?.localURLs ?? []).map { (trim($0), "sieć lokalna") }
+        }
+        list.append(("http://\(ServerEnvironment.host):\(ServerEnvironment.port)", "tylko ten Mac"))
+        return list
+    }
+
+    private static func trim(_ url: URL) -> String {
+        var text = url.absoluteString
+        while text.hasSuffix("/") { text.removeLast() }
+        return text
+    }
+}
+
 /// Kanał RSS pozycji, serii albo kolekcji (wzorzec: `components/modals/rssfeed/OpenCloseModal.vue`):
 /// otwarcie z wyborem adresu serwera, podgląd otwartego kanału z kopiowaniem i zamknięcie. Tokenem root.
 struct RSSFeedSheet: View {
@@ -45,22 +65,7 @@ struct RSSFeedSheet: View {
     @State private var ownerEmail = ""
     @State private var status = AdminStatus()
 
-    /// Adresy, pod którymi kanał może być widoczny: spoza domu, w sieci lokalnej, ten Mac.
-    private var addresses: [(url: String, label: String)] {
-        var list: [(String, String)] = []
-        if let external = sharing?.externalURL { list.append((Self.trim(external), "spoza domu")) }
-        if sharing?.isEnabled == true {
-            list += (sharing?.localURLs ?? []).map { (Self.trim($0), "sieć lokalna") }
-        }
-        list.append(("http://\(ServerEnvironment.host):\(ServerEnvironment.port)", "tylko ten Mac"))
-        return list
-    }
-
-    private static func trim(_ url: URL) -> String {
-        var text = url.absoluteString
-        while text.hasSuffix("/") { text.removeLast() }
-        return text
-    }
+    private var addresses: [(url: String, label: String)] { ServerAddresses.list(sharing: sharing) }
 
     var body: some View {
         Form {
@@ -229,5 +234,157 @@ struct SendEbookSheet: View {
             status.notice = "Wysłano na „\(device)”."
         }
         if ok { sent = true }
+    }
+}
+
+/// Publiczny link do książki (etap 9i; wzorzec: `components/modals/ShareModal.vue`): strona odtwarzacza
+/// bez logowania pod `<adres>/audiobookshelf/share/<końcówka>`, z czasem ważności i opcjonalnym pobieraniem.
+/// Tokenem root (upstream: tylko administrator). Stronę odtwarzacza serwuje klient web serwera.
+struct ShareLinkSheet: View {
+    let manager: ItemManager
+    let item: AudiobookshelfClient.ItemDetail
+    @Environment(SharingController.self) private var sharing: SharingController?
+    @Environment(\.dismiss) private var dismiss
+
+    enum Expiry: String, CaseIterable, Identifiable {
+        case never, hour, day, week, month
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .never: "nigdy"
+            case .hour: "za godzinę"
+            case .day: "za dobę"
+            case .week: "za tydzień"
+            case .month: "za 30 dni"
+            }
+        }
+        var seconds: Double? {
+            switch self {
+            case .never: nil
+            case .hour: 3600
+            case .day: 86400
+            case .week: 7 * 86400
+            case .month: 30 * 86400
+            }
+        }
+    }
+
+    @State private var mediaID: String?
+    @State private var share: AudiobookshelfClient.MediaItemShare?
+    @State private var loaded = false
+    @State private var slug = ""
+    @State private var expiry = Expiry.week
+    @State private var downloadable = false
+    @State private var address = ""
+    @State private var status = AdminStatus()
+
+    private var addresses: [(url: String, label: String)] { ServerAddresses.list(sharing: sharing) }
+
+    private func link(_ slug: String) -> String { "\(address)\(ServerEnvironment.routerBasePath)/share/\(slug)" }
+
+    var body: some View {
+        Form {
+            if let share {
+                Section {
+                    Picker("Adres serwera", selection: $address) {
+                        ForEach(addresses, id: \.url) { Text("\($0.url) (\($0.label))").tag($0.url) }
+                    }
+                    LabeledContent("Link") {
+                        Text(link(share.slug)).textSelection(.enabled).font(.callout.monospaced())
+                    }
+                    LabeledContent("Wygasa", value: share.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "nigdy")
+                    LabeledContent("Pobieranie", value: share.isDownloadable == true ? "dozwolone" : "wyłączone")
+                    AdminStatusRows(status: status)
+                    HStack {
+                        Button("Kopiuj link") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(link(share.slug), forType: .string)
+                            status.notice = "Link skopiowany."
+                        }
+                        Spacer()
+                        Button("Usuń link", role: .destructive) { Task { await remove(share) } }
+                    }
+                    .disabled(status.isBusy)
+                } header: {
+                    Text("Link jest aktywny")
+                } footer: {
+                    Text("Każdy, kto zna link, może słuchać „\(item.title)” w przeglądarce — bez konta.").foregroundStyle(.secondary)
+                }
+            } else if loaded {
+                Section {
+                    TextField("Końcówka linku", text: $slug)
+                    Picker("Adres serwera", selection: $address) {
+                        ForEach(addresses, id: \.url) { Text("\($0.url) (\($0.label))").tag($0.url) }
+                    }
+                    if address.contains(ServerEnvironment.host) {
+                        Label("Ten adres działa tylko na tym Macu. Żeby wysłać link komuś innemu, włącz dostęp spoza domu w Ustawieniach → Udostępnianie.", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Picker("Wygasa", selection: $expiry) {
+                        ForEach(Expiry.allCases) { Text($0.label).tag($0) }
+                    }
+                    Toggle("Pozwól pobrać pliki", isOn: $downloadable)
+                    Text("Link: \(link(slug))").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    AdminStatusRows(status: status)
+                } header: {
+                    Text("Utwórz publiczny link")
+                } footer: {
+                    Text("Strona z odtwarzaczem tej książki, bez logowania. Postęp słuchania odbiorcy nie trafia na żadne konto.")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section { AdminStatusRows(status: status) }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 540)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button(share == nil ? "Anuluj" : "Gotowe") { dismiss() } }
+            if share == nil, loaded {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Utwórz link") { Task { await create() } }
+                        .disabled(status.isBusy || mediaID == nil || slug.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        address = addresses.first?.url ?? ""
+        let id = item.id
+        await status.run("Wczytywanie…", failure: "Nie udało się sprawdzić linku") {
+            let state = try await manager.run { try await $0.shareState(itemID: id, token: $1) }
+            mediaID = state.mediaID
+            share = state.share
+        }
+        // Losowa końcówka jak w web UI — trudna do zgadnięcia.
+        slug = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(12))
+        loaded = true
+    }
+
+    private func create() async {
+        guard let mediaID else { return }
+        let slug = slug.trimmingCharacters(in: .whitespaces)
+        let expiresAt = expiry.seconds.map { (Date.now.timeIntervalSince1970 + $0) * 1000 } ?? 0
+        let downloadable = downloadable
+        await status.run("Tworzenie…", failure: "Nie udało się utworzyć linku") {
+            guard slug.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else {
+                throw ItemManager.ManageError.invalid("Końcówka linku może zawierać tylko litery, cyfry, „-” i „_”.")
+            }
+            do {
+                share = try await manager.run { try await $0.createShare(mediaID: mediaID, slug: slug, expiresAt: expiresAt.rounded(), downloadable: downloadable, token: $1) }
+            } catch AudiobookshelfClient.APIError.http(409, let body) {
+                throw ItemManager.ManageError.invalid(body.contains("Slug") ? "Ta końcówka jest już zajęta — wybierz inną." : "Ta książka ma już link.")
+            }
+        }
+    }
+
+    private func remove(_ share: AudiobookshelfClient.MediaItemShare) async {
+        await status.run("Usuwanie…", failure: "Nie udało się usunąć linku") {
+            try await manager.run { try await $0.deleteShare(id: share.id, token: $1) }
+            self.share = nil
+        }
     }
 }
