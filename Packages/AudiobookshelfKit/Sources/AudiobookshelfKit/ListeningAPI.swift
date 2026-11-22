@@ -33,6 +33,9 @@ extension AudiobookshelfClient {
                 /// albo tablica (wersja pełna); w zwykłej liście skróconej jej nie ma.
                 public let series: OneOrMany<SeriesRef>?
                 public let publishedYear: String?
+                /// Tytuł z przedrostkiem na końcu („Hobbit, The”), gdy serwer go rozpoznał —
+                /// potrzebny do sortowania jak serwer przy `sortingIgnorePrefix` (etap 10d).
+                public var titleIgnorePrefix: String? = nil
             }
 
             public let metadata: Metadata

@@ -21,12 +21,15 @@ final class StubServer: URLProtocol, @unchecked Sendable {
 
     nonisolated(unsafe) static var routes: [String: [Response]] = [:]
     nonisolated(unsafe) static var recorded: [Recorded] = []
+    /// Trasy odpowiadające zależnie od zapytania (np. numeru strony).
+    nonisolated(unsafe) static var handlers: [String: @Sendable (URLRequest) -> Response] = [:]
     private static let lock = NSLock()
 
     static func reset() {
         lock.withLock {
             routes = [:]
             recorded = []
+            handlers = [:]
         }
     }
 
@@ -38,6 +41,11 @@ final class StubServer: URLProtocol, @unchecked Sendable {
     /// Kolejne odpowiedzi dla `METODA ścieżka` (ostatnia się powtarza).
     static func on(_ key: String, _ responses: Response...) {
         lock.withLock { routes[key] = responses }
+    }
+
+    /// Odpowiedź liczona z zapytania dla `METODA ścieżka`.
+    static func handle(_ key: String, _ handler: @escaping @Sendable (URLRequest) -> Response) {
+        lock.withLock { handlers[key] = handler }
     }
 
     static var requests: [Recorded] { lock.withLock { recorded } }
@@ -57,6 +65,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         let body = request.httpBody ?? request.httpBodyStream.map(Self.read)
         let response: Response = Self.lock.withLock {
             Self.recorded.append(Recorded(request: request, body: body))
+            if let handler = Self.handlers[key] { return handler(request) }
             guard var list = Self.routes[key], !list.isEmpty else { return Response(status: 404, body: Data("brak trasy \(key)".utf8)) }
             let first = list.removeFirst()
             Self.routes[key] = list.isEmpty ? [first] : list
