@@ -394,6 +394,12 @@ class MobiFile {
     return new Promise((resolve, reject) => {
       this.load();
       var content = this.read_text();
+      // AudiobookSwift: w KF8 (AZW3) za ostatnim fragmentem HTML leżą kolejne „flows” z arkuszami
+      // CSS — bez tabeli FDST trafiłyby do treści jako zwykły tekst. Odcinamy końcówkę bez znaczników,
+      // która wygląda jak CSS.
+      var lastTag = content.lastIndexOf(">");
+      var tail = content.slice(lastTag + 1);
+      if (lastTag !== -1 && tail.indexOf("<") === -1 && /[{}]/.test(tail)) content = content.slice(0, lastTag + 1);
       var bookDoc = domParser.parseFromString(content, "text/html")
         .documentElement;
       let lines = Array.from(
