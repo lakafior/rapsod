@@ -1,0 +1,14 @@
+# AudiobookSwift na iOS
+
+Klient iOS (iOS 27, Swift 6, SwiftUI) dla serwera audiobookshelf uruchamianego przez
+aplikację AudiobookSwift na Macu. Licencja **MPL-2.0** (`LICENSE`), tak jak wspólny pakiet
+`Packages/AudiobookshelfKit`, z którego korzysta. Nie zawiera kodu aplikacji na Maca (GPL-3.0)
+ani kodu przetłumaczonego ze źródeł audiobookshelf — rozmawia z serwerem wyłącznie przez jego API.
+
+Osobny projekt (`AudiobookSwiftiOS.xcodeproj`), a nie cel w projekcie Maca: schematy projektu
+Maca są generowane automatycznie, a `scripts/release.sh` buduje go po nazwie schematu — osobny
+projekt nie może niczego tam zmienić; granica licencji przebiega też po granicy projektu.
+
+Etap 10b: parowanie z Makiem kodem QR (`abswift://pair?d=…`, format w `PairingPayload`
+pakietu) albo ręcznie (adres i klucz API), wybór działającego adresu (najpierw sieć lokalna,
+potem dostęp spoza domu), klucz w pęku kluczy iOS oraz prosty ekran z bibliotekami i okładkami.
