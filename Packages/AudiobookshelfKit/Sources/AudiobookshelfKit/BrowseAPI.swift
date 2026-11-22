@@ -32,6 +32,8 @@ extension AudiobookshelfClient {
         public let name: String
         public let description: String?
         public let books: LenientList<LibraryItem>?
+        /// Nazwa z przedrostkiem na końcu („Witcher, The”) — sortowanie jak serwer (etap 10d).
+        public var nameIgnorePrefix: String? = nil
 
         public var items: [LibraryItem] { books?.elements ?? [] }
 

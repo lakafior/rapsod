@@ -20,11 +20,14 @@ final class ServerSession: Identifiable {
     let baseURL: URL
     let auth: ListeningAuth
     let covers = CoverCache()
+    /// Biblioteki połączone w jedną, postęp i zdarzenia serwera (etap 10d).
+    let library: LibraryStore
 
     init(server: PairedServer, baseURL: URL, key: String) {
         self.server = server
         self.baseURL = baseURL
         auth = ListeningAuth(client: AudiobookshelfClient(baseURL: baseURL), secret: .apiKey(key))
+        library = LibraryStore(auth: auth)
     }
 
     func cover(itemID: String, path: String?, size: CGFloat, scale: CGFloat) async -> PlatformImage? {
