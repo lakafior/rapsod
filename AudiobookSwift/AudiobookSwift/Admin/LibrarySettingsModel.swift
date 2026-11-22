@@ -234,7 +234,7 @@ final class LibrarySettingsModel {
 
     /// Dodaje folder do biblioteki i zleca skan. Folder nie może nakładać się na inną bibliotekę.
     func addFolder(_ folder: URL) async {
-        let folder = folder.standardizedFileURL
+        let folder = folder.libraryFolderURL
         guard let current = loaded?.folders else { return }
         await status.run("Dodawanie folderu…", failure: "Nie udało się dodać folderu") {
             if let other = account.libraryOverlapping(folder) {

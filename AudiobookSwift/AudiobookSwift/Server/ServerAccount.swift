@@ -381,7 +381,7 @@ final class ServerAccount {
 
     /// Biblioteka, która już obejmuje folder (ten sam, nadrzędny albo podrzędny).
     func libraryOverlapping(_ folder: URL) -> AudiobookshelfClient.Library? {
-        let path = folder.standardizedFileURL.path
+        let path = folder.libraryFolderURL.path
         return libraries.first { library in
             library.folders.contains { existing in
                 path == existing.fullPath
@@ -394,7 +394,7 @@ final class ServerAccount {
     /// Tworzy bibliotekę z folderu i czeka na koniec pierwszego skanu.
     func addLibrary(folder: URL, kind: LibraryKind = .audiobooks) async {
         guard state == .ready, !isScanning else { return }
-        let folder = folder.standardizedFileURL
+        let folder = folder.libraryFolderURL
         scan = ScanProgress(folder: folder, kind: kind, phase: .creating)
 
         do {
@@ -472,5 +472,17 @@ final class ServerAccount {
             if !running { return }
             try await Task.sleep(for: .seconds(1))
         }
+    }
+}
+
+extension URL {
+    /// Folder biblioteki z rozwiązanymi dowiązaniami (`realpath`). Skaner serwera liczy ścieżki pozycji
+    /// od prawdziwej ścieżki plików, więc folder podany przez dowiązanie (np. `~/Audiobooki` → dysk
+    /// zewnętrzny albo `/tmp` → `/private/tmp`) dawał sklejone ścieżki i pusty skan. `standardizedFileURL`
+    /// i `resolvingSymlinksInPath` się nie nadają — oba zdejmują prefiks `/private`.
+    var libraryFolderURL: URL {
+        guard let resolved = realpath(path, nil) else { return standardizedFileURL }
+        defer { free(resolved) }
+        return URL(filePath: String(cString: resolved), directoryHint: .isDirectory)
     }
 }
