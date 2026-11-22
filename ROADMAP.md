@@ -56,13 +56,13 @@ Cel: słuchanie i codzienne zarządzanie w natywnych oknach, bez WebKit (web UI 
 
 ### Własny klient iOS (etap 10)
 
-Decyzja z 2026-11-22: własny klient iOS na własnej bazie — wspólny pakiet Swift wydzielony z tej aplikacji plus warstwa iOS z projektu Dove (MPL-2.0); fork AudioBooth odrzucony. Klient trzyma dwa konta naraz (słuchacza i administracyjne) i łączy się z serwerem przez HTTP w sieci domowej albo przez tunel.
+Decyzja z 2026-11-22: własny klient iOS na własnej bazie — wspólny pakiet Swift wydzielony z tej aplikacji plus warstwa iOS z projektu Dove (MPL-2.0); fork AudioBooth odrzucony. Klient używa konta słuchacza (z kluczem API z parowania) i łączy się z serwerem przez HTTP w sieci domowej albo przez tunel.
 
 - **10a. Wspólny pakiet — zrobione.** `Packages/AudiobookshelfKit` (macOS 27 i iOS 27): klient HTTP z modelami i wszystkimi punktami API, zdarzenia serwera, odnawianie tokenów dla wielu kont (hasło albo klucz API, sekrety za protokołem `SecretStore`), okładki niezależne od `NSImage` (HTTP domyślnie, plik z dysku tylko na Macu). Aplikacja na Maca przełączona na pakiet bez zmiany zachowania; 17 testów pakietu. Pakiet na MPL-2.0 (klient iOS do App Store), aplikacja na Maca zostaje na GPL-3.0; reguły przetłumaczone z klienta web audiobookshelf zostały w aplikacji.
-- **10b. Szkielet iOS i parowanie kodem QR.** Cel iOS w projekcie, ekran połączenia, kod QR w sekcji „Połącz telefon” na Macu, oba konta w pęku kluczy telefonu.
+- **10b. Szkielet iOS i parowanie kodem QR — zrobione.** Osobny projekt `iOS/AudiobookSwiftiOS.xcodeproj` (MPL-2.0, `net.smigi.abswift.ios`): skaner VisionKit, adres `abswift://` z aparatu systemowego, wpisanie ręczne, wybór działającego adresu, klucz w pęku kluczy iOS, ekran z bibliotekami i okładkami, „Rozłącz”. Na Macu sekcja „Aplikacja AudiobookSwift na telefonie”: osobny klucz API konta słuchacza bez terminu ważności w ukrytym kodzie QR, lista sparowanych telefonów z unieważnianiem, uprawnienia administratora konta słuchacza (domyślnie nie, do odebrania). Format kodu `PairingPayload` (wersjonowany, rozszerzalny) w pakiecie z testami. Decyzja: jedno konto (słuchacza) zamiast dwóch — administracja przez nadanie temu kontu typu `admin`, nie przez konto root w telefonie.
 - **10c. Odtwarzacz na iOS.** `AudiobookPlayer` z gałęziami `#if os(iOS)` z Dove (AVAudioSession, przerwania), strumień HTTP zamiast plików z dysku.
 - **10d. Wspólna zakładka „Audiobooki”** łącząca wszystkie biblioteki (warstwa nad `BrowseAPI`, serwer nie ma zapytań przekrojowych poza postępem).
-- **10e. Podcasty:** kanał RSS, zlecanie pobrania odcinków kontem administracyjnym, słuchanie strumienia.
+- **10e. Podcasty:** kanał RSS, zlecanie pobrania odcinków (wymaga uprawnień administratora konta słuchacza, nadawanych przy parowaniu), słuchanie strumienia.
 - **10f. Pobieranie offline** (background `URLSession` z Dove).
 - **10g. Czytnik** (e-book pobierany przez HTTP zamiast czytania z dysku).
 - **10h. Dystrybucja.**

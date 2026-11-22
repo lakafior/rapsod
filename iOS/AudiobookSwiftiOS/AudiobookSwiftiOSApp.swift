@@ -55,6 +55,9 @@ struct RootView: View {
             if model.canRetry {
                 Button("Spróbuj ponownie") { model.retry() }
             }
+            if model.offersDisconnect {
+                Button("Rozłącz", role: .destructive) { model.disconnect() }
+            }
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.error ?? "")

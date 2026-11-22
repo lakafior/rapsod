@@ -48,6 +48,8 @@ final class AppModel {
     var pendingReplacement: PairingPayload?
     /// Ostatnia nieudana próba da się powtórzyć (np. po zgodzie na dostęp do sieci lokalnej).
     private(set) var canRetry = false
+    /// Sparowany serwer odrzucił klucz — alert proponuje rozłączenie.
+    private(set) var offersDisconnect = false
     @ObservationIgnored private var lastAttempt: (@MainActor () async -> Void)?
 
     var pairedServerName: String? {
@@ -83,8 +85,14 @@ final class AppModel {
         } catch {
             logger.error("Ponowne połączenie: \(error.localizedDescription, privacy: .public)")
             self.error = error.localizedDescription
-            canRetry = true
-            lastAttempt = { [weak self] in await self?.reconnect() }
+            if case Connector.ConnectError.keyRejected = error {
+                // Klucz unieważniony: ponawianie nic nie da, zostaje rozłączenie i nowe parowanie.
+                canRetry = false
+                offersDisconnect = true
+            } else {
+                canRetry = true
+                lastAttempt = { [weak self] in await self?.reconnect() }
+            }
         }
     }
 
@@ -173,6 +181,7 @@ final class AppModel {
             server.save()
             phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
             canRetry = false
+            offersDisconnect = false
             lastAttempt = nil
         } catch {
             logger.error("Parowanie nieudane: \(error.localizedDescription, privacy: .public)")
@@ -203,6 +212,7 @@ final class AppModel {
             logger.error("Usuwanie klucza: \(error.localizedDescription, privacy: .public)")
         }
         PairedServer.forget()
+        offersDisconnect = false
         phase = .unpaired
     }
 }

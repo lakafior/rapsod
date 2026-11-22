@@ -97,7 +97,7 @@ struct ConnectPhoneSection: View {
 
     private var explanation: String {
         if sharing.isEnabled {
-            "W aplikacji audiobookshelf na telefonie (np. oficjalnej, Plappa, ShelfPlayer) podaj adres serwera oraz nazwę i hasło poniżej. Ruch w sieci lokalnej idzie zwykłym HTTP: hasło i treść są widoczne dla innych urządzeń w tej samej sieci. Wyłączenie przywraca nasłuch tylko na tym Macu."
+            "Aplikację AudiobookSwift na telefonie sparujesz kodem QR niżej. W innej aplikacji audiobookshelf (np. oficjalnej, Plappa, ShelfPlayer) podaj adres serwera oraz nazwę i hasło poniżej. Ruch w sieci lokalnej idzie zwykłym HTTP: hasło i treść są widoczne dla innych urządzeń w tej samej sieci. Wyłączenie przywraca nasłuch tylko na tym Macu."
         } else if canEnable {
             "Teraz serwer jest dostępny tylko z tego Maca. Po włączeniu zacznie słuchać w sieci lokalnej po zwykłym HTTP (wymaga restartu serwera), a telefon połączy się dowolnym klientem audiobookshelf."
         } else {
