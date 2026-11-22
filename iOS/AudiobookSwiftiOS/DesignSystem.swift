@@ -224,6 +224,8 @@ struct ArtworkBackdrop: View {
     var fadesToBackground = true
     /// Kolor, w który tło przechodzi (strona z listą — tło pogrupowane).
     var base = Color(.systemBackground)
+    /// Przyciemnienie odtwarzacza (domyślnie 0,5; tryb tekstu ciemniej — długi tekst musi być czytelny).
+    var dimming: Double? = nil
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
@@ -245,7 +247,7 @@ struct ArtworkBackdrop: View {
                 LinearGradient(colors: [.clear, base], startPoint: .center, endPoint: .bottom)
             } else {
                 // Jasne okładki: biały tekst odtwarzacza musi zostać czytelny.
-                Color.black.opacity(reduceTransparency ? 0.85 : 0.5)
+                Color.black.opacity(reduceTransparency ? 0.85 : dimming ?? 0.5)
             }
         }
         .accessibilityHidden(true)
