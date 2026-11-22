@@ -230,7 +230,7 @@ cp "$ROOT/build/node-runtime/SOURCE.txt" "$LICENSES/Node.js-SOURCE.txt"
 cp "$ROOT/build/ffmpeg/licenses/"* "$LICENSES/"
 cp "$ROOT/packaging/licenses/nunicode-LICENSE.txt" "$LICENSES/nunicode-sqlite-LICENSE.txt"
 cp "$PROVIDERS_SRC/LICENSE" "$LICENSES/aio-abs-providers-LICENSE.txt"
-cp "$ROOT/packaging/licenses/epub.js-LICENSE.txt" "$ROOT/packaging/licenses/JSZip-LICENSE.txt" "$LICENSES/"
+cp "$ROOT/packaging/licenses/epub.js-LICENSE.txt" "$ROOT/packaging/licenses/JSZip-LICENSE.txt" "$ROOT/packaging/licenses/koodo-reader-LICENSE.txt" "$LICENSES/"
 cat > "$LICENSES/VERSIONS.txt" <<EOF
 AudiobookSwift $VERSION ($BUILD_NUMBER), commit $(git -C "$ROOT" rev-parse HEAD)
 audiobookshelf $(git -C "$ROOT/vendor/audiobookshelf" describe --tags --always), commit $(git -C "$ROOT/vendor/audiobookshelf" rev-parse HEAD)

@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Czytnik MOBI/AZW3 okna „Biblioteka” (etap 9h). Ładowany przez EpubReaderView ze schematu
+     absreader:, tak jak czytnik EPUB — strona nie ma dostępu do sieci, treść książki trafia do ramki
+     bez skryptów. -->
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' absreader: blob: data:; script-src 'self' absreader:; style-src 'self' absreader: 'unsafe-inline'; img-src 'self' absreader: blob: data:; font-src 'self' absreader: data:; connect-src absreader:">
+<style>
+  html, body { margin: 0; height: 100%; background: var(--bg, #fff); }
+  #viewer { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
+  #viewer iframe { display: block; width: 100%; border: 0; }
+</style>
+</head>
+<body>
+<div id="viewer"></div>
+<script type="module" src="mobi-reader.js"></script>
+</body>
+</html>

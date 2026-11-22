@@ -55,6 +55,13 @@ JSZip 3.10.1 — odczyt plików EPUB (Resources/jszip.min.js)
   Źródła: https://github.com/Stuk/jszip (pakiet npm jszip 3.10.1)
   Pełny tekst: Licenses/JSZip-LICENSE.txt
 
+mobi.js — odczyt MOBI/AZW3 w czytniku (Resources/mobi.js)
+  Plik bez zmian z klienta web audiobookshelf (client/assets/ebooks/mobi.js, ta sama
+  wersja co serwer w paczce), który zapożyczył go z Koodo Reader.
+  Licencja: AGPL-3.0 (Koodo Reader); łączony z tą aplikacją na zasadach sekcji 13 GPL-3.0
+  Źródła: https://github.com/koodo-reader/koodo-reader
+  Pełny tekst: Licenses/koodo-reader-LICENSE.txt
+
 nunicode-sqlite (libnusqlite3) — rozszerzenie SQLite
   Licencja: MIT (nunicode); SQLite jest w domenie publicznej
   Źródła: https://github.com/mikiher/nunicode-sqlite

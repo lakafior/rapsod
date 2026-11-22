@@ -27,11 +27,11 @@ final class UploadModel {
         /// Liczony raz — postęp całej wysyłki odświeża się przy każdym kawałku.
         let size: Int64
 
-        init(files: [URL], title: String) {
+        init(files: [URL], title: String, author: String = "", series: String = "") {
             self.files = files
             self.title = title
-            author = ""
-            series = ""
+            self.author = author
+            self.series = series
             size = files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0) }
         }
     }
@@ -97,11 +97,11 @@ final class UploadModel {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { continue }
             if isDirectory.boolValue {
-                let files = collect(in: url)
-                if files.isEmpty {
+                let found = isPodcast ? podcastEntry(in: url) : bookEntries(in: url, path: [url.lastPathComponent])
+                if found.isEmpty {
                     skipped.append(url.lastPathComponent + "/ (brak obsługiwanych plików)")
                 } else {
-                    entries.append(Entry(files: files, title: url.lastPathComponent))
+                    entries += found
                 }
             } else if accept(url) {
                 loose.append(url)
@@ -116,6 +116,19 @@ final class UploadModel {
 
     func remove(_ id: Entry.ID) {
         entries.removeAll { $0.id == id }
+    }
+
+    private func bookEntries(in directory: URL, path: [String]) -> [Entry] {
+        var ignored: [String] = []
+        let groups = UploadGrouping.books(in: directory, path: path, supported: Self.supported, audio: Self.audio, ignored: &ignored)
+        skipped += ignored
+        return groups.map { Entry(files: $0.files, title: $0.title, author: $0.author, series: $0.series) }
+    }
+
+    /// Podcast: cały upuszczony folder to jeden podcast (jak dotąd).
+    private func podcastEntry(in directory: URL) -> [Entry] {
+        let files = collect(in: directory)
+        return files.isEmpty ? [] : [Entry(files: files, title: directory.lastPathComponent)]
     }
 
     /// Pliki folderu razem z podfolderami (serwer i tak kładzie je płasko w folderze książki).

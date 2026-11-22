@@ -105,7 +105,7 @@ struct SeriesPage: View {
             }
             if let libraryID = browser.libraryID {
                 ItemGrid(browser: browser, libraryID: libraryID, filter: .init(group: "series", value: seriesID, title: name),
-                         sort: .init(key: "sequence", descending: false), seriesID: seriesID)
+                         sort: .init(key: "sequence", descending: false), seriesID: seriesID, selectionScope: "series-\(seriesID)")
             }
         }
         .navigationTitle(name)
@@ -123,6 +123,7 @@ struct SeriesPage: View {
             }
         }
         .sheet(item: $feed) { RSSFeedSheet(manager: browser.manager, target: $0) }
+        .batchSelection(browser: browser, scope: "series-\(seriesID)")
         .task(id: seriesID) {
             guard let libraryID = browser.libraryID else { return }
             series = try? await browser.listening.api { try await $0.series(libraryID: libraryID, seriesID: seriesID, token: $1) }
