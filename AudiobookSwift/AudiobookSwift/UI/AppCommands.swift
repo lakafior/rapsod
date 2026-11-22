@@ -50,6 +50,7 @@ struct AppCommands: Commands {
                     webMode.isManagement = false
                     openWindow.bringToFront(id: WebUIWindow.windowID)
                 }
+                .disabled(account.state != .ready)
             }
         }
     }
