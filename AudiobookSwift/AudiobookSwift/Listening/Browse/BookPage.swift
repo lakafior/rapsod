@@ -49,6 +49,7 @@ struct BookPage: View {
                         item.media.audioFiles?.elements.first { $0.ino == ino }?.metadata?.filename
                     }
                 }
+                TextSyncSection(browser: browser, item: item)
                 if let description = HTMLText.plain(metadata.description) {
                     ExpandableText(text: description, lines: 8)
                         .frame(maxWidth: 760, alignment: .leading)
