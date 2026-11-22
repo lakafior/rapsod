@@ -204,7 +204,8 @@ struct PodcastCard: View {
 }
 
 /// Odcinki w trakcie: z serwera (`items-in-progress`) i słuchane ze strumienia (postęp na telefonie).
-private struct ContinueEpisodes: View {
+struct ContinueEpisodes: View {
+    var title = "Słuchaj dalej"
     let serverItems: [Client.LibraryItem]
     let model: AppModel
     let session: ServerSession
@@ -214,7 +215,7 @@ private struct ContinueEpisodes: View {
         let local = session.library.podcasts.localEpisodes.inProgress
         if !serverItems.isEmpty || !local.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Słuchaj dalej")
+                Text(title)
                     .font(.title3.bold())
                     .padding(.horizontal)
                     .accessibilityAddTraits(.isHeader)

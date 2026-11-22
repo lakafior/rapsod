@@ -14,7 +14,10 @@ struct HomeView: View {
 
     @State private var shelves: CombinedLibraries.Shelves?
     @State private var recentEpisodes: [Client.PodcastEpisode] = []
+    /// Zaczęte odcinki podcastów z serwera; te słuchane ze strumienia półka bierze z telefonu.
+    @State private var episodesInProgress: [Client.LibraryItem] = []
     @State private var error: String?
+    @State private var playError: String?
 
     var body: some View {
         NavigationStack {
@@ -45,6 +48,7 @@ struct HomeView: View {
                 if let shelves {
                     FailureNotice(failures: shelves.failures).padding(.horizontal)
                     Shelf(title: "Słuchaj dalej", items: shelves.continueListening, combined: combined, session: session)
+                    ContinueEpisodes(title: "Słuchaj dalej: podcasty", serverItems: episodesInProgress, model: model, session: session) { playError = $0 }
                     if !recentEpisodes.isEmpty {
                         EpisodeShelf(title: "Nowe odcinki podcastów", episodes: recentEpisodes, combined: combined, model: model, session: session)
                     }
@@ -56,7 +60,7 @@ struct HomeView: View {
             .padding(.vertical)
         }
         .overlay {
-            if let shelves, shelves.isEmpty, recentEpisodes.isEmpty {
+            if let shelves, shelves.isEmpty, recentEpisodes.isEmpty, episodesInProgress.isEmpty, session.library.podcasts.localEpisodes.inProgress.isEmpty {
                 ContentUnavailableView("Pusto", systemImage: "books.vertical",
                                        description: Text(combined.libraries.isEmpty ? "Na serwerze nie ma bibliotek książek dostępnych dla tego konta." : "W bibliotekach nie ma jeszcze książek."))
             } else if shelves == nil {
@@ -66,6 +70,11 @@ struct HomeView: View {
                     ProgressView()
                 }
             }
+        }
+        .alert("Nie udało się odtworzyć", isPresented: Binding(get: { playError != nil }, set: { if !$0 { playError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text((playError ?? "") + " Na stronie podcastu możesz zlecić pobranie na serwer.")
         }
         .refreshable {
             await model.reconnect()
@@ -87,9 +96,13 @@ struct HomeView: View {
 
     private func load(_ combined: CombinedLibraries) async {
         async let episodes = try? combined.recentEpisodes(limit: 5)
+        async let progress: [Client.LibraryItem]? = try? session.auth.perform { try await $0.itemsInProgress(token: $1) }
         do {
             shelves = try await combined.shelves(lastUpdate: session.library.progress.lastUpdate)
             recentEpisodes = await episodes?.value ?? []
+            if let items = await progress {
+                episodesInProgress = items.filter { $0.isPodcast && $0.recentEpisode != nil }
+            }
             error = nil
         } catch is CancellationError {
         } catch {
