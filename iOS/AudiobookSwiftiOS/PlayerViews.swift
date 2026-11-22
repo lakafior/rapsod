@@ -260,6 +260,9 @@ struct PlayerScreen: View {
 
             SleepTimerMenu(player: player)
 
+            AirPlayButton()
+                .frame(width: 30, height: 30)
+
             if player.chapters.count > 1 {
                 Button("Rozdziały", systemImage: "list.bullet") { showsChapters = true }
             }
