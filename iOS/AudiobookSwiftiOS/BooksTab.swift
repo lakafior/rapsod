@@ -26,6 +26,7 @@ final class BookListModel {
     static let batchSize = 60
 
     func reset(_ merge: SortedMerge<Client.LibraryItem>) {
+        RenderCounter.tick("BookListModel.reset")
         loadTask?.cancel()
         loadTask = nil
         self.merge = merge
@@ -42,6 +43,41 @@ final class BookListModel {
 
     func appeared(_ id: String) {
         if id == prefetchID { loadMore() }
+    }
+
+    /// Odświeżenie tej samej listy (zmiany na serwerze, nowy postęp przy „Ostatnio słuchane”,
+    /// pociągnięcie w dół): wczytuje od nowa tyle pozycji, ile już było, i podmienia je naraz.
+    /// `reset` czyścił listę, więc przewinięta siatka wracała na górę.
+    func refresh(_ merge: SortedMerge<Client.LibraryItem>) {
+        guard hasLoaded, !items.isEmpty else { reset(merge); return }
+        RenderCounter.tick("BookListModel.refresh")
+        loadTask?.cancel()
+        self.merge = merge
+        let wanted = max(Self.batchSize, items.count)
+        isLoading = true
+        loadTask = Task {
+            defer {
+                if self.merge === merge {
+                    isLoading = false
+                    loadTask = nil
+                }
+            }
+            do {
+                let batch = try await merge.next(wanted)
+                guard self.merge === merge else { return }
+                items = batch.elements
+                isFinished = batch.isFinished
+                stalled = batch.stalled
+                failures = merge.failures
+                total = merge.total
+                error = nil
+                prefetchID = items.count > 20 ? items[items.count - 20].id : items.last?.id
+            } catch is CancellationError {
+            } catch {
+                guard self.merge === merge else { return }
+                self.error = LibraryStore.message(error)
+            }
+        }
     }
 
     func loadMore() {
@@ -227,6 +263,8 @@ private struct BooksGrid: View {
     @AppStorage("books.filter") private var filterRaw = ""
     @AppStorage("books.library") private var libraryID = ""
     @State private var list = BookListModel()
+    /// Zapytanie, dla którego lista jest wczytana — powrót z podstrony nie wczytuje jej od nowa.
+    @State private var loadedQuery: BookQuery?
     @ScaledMetric(relativeTo: .body) private var cardWidth: CGFloat = 104
 
     private var filter: CombinedLibraries.ProgressFilter? { CombinedLibraries.ProgressFilter(rawValue: filterRaw) }
@@ -288,9 +326,17 @@ private struct BooksGrid: View {
             ToolbarItem(placement: .topBarTrailing) { sortMenu }
         }
         .refreshable { await reload() }
-        .task(id: query) { list.reset(makeMerge()) }
+        .task(id: query) {
+            guard loadedQuery != query else { return }
+            var sameList = loadedQuery
+            sameList?.progressStamp = query.progressStamp
+            // Sam nowy postęp (sortowanie „Ostatnio słuchane”) — odświeżenie bez czyszczenia listy.
+            if sameList == query { list.refresh(makeMerge()) } else { list.reset(makeMerge()) }
+            loadedQuery = query
+        }
         .onChange(of: sort) { _, new in descending = new.defaultDescending }
-        .onChange(of: session.library.itemsRevision) { list.reset(makeMerge()) }
+        // Zmiany pozycji na serwerze (skan, edycja, ukończenie) — pozycja przewijania zostaje.
+        .onChange(of: session.library.itemsRevision) { list.refresh(makeMerge()) }
     }
 
     private func makeMerge() -> SortedMerge<Client.LibraryItem> {
@@ -300,7 +346,7 @@ private struct BooksGrid: View {
 
     private func reload() async {
         await session.library.refreshProgress()
-        list.reset(makeMerge())
+        list.refresh(makeMerge())
     }
 
     private func badge(_ libraryID: String) -> String? {

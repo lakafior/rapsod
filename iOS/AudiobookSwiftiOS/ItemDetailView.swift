@@ -38,7 +38,8 @@ struct ItemDetailView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var bookPage: some View {
-        Group {
+        let _ = RenderCounter.tick("ItemDetailView")
+        return Group {
             if let item {
                 if sizeClass == .regular || verticalSizeClass == .compact {
                     // iPad i iPhone w poziomie: okładka i główne akcje w lewej kolumnie, reszta przewija się obok.
@@ -141,12 +142,12 @@ struct ItemDetailView: View {
             if typeSize.isAccessibilitySize {
                 // Największy tekst: przyciski pod sobą, pobieranie z podpisem.
                 VStack(spacing: 12) {
-                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
+                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id))
                     DownloadButton(target: .book(itemID: item.id), session: session)
                 }
             } else {
                 HStack(spacing: 12) {
-                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
+                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id))
                     DownloadButton(target: .book(itemID: item.id), session: session, compact: true)
                 }
                 .frame(maxWidth: 360)
@@ -202,21 +203,12 @@ struct ItemDetailView: View {
     }
 
     private func progressMenu(_ item: AudiobookshelfClient.ItemDetail) -> some View {
-        let progress = session.library.progress.entry(item.id).value
-        return Menu {
-            if progress?.isFinished == true {
-                Button("Oznacz jako nieukończone", systemImage: "arrow.uturn.backward") { Task { await setFinished(item, false) } }
-            } else {
-                Button("Oznacz jako ukończone", systemImage: "checkmark.circle") { Task { await setFinished(item, true) } }
-            }
-            if progress != nil {
-                Button("Usuń postęp", systemImage: "trash", role: .destructive) { confirmsRemoval = true }
-                    .disabled(playback.isLoaded(itemID: item.id))
-            }
-        } label: {
-            Label("Postęp", systemImage: isWorking ? "hourglass" : "ellipsis.circle")
-        }
-        .disabled(isWorking)
+        ProgressMenu(
+            entry: session.library.progress.entry(item.id), isWorking: isWorking,
+            canRemove: !playback.isLoaded(itemID: item.id),
+            setFinished: { finished in Task { await setFinished(item, finished) } },
+            remove: { confirmsRemoval = true }
+        )
     }
 
     // MARK: Działania
@@ -267,6 +259,34 @@ struct ItemDetailView: View {
     }
 }
 
+/// Menu postępu w pasku narzędzi — czyta wpis postępu samo, żeby jego zmiana (synchronizacja
+/// w trakcie słuchania) nie przerysowywała całej strony pozycji.
+private struct ProgressMenu: View {
+    let entry: ProgressStore.Entry
+    let isWorking: Bool
+    let canRemove: Bool
+    let setFinished: (Bool) -> Void
+    let remove: () -> Void
+
+    var body: some View {
+        let progress = entry.value
+        Menu {
+            if progress?.isFinished == true {
+                Button("Oznacz jako nieukończone", systemImage: "arrow.uturn.backward") { setFinished(false) }
+            } else {
+                Button("Oznacz jako ukończone", systemImage: "checkmark.circle") { setFinished(true) }
+            }
+            if progress != nil {
+                Button("Usuń postęp", systemImage: "trash", role: .destructive) { remove() }
+                    .disabled(!canRemove)
+            }
+        } label: {
+            Label("Postęp", systemImage: isWorking ? "hourglass" : "ellipsis.circle")
+        }
+        .disabled(isWorking)
+    }
+}
+
 /// Postęp książki pod okładką — obserwuje tylko swój wpis.
 private struct BookProgress: View {
     let entry: ProgressStore.Entry
@@ -307,7 +327,9 @@ struct PlayButton: View {
     let model: AppModel
     let itemID: String
     let episodeID: String?
-    let progress: AudiobookshelfClient.MediaProgress?
+    /// Wpis postępu (obiekt), nie jego wartość: wartość czyta dopiero ten przycisk, więc
+    /// synchronizacja postępu przerysowuje tylko go, a nie całą stronę pozycji.
+    let progress: ProgressStore.Entry
 
     var body: some View {
         let playback = model.playback
@@ -339,6 +361,7 @@ struct PlayButton: View {
 
     private func title(isCurrent: Bool) -> String {
         if isCurrent { return model.playback.player.isPlaying ? "Pauza" : "Wznów" }
+        let progress = self.progress.value
         guard let progress, !progress.isFinished, (progress.currentTime ?? 0) > 0 else {
             return progress?.isFinished == true ? "Słuchaj od nowa" : "Odtwarzaj"
         }
