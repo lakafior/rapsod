@@ -149,6 +149,9 @@ struct CollectionEditSheet: View {
 
     var body: some View {
         Form {
+            if status.error != nil || status.isBusy {
+                Section { AdminStatusRows(status: status) }
+            }
             Section("Kolekcja") {
                 TextField("Nazwa", text: $name)
                 TextField("Opis", text: $description, axis: .vertical).lineLimit(3...8)
@@ -178,9 +181,6 @@ struct CollectionEditSheet: View {
                 if !removed.isEmpty {
                     Text("Do usunięcia z kolekcji: \(removed.count). Książki zostają w bibliotece.").foregroundStyle(.secondary)
                 }
-            }
-            if status.error != nil || status.isBusy {
-                Section { AdminStatusRows(status: status) }
             }
         }
         .formStyle(.grouped)

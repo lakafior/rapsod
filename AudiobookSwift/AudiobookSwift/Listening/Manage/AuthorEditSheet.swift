@@ -28,6 +28,10 @@ struct AuthorEditSheet: View {
 
     var body: some View {
         Form {
+            // Wynik działań na górze — dół formularza bywa schowany pod zgięciem arkusza.
+            if status.isBusy || status.error != nil || status.notice != nil {
+                Section { AdminStatusRows(status: status) }
+            }
             Section {
                 TextField("Nazwa", text: $name)
                 TextField("ASIN (Audible)", text: $asin)
@@ -79,7 +83,6 @@ struct AuthorEditSheet: View {
             }
 
             Section {
-                AdminStatusRows(status: status)
                 Button("Usuń autora…", role: .destructive) { confirmDelete = true }
                     .disabled(status.isBusy)
             }
@@ -132,7 +135,10 @@ struct AuthorEditSheet: View {
             do {
                 let result = try await manager.run { try await $0.matchAuthor(id: id, query: asin.isEmpty ? query : nil, asin: asin.isEmpty ? nil : asin, region: region, token: $1) }
                 browser.listening.authorImageChanged(id: id)
-                status.notice = result.updated == true ? "Uzupełniono dane z Audible. Zamknij okno, żeby zobaczyć zmiany." : "Audible nie dodał nic nowego."
+                // Pola formularza dostają dane z Audible — inaczej „Zapisz” przywróciłby stary opis.
+                self.asin = result.author.asin ?? self.asin
+                self.description = result.author.description ?? self.description
+                status.notice = result.updated == true ? "Uzupełniono opis, ASIN i zdjęcie z Audible." : "Audible nie dodał nic nowego."
                 if result.updated == true { done((id, author.name)) }
             } catch AudiobookshelfClient.APIError.http(404, _) {
                 throw ItemManager.ManageError.invalid("Audible nie zna takiego autora w tym sklepie.")

@@ -28,6 +28,8 @@ extension AudiobookshelfClient {
             let id: String
             let name: String
             let imagePath: String?
+            let description: String?
+            let asin: String?
         }
         let author: Changed
         /// Nowa nazwa należała do innego autora tej biblioteki — serwer połączył obu, stary `id` znika.
