@@ -42,7 +42,7 @@ enum AddressRefresh {
         let timeout = address.kind == .local ? AddressSelection.localTimeout : AddressSelection.remoteTimeout
         let client = AudiobookshelfClient(baseURL: address.url, session: Connector.probeSession(timeout: timeout))
         do {
-            let user: AudiobookshelfClient.User = try await client.me(token: key)
+            let user: AudiobookshelfClient.User = try await client.me(token: key, timeout: timeout)
             let result = AddressUpdate.verification(user: user, pairedUserID: pairedUserID, reachable: true)
             logger.notice("Sprawdzenie \(address.url.absoluteString, privacy: .public): \(String(describing: result), privacy: .public)")
             return result

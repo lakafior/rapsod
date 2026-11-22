@@ -114,7 +114,7 @@ enum Connector {
                 let started = Date.now
                 func elapsed() -> String { Date.now.timeIntervalSince(started).formatted(.number.precision(.fractionLength(1))) + " s" }
                 do {
-                    let user: AudiobookshelfClient.User = try await client.me(token: key)
+                    let user: AudiobookshelfClient.User = try await client.me(token: key, timeout: attempt.timeout)
                     lastAttempts.append(.init(url: attempt.url, succeeded: true, detail: "połączono (\(elapsed()))"))
                     return .reached(user)
                 } catch AudiobookshelfClient.APIError.unauthorized {
