@@ -57,6 +57,9 @@ final class AppModel {
     /// Automatyczna próba połączenia (zmiana sieci, błąd w trakcie słuchania) się nie udała —
     /// pasek „Brak połączenia” zamiast alertu.
     private(set) var isOffline = false
+    /// Wyniki ostatniej próby połączenia, adres po adresie („Diagnostyka połączenia”).
+    private(set) var connectionAttempts: [Connector.AttemptResult] = []
+    private(set) var connectionAttemptDate: Date?
     /// Wynik odświeżenia adresów z kodu „Odśwież adresy” (komunikat bez błędu).
     var notice: String?
 
@@ -152,6 +155,7 @@ final class AppModel {
         guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else { return }
         do {
             let connection = try await Connector.connect(attempts: session.server.attempts, key: key)
+            recordAttempts()
             // W trakcie prób użytkownik mógł się rozłączyć albo sparować telefon od nowa.
             guard isCurrent(session) else { return }
             var server = session.server
@@ -170,6 +174,7 @@ final class AppModel {
                 await performReconnect(silent: true, discovering: false)
             }
         } catch {
+            recordAttempts()
             guard isCurrent(session) else { return }
             logger.error("Ponowne połączenie: \(error.localizedDescription, privacy: .public)")
             if case Connector.ConnectError.keyRejected = error {
@@ -190,6 +195,11 @@ final class AppModel {
                 lastAttempt = { [weak self] in await self?.reconnect() }
             }
         }
+    }
+
+    private func recordAttempts() {
+        connectionAttempts = Connector.lastAttempts
+        connectionAttemptDate = Connector.lastAttemptDate
     }
 
     // MARK: - Adresy serwera bez ponownego parowania
