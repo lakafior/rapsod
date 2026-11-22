@@ -99,3 +99,45 @@ import AudiobookshelfKit
         #expect(AddressUpdate.verification(user: nil, pairedUserID: "u1", reachable: false) == .unreachable)
     }
 }
+
+@Suite struct AddressesPayloadTests {
+    @Test func roundTripWithoutKey() throws {
+        let payload = AddressesPayload(
+            server: .init(id: "srv-1", name: "Mac mini"),
+            addresses: [.init(url: URL(string: "http://mini.local:13378")!, kind: .local),
+                        .init(url: URL(string: "https://ksiazki.example.com")!, kind: .remote)]
+        )
+        let url = try payload.url()
+        #expect(url.absoluteString.hasPrefix("abswift://addresses?d="))
+        #expect(AddressesPayload.matches(url))
+        #expect(try AddressesPayload(url: url) == payload)
+        // Kod adresów to nie kod parowania i odwrotnie.
+        #expect(throws: PairingPayload.DecodingError.self) { try PairingPayload(url: url) }
+        #expect(!url.absoluteString.contains("key"))
+    }
+
+    @Test func rejectsNewerVersionAndMissingServer() throws {
+        func link(_ json: String) -> URL {
+            URL(string: "abswift://addresses?d=" + Data(json.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: ""))!
+        }
+        #expect(throws: PairingPayload.DecodingError.unsupportedVersion(2)) {
+            try AddressesPayload(url: link(#"{"v":2,"server":{"id":"a","name":"b"},"addresses":[]}"#))
+        }
+        #expect(throws: PairingPayload.DecodingError.malformed) {
+            try AddressesPayload(url: link(#"{"v":1,"server":{"id":"","name":"b"},"addresses":[]}"#))
+        }
+        let filtered = try AddressesPayload(url: link(#"{"v":1,"server":{"id":"a","name":"b"},"addresses":[{"url":"ftp://x","kind":"local"},{"url":"http://mini.local","kind":"local"}]}"#))
+        #expect(filtered.addresses.map(\.url.absoluteString) == ["http://mini.local"])
+    }
+
+    @Test func bonjourRecordOnlyForPairedServerAndLocalHost() {
+        let txt = LocalDiscovery.txtRecord(serverID: "srv-1", url: URL(string: "http://mini.local:13378")!)
+        #expect(LocalDiscovery.address(fromTXT: txt, pairedServerID: "srv-1")?.url.absoluteString == "http://mini.local:13378")
+        #expect(LocalDiscovery.address(fromTXT: txt, pairedServerID: "srv-2") == nil)
+        #expect(LocalDiscovery.address(fromTXT: txt, pairedServerID: nil) == nil)
+        let remote = LocalDiscovery.txtRecord(serverID: "srv-1", url: URL(string: "http://example.com")!)
+        #expect(LocalDiscovery.address(fromTXT: remote, pairedServerID: "srv-1") == nil)
+    }
+}

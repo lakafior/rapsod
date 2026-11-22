@@ -19,6 +19,8 @@ struct HomeView: View {
     @State private var confirmsDisconnect = false
     @State private var inProgress: [AudiobookshelfClient.LibraryItem] = []
     @State private var showsPlayer = false
+    @State private var showsScanner = false
+    @State private var scanned: String?
 
     var body: some View {
         NavigationStack {
@@ -75,6 +77,12 @@ struct HomeView: View {
                 }
 
                 Section {
+                    Button("Zeskanuj kod z adresami", systemImage: "qrcode.viewfinder") { showsScanner = true }
+                } footer: {
+                    Text("Gdy na Macu włączysz dostęp spoza domu albo zmienią się jego adresy: Ustawienia aplikacji → Udostępnianie → „Kod z adresami…”. Telefon nie musi być parowany od nowa.")
+                }
+
+                Section {
                     Button("Rozłącz", role: .destructive) { confirmsDisconnect = true }
                 } footer: {
                     Text("Rozłączenie usuwa klucz tylko z tego telefonu. Żeby unieważnić go na serwerze, usuń telefon z listy sparowanych na Macu.")
@@ -105,6 +113,18 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showsPlayer) {
             PlayerScreen(model: model)
+        }
+        // Kod obsługujemy po zamknięciu arkusza (alert w trakcie zamykania mógłby przepaść).
+        .sheet(isPresented: $showsScanner, onDismiss: {
+            if let scanned {
+                self.scanned = nil
+                model.handle(scanned: scanned)
+            }
+        }) {
+            ScannerSheet { text in
+                scanned = text
+                showsScanner = false
+            }
         }
     }
 

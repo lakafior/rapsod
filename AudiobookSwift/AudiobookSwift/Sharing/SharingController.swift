@@ -10,7 +10,9 @@ import Observation
 /// ten kontroler tylko włącza i wyłącza. Tunel jest niezależny od sieci lokalnej.
 ///
 /// Telefon łączy się dowolnym istniejącym klientem audiobookshelf, podając adres
-/// oraz nazwę i hasło konta użytkownika — aplikacja niczego nie ogłasza ani nie wysyła.
+/// oraz nazwę i hasło konta użytkownika. Po sparowaniu własnej aplikacji na telefonie
+/// (etap 10c) serwer jest dodatkowo ogłaszany przez Bonjour (`BonjourAdvertiser`), żeby
+/// telefon znalazł Maca po zmianie jego adresu w sieci lokalnej.
 @MainActor
 @Observable
 final class SharingController {
@@ -45,6 +47,8 @@ final class SharingController {
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
     @ObservationIgnored private var networkDebounce: Task<Void, Never>?
     @ObservationIgnored private var tunnelObservation: Task<Void, Never>?
+    @ObservationIgnored private var bonjourObservation: Task<Void, Never>?
+    @ObservationIgnored private let advertiser = BonjourAdvertiser()
 
     init(supervisor: ServerSupervisor, account: ServerAccount) {
         self.supervisor = supervisor
@@ -77,6 +81,23 @@ final class SharingController {
                 await tunnel.update(selected: input.selected, serverReady: input.serverReady)
             }
         }
+
+        // Bonjour: tylko gdy serwer faktycznie słucha w sieci lokalnej i jakiś telefon był
+        // parowany (jest identyfikator serwera) — inaczej nie ma komu ogłaszać.
+        bonjourObservation = Task { [weak self] in
+            let inputs = Observations { [weak self] in self?.advertisement }
+            for await advertisement in inputs {
+                guard let self else { return }
+                advertiser.update(advertisement)
+            }
+        }
+    }
+
+    private var advertisement: BonjourAdvertiser.Advertisement? {
+        guard settings.isEnabled, supervisor.state == .running, supervisor.environment?.listensOnLAN == true,
+              let serverID = settings.serverID, let url = localURLs.first,
+              let port = UInt16(exactly: ServerEnvironment.port) else { return nil }
+        return .init(serverID: serverID, url: url, port: port)
     }
 
     /// Działa proces dostępu spoza domu, który trzeba zatrzymać przed wyjściem.
@@ -85,6 +106,8 @@ final class SharingController {
     /// Zatrzymuje tunel przed zakończeniem aplikacji.
     func shutdown() async {
         tunnelObservation?.cancel()
+        bonjourObservation?.cancel()
+        advertiser.stop()
         await tunnel.stop()
     }
 
