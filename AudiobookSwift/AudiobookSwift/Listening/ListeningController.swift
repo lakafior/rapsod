@@ -48,6 +48,8 @@ final class ListeningController {
     let episodeDownloads = EpisodeDownloads()
     /// Synchronizacja e-booka z nagraniem (etap 11a) — żyje tu, nie w oknie, żeby przetrwała ⌘Q.
     let textSync = TextSyncController()
+    /// Tekst bieżącej książki w odtwarzaczu (etap 11b) — wspólny dla panelu i okna tekstu.
+    let text = TextFollowModel()
     /// Rośnie po zmianie okładki pozycji — `AsyncCover` wczytuje ją wtedy od nowa.
     private(set) var coverRevision: [String: Int] = [:]
     /// Kolejka playlisty: po ukończeniu bieżącej pozycji gra następna.

@@ -10,25 +10,46 @@ import SwiftUI
 struct PlayerPanel: View {
     let listening: ListeningController
     @State private var cover: NSImage?
+    /// Tryb „Tekst” (etap 11b): tekst książki zamiast dużej okładki i listy rozdziałów.
+    @AppStorage(BookTextSettings.panelKey) private var showsText = false
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var player: AudiobookPlayer { listening.player }
 
     var body: some View {
         if let book = player.book {
+            let textMode = showsText && book.episodeID == nil
             VStack(spacing: 14) {
-                CoverView(image: cover, symbol: "headphones")
-                    .frame(maxWidth: 220, maxHeight: 220)
-                    .shadow(radius: 8, y: 4)
-                    // Licznik okładki: po edycji okładki odtwarzacz wczytuje nową, jak `AsyncCover`.
-                    .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
-                        cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 300)
+                if textMode {
+                    HStack(spacing: 10) {
+                        CoverView(image: cover, symbol: "headphones")
+                            .frame(width: 44, height: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(book.title).font(.headline).lineLimit(1)
+                            Text((book.chapters.count > 1 ? player.currentChapter?.title : nil) ?? book.author ?? "")
+                                .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
                     }
+                    BookTextView(listening: listening)
+                        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
+                                                     .init(color: .black, location: 0.92), .init(color: .clear, location: 1)],
+                                             startPoint: .top, endPoint: .bottom))
+                        .frame(maxHeight: .infinity)
+                        .transition(.opacity)
+                } else {
+                    CoverView(image: cover, symbol: "headphones")
+                        .frame(maxWidth: 220, maxHeight: 220)
+                        .shadow(radius: 8, y: 4)
+                        .transition(.opacity)
 
-                VStack(spacing: 3) {
-                    Text(book.title).font(.headline).multilineTextAlignment(.center).lineLimit(2)
-                    if let author = book.author { Text(author).foregroundStyle(.secondary).lineLimit(1) }
-                    if book.chapters.count > 1, let chapter = player.currentChapter {
-                        Text(chapter.title).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    VStack(spacing: 3) {
+                        Text(book.title).font(.headline).multilineTextAlignment(.center).lineLimit(2)
+                        if let author = book.author { Text(author).foregroundStyle(.secondary).lineLimit(1) }
+                        if book.chapters.count > 1, let chapter = player.currentChapter {
+                            Text(chapter.title).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                 }
 
@@ -48,6 +69,24 @@ struct PlayerPanel: View {
                     if book.episodeID == nil {
                         BookmarksMenu(listening: listening, itemID: book.itemID)
                         Spacer()
+                        Toggle(isOn: Binding(get: { showsText }, set: { value in
+                            withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) { showsText = value }
+                        })) {
+                            Image(systemName: "quote.bubble")
+                        }
+                        .toggleStyle(.button)
+                        .help(showsText ? "Pokaż okładkę (⌃⌘T)" : "Pokaż tekst książki (⌃⌘T)")
+                        .accessibilityLabel("Tekst książki")
+                        .accessibilityIdentifier("player.text")
+                        if textMode {
+                            BookTextAppearanceMenu()
+                            Button { openWindow(id: BookTextWindow.windowID) } label: {
+                                Image(systemName: "macwindow")
+                            }
+                            .help("Tekst w osobnym oknie (⌃⇧⌘T)")
+                            .accessibilityLabel("Tekst w osobnym oknie")
+                        }
+                        Spacer()
                     }
                     Menu {
                         Button("Oznacz jako ukończone", systemImage: "checkmark.circle") {
@@ -65,21 +104,27 @@ struct PlayerPanel: View {
                 }
                 .controlSize(.small)
 
-                if let next = listening.queue.first {
-                    HStack {
-                        Label("Następne: \(next.title)" + (listening.queue.count > 1 ? " (+\(listening.queue.count - 1))" : ""), systemImage: "text.line.first.and.arrowtriangle.forward")
-                            .lineLimit(1)
-                        Spacer()
-                        Button("Wyczyść kolejkę", systemImage: "xmark.circle.fill") { listening.clearQueue() }
-                            .labelStyle(.iconOnly).buttonStyle(.borderless)
+                if !textMode {
+                    if let next = listening.queue.first {
+                        HStack {
+                            Label("Następne: \(next.title)" + (listening.queue.count > 1 ? " (+\(listening.queue.count - 1))" : ""), systemImage: "text.line.first.and.arrowtriangle.forward")
+                                .lineLimit(1)
+                            Spacer()
+                            Button("Wyczyść kolejkę", systemImage: "xmark.circle.fill") { listening.clearQueue() }
+                                .labelStyle(.iconOnly).buttonStyle(.borderless)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
 
-                ChapterList(player: player)
+                    ChapterList(player: player)
+                }
             }
             .padding()
+            // Licznik okładki: po edycji okładki odtwarzacz wczytuje nową, jak `AsyncCover`.
+            .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
+                cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 300)
+            }
         } else {
             ContentUnavailableView("Nic nie gra", systemImage: "headphones", description: Text("Wybierz książkę z listy."))
         }
