@@ -54,6 +54,14 @@ struct RootView: View {
             Text("Telefon jest już sparowany z „\(model.pairedServerName ?? "")”. Nowy kod łączy go z „\(payload.server.name)” (konto „\(payload.account.username)”). Stary klucz zostanie usunięty z telefonu — unieważnisz go na Macu.")
         }
         .alert(
+            "Adresy serwera",
+            isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.notice ?? "")
+        }
+        .alert(
             "Nie udało się połączyć",
             isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })
         ) {

@@ -169,6 +169,14 @@ final class PhonePairing {
         return code
     }
 
+    /// Kod „Odśwież adresy” (etap 10c): aktualne adresy serwera bez klucza, dla już sparowanych
+    /// telefonów (np. po włączeniu tunelu). `nil`, gdy nie ma adresów albo żaden telefon nie był parowany.
+    func addressesCode() -> URL? {
+        guard let serverID = sharing.settings.serverID, !addresses.isEmpty else { return nil }
+        let payload = AddressesPayload(server: .init(id: serverID, name: Self.serverName), addresses: addresses)
+        return try? payload.url()
+    }
+
     /// Unieważnia klucz telefonu (usuwa go z serwera). Telefon dostaje 401 przy następnym zapytaniu.
     func revoke(keyID: String) async throws {
         try await account.withAdminToken { try await $0.deleteApiKey(id: keyID, token: $1) }

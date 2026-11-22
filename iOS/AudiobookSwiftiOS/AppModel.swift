@@ -57,6 +57,8 @@ final class AppModel {
     /// Automatyczna próba połączenia (zmiana sieci, błąd w trakcie słuchania) się nie udała —
     /// pasek „Brak połączenia” zamiast alertu.
     private(set) var isOffline = false
+    /// Wynik odświeżenia adresów z kodu „Odśwież adresy” (komunikat bez błędu).
+    var notice: String?
 
     /// Odtwarzacz żyje ponad połączeniem: przejście sieć lokalna ↔ tunel podmienia `ServerSession`,
     /// a słuchanie trwa dalej.
@@ -146,7 +148,7 @@ final class AppModel {
         reconnectTask = nil
     }
 
-    private func performReconnect(silent: Bool) async {
+    private func performReconnect(silent: Bool, discovering: Bool = true) async {
         guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else { return }
         do {
             let connection = try await Connector.connect(attempts: session.server.attempts, key: key)
@@ -162,6 +164,11 @@ final class AppModel {
                 phase = .paired(ServerSession(server: server, baseURL: connection.url, key: key))
             }
             await playback.connectionChanged(baseURLChanged: changed)
+            // Połączenie poza siecią lokalną: może Mac jest obok, tylko pod nowym adresem.
+            let isLocal = server.addresses.first { $0.url == connection.url }?.kind == .local
+            if discovering, !isLocal, await discoverLocalAddress(key: key) {
+                await performReconnect(silent: true, discovering: false)
+            }
         } catch {
             guard isCurrent(session) else { return }
             logger.error("Ponowne połączenie: \(error.localizedDescription, privacy: .public)")
@@ -170,15 +177,77 @@ final class AppModel {
                 self.error = error.localizedDescription
                 canRetry = false
                 offersDisconnect = true
-            } else if silent {
-                isOffline = true
-            } else {
-                isOffline = true
+                return
+            }
+            if discovering, await discoverLocalAddress(key: key) {
+                await performReconnect(silent: silent, discovering: false)
+                return
+            }
+            isOffline = true
+            if !silent {
                 self.error = error.localizedDescription
                 canRetry = true
                 lastAttempt = { [weak self] in await self?.reconnect() }
             }
         }
+    }
+
+    // MARK: - Adresy serwera bez ponownego parowania
+
+    /// Bonjour: Mac ogłasza adres z identyfikatorem serwera. Nowy adres trafia do zapisanych
+    /// dopiero po sprawdzeniu kluczem; zwraca `true`, gdy coś dodano.
+    private func discoverLocalAddress(key: String) async -> Bool {
+        guard case .paired(let session) = phase else { return false }
+        let found = await AddressRefresh.discover(serverID: session.server.serverID)
+        let new = found.filter { candidate in !session.server.addresses.contains { $0.url == candidate.url } }
+        guard !new.isEmpty, isCurrent(session) else { return false }
+        // Lista = obecne + znalezione: z Bonjour niczego nie usuwamy.
+        let outcome = await AddressRefresh.merge(server: session.server, lastWorking: session.server.lastWorkingURL, published: session.server.addresses + new, key: key)
+        guard !outcome.added.isEmpty, isCurrent(session) else { return false }
+        save(addresses: outcome.addresses, in: session, key: key)
+        logger.notice("Bonjour: dodano \(outcome.added.map(\.absoluteString), privacy: .public)")
+        return true
+    }
+
+    private func handleAddresses(url: URL) {
+        do {
+            let payload = try AddressesPayload(url: url)
+            Task { await applyAddresses(payload) }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    /// Kod „Odśwież adresy” z Maca: przyjmowany tylko dla sparowanego serwera, każdy nowy
+    /// adres sprawdzany kluczem, ostatnio działający adres zostaje.
+    func applyAddresses(_ payload: AddressesPayload) async {
+        guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else {
+            notice = "Ten kod tylko aktualizuje adresy sparowanego serwera. Najpierw sparuj telefon kodem parowania."
+            return
+        }
+        guard let serverID = session.server.serverID, serverID == payload.server.id else {
+            notice = "Kod pochodzi z innego serwera („\(payload.server.name)”). Żeby przełączyć telefon, sparuj go z tamtym Makiem."
+            return
+        }
+        isConnecting = true
+        defer { isConnecting = false }
+        let outcome = await AddressRefresh.merge(server: session.server, lastWorking: session.server.lastWorkingURL ?? session.baseURL, published: payload.addresses, key: key)
+        guard isCurrent(session) else { return }
+        save(addresses: outcome.addresses, in: session, key: key)
+        var lines: [String] = []
+        if !outcome.added.isEmpty { lines.append("Dodane: " + outcome.added.map(\.absoluteString).joined(separator: ", ")) }
+        if !outcome.removed.isEmpty { lines.append("Usunięte: " + outcome.removed.map(\.absoluteString).joined(separator: ", ")) }
+        let skipped = payload.addresses.count - outcome.addresses.filter { address in payload.addresses.contains { $0.url == address.url } }.count
+        if skipped > 0 { lines.append("Pominięte (nieosiągalne teraz albo niedozwolone): \(skipped)") }
+        notice = lines.isEmpty ? "Adresy serwera są aktualne." : lines.joined(separator: "\n")
+        await performReconnect(silent: true, discovering: false)
+    }
+
+    private func save(addresses: [PairingPayload.Address], in session: ServerSession, key: String) {
+        var server = session.server
+        server.addresses = addresses
+        server.save()
+        phase = .paired(ServerSession(server: server, baseURL: session.baseURL, key: key))
     }
 
     /// Zapytanie (np. synchronizacja postępu) nie doszło do serwera: może zmieniła się sieć.
@@ -222,6 +291,10 @@ final class AppModel {
 
     func handle(url: URL) {
         restoreIfNeeded()
+        if AddressesPayload.matches(url) {
+            handleAddresses(url: url)
+            return
+        }
         do {
             accept(try PairingPayload(url: url))
         } catch {
@@ -232,6 +305,10 @@ final class AppModel {
 
     func handle(scanned text: String) {
         restoreIfNeeded()
+        if let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), AddressesPayload.matches(url) {
+            handleAddresses(url: url)
+            return
+        }
         do {
             accept(try PairingPayload(string: text))
         } catch {

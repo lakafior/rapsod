@@ -7,6 +7,7 @@ struct PhonePairingSection: View {
     let pairing: PhonePairing
 
     @State private var showsPairing = false
+    @State private var addressesCode: AddressesCode?
     @State private var revoking: PhonePairing.Device?
     @State private var confirmsAdmin = false
     @State private var actionError: String?
@@ -32,6 +33,9 @@ struct PhonePairingSection: View {
         .sheet(isPresented: $showsPairing) {
             PairPhoneSheet(pairing: pairing)
         }
+        .sheet(item: $addressesCode) { code in
+            AddressesCodeSheet(url: code.url)
+        }
         .confirmationDialog(
             "Unieważnić klucz telefonu „\(revoking?.name ?? "")”?",
             isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }),
@@ -53,6 +57,17 @@ struct PhonePairingSection: View {
             }
             ForEach(pairing.devices) { device in
                 DeviceRow(device: device) { revoking = device }
+            }
+
+            if !pairing.devices.isEmpty {
+                LabeledContent("Adresy na telefonach") {
+                    Button("Kod z adresami…") { addressesCode = pairing.addressesCode().map(AddressesCode.init) }
+                        .disabled(pairing.addresses.isEmpty)
+                }
+                Text("Po włączeniu dostępu spoza domu albo zmianie adresów zeskanuj ten kod w aplikacji na telefonie — zaktualizuje adresy bez ponownego parowania. Kod nie zawiera klucza; telefon sprawdza każdy nowy adres swoim kluczem. Zmieniony adres w sieci lokalnej telefon znajduje też sam (Bonjour).")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             LabeledContent("Uprawnienia administratora") {
@@ -317,4 +332,36 @@ private struct PairPhoneSheet: View {
             dismiss()
         }
     }
+}
+
+/// Kod z samymi adresami serwera (bez klucza), dla już sparowanych telefonów.
+private struct AddressesCodeSheet: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Adresy serwera").font(.headline)
+            Text("Zeskanuj kod aparatem iPhone’a albo w aplikacji AudiobookSwift („Zeskanuj kod z Maca”).")
+                .font(.callout)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if let image = PairingQRCode.image(for: url) {
+                Image(decorative: image, scale: 1)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: 240, height: 240)
+                    .accessibilityLabel(Text("Kod z adresami serwera"))
+            }
+            Button("Gotowe") { dismiss() }
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(24)
+        .frame(width: 360)
+    }
+}
+
+private struct AddressesCode: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
