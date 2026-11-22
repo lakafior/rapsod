@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("orderDownloadWhenStreaming") private var orderWhenStreaming = true
     @AppStorage(DownloadsController.wifiOnlyKey) private var wifiOnly = true
     @AppStorage(DownloadsController.tunnelKey) private var allowsTunnel = false
+    @AppStorage(DownloadsController.removeFinishedKey) private var removesFinished = false
     @State private var confirmsRemoveAll = false
 
     var body: some View {
@@ -148,6 +149,7 @@ struct SettingsView: View {
             }
             Toggle("Pobieraj tylko przez Wi-Fi", isOn: $wifiOnly)
             Toggle("Pobieraj przez dostęp spoza domu (tunel)", isOn: $allowsTunnel)
+            Toggle("Usuwaj pobrane po wysłuchaniu", isOn: $removesFinished)
             if !items.isEmpty || otherServers > 0 {
                 Button("Usuń wszystkie pobrane", role: .destructive) { confirmsRemoveAll = true }
                     // Na samym przycisku: dwa okna potwierdzenia na jednym widoku się wykluczają.

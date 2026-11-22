@@ -40,6 +40,8 @@ struct SeriesPage: View {
     @State private var failures: [LibraryFailure] = []
     @State private var error: String?
     @State private var isLoading = true
+    @State private var bulkMessage: String?
+    @State private var isDownloading = false
 
     private var name: String { series?.first.name ?? seed?.value.name ?? "" }
 
@@ -65,6 +67,25 @@ struct SeriesPage: View {
             }
         }
         .navigationTitle(name)
+        .toolbar {
+            if !books.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Pobierz wszystkie tomy na telefon", systemImage: isDownloading ? "hourglass" : "arrow.down.circle") {
+                        Task {
+                            isDownloading = true
+                            bulkMessage = await BulkDownload.start(books.map { .book(itemID: $0.id) }, session: session).message
+                            isDownloading = false
+                        }
+                    }
+                    .disabled(isDownloading)
+                }
+            }
+        }
+        .alert("Pobieranie serii", isPresented: Binding(get: { bulkMessage != nil }, set: { if !$0 { bulkMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(bulkMessage ?? "")
+        }
         .refreshable { await load() }
         .task { await load() }
     }

@@ -445,3 +445,30 @@ struct OfflineFallback: View {
         }
     }
 }
+
+/// „Pobierz wszystko” (seria, podcast): kolejno dodaje do pobierania to, czego nie ma na telefonie.
+@MainActor
+enum BulkDownload {
+    struct Result {
+        var added = 0
+        var error: String?
+
+        var message: String {
+            let base = added == 0 ? "Wszystko z tej listy jest już na telefonie albo się pobiera." : "Dodano do pobierania: \(PolishCount.positions(added))."
+            return error.map { base + " Nie wszystko się udało: \($0)" } ?? base
+        }
+    }
+
+    static func start(_ targets: [DownloadTarget], session: ServerSession) async -> Result {
+        var result = Result()
+        for target in targets where session.downloads.manager.entry(itemID: target.itemID, episodeID: target.episodeID).status == .notDownloaded {
+            do {
+                try await target.start(in: session)
+                result.added += 1
+            } catch {
+                result.error = error.localizedDescription
+            }
+        }
+        return result
+    }
+}

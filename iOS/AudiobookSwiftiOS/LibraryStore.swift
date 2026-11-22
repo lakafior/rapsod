@@ -32,6 +32,7 @@ final class LibraryStore {
     @ObservationIgnored private let auth: ListeningAuth
     @ObservationIgnored private let journal: ProgressJournal
     @ObservationIgnored private let downloads: DownloadsController
+    @ObservationIgnored private let playback: PlaybackCoordinator
     @ObservationIgnored private var events: ListeningEvents?
     @ObservationIgnored private var itemsChange: Task<Void, Never>?
 
@@ -39,6 +40,7 @@ final class LibraryStore {
         self.auth = auth
         self.journal = journal
         self.downloads = downloads
+        self.playback = playback
         let progress = ProgressStore()
         self.progress = progress
         podcasts = PodcastStore(auth: auth, playback: playback, progress: progress, localEpisodes: journal, feeds: feeds)
@@ -100,6 +102,12 @@ final class LibraryStore {
         for entry in list {
             guard let itemID = entry.libraryItemId, downloads.manager.item(itemID: itemID, episodeID: entry.episodeId) != nil else { continue }
             journal.recordServer(entry)
+            // „Usuwaj po wysłuchaniu”: ukończone znika z telefonu — ale nie to, co właśnie gra
+            // (po ukończeniu odtwarzacz zostaje na początku i można słuchać od nowa).
+            let key = PlaybackTimeline.key(itemID, entry.episodeId)
+            if entry.isFinished, UserDefaults.standard.bool(forKey: DownloadsController.removeFinishedKey), !playback.nowPlayingKeys.contains(key) {
+                downloads.manager.remove(key: ProgressJournal.key(itemID, entry.episodeId))
+            }
         }
     }
 

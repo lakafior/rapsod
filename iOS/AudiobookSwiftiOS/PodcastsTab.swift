@@ -51,34 +51,60 @@ private struct PodcastsContent: View {
     /// Posortowana lista — liczona przy zmianie danych albo sortowania, nie w `body`.
     @State private var sorted: [Client.LibraryItem] = []
 
+    @AppStorage("podcasts.layout") private var layout: BookLayout = .grid
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 30) {
                 if model.isOffline {
                     Label("Brak połączenia z serwerem.", systemImage: "wifi.slash")
-                        .font(.footnote).foregroundStyle(.secondary).padding(.horizontal)
+                        .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, Design.margin)
                 }
-                FailureNotice(failures: failures).padding(.horizontal)
-                ContinueEpisodes(serverItems: inProgress, model: model, session: session) { playError = $0 }
+                FailureNotice(failures: failures).padding(.horizontal, Design.margin)
+                ContinueEpisodesShelf(serverItems: inProgress, model: model, session: session) { playError = $0 }
                 if !recent.isEmpty {
-                    EpisodeShelf(title: "Najnowsze odcinki", episodes: recent, combined: combined, model: model, session: session)
+                    EpisodeColumnsShelf(title: "Najnowsze odcinki", destination: .shelf(.newEpisodes), episodes: recent, model: model, session: session)
                 }
                 if !sorted.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Wszystkie podcasty")
-                            .font(.title3.bold())
-                            .accessibilityAddTraits(.isHeader)
-                        LazyVGrid(columns: coverColumns(minimum: cardMinimum), spacing: 18) {
-                            ForEach(sorted) { item in
-                                PodcastCard(item: item, session: session,
-                                            libraryName: combined.hasSeveralPodcastLibraries ? combined.libraryName(item.libraryId) : nil)
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader(title: "Wszystkie podcasty", subtitle: PolishCount.form(sorted.count, one: "podcast", few: "podcasty", many: "podcastów"))
+                        switch layout {
+                        case .grid:
+                            LazyVGrid(columns: coverColumns(minimum: cardMinimum), spacing: 20) {
+                                ForEach(sorted) { item in
+                                    PodcastCard(item: item, session: session,
+                                                libraryName: combined.hasSeveralPodcastLibraries ? combined.libraryName(item.libraryId) : nil)
+                                }
                             }
+                            .padding(.horizontal, Design.margin)
+                        case .list:
+                            LazyVStack(spacing: 0) {
+                                ForEach(sorted) { item in
+                                    NavigationLink(value: Route.item(item.id)) {
+                                        VStack(spacing: 0) {
+                                            HStack(spacing: 12) {
+                                                ItemCover(itemID: item.id, session: session, points: 60, isPodcast: true).frame(width: 56)
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(item.title).lineLimit(2)
+                                                    Text([item.author, item.media.numEpisodes.map(PolishCount.episodes)].compactMap(\.self).joined(separator: " · "))
+                                                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                                                }
+                                                Spacer(minLength: 0)
+                                            }
+                                            .padding(.vertical, 8)
+                                            Divider().padding(.leading, 68)
+                                        }
+                                        .contentShape(.rect)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, Design.margin)
                         }
                     }
-                    .padding(.horizontal)
                 }
             }
-            .padding(.vertical)
+            .padding(.vertical, 8)
         }
         .overlay {
             if let podcasts, podcasts.isEmpty {
@@ -88,7 +114,7 @@ private struct PodcastsContent: View {
                 if let error {
                     LoadFailureView(message: error) { Task { await load() } }
                 } else {
-                    ProgressView()
+                    ShelvesSkeleton()
                 }
             }
         }
@@ -124,6 +150,11 @@ private struct PodcastsContent: View {
 
     private var sortMenu: some View {
         Menu {
+            Picker("Widok", selection: $layout) {
+                Label("Siatka", systemImage: "square.grid.2x2").tag(BookLayout.grid)
+                Label("Lista", systemImage: "list.bullet").tag(BookLayout.list)
+            }
+            .pickerStyle(.palette)
             Picker("Sortuj", selection: Binding(get: { sort }, set: { value in
                 if value == sort { descending.toggle() } else { sort = value; descending = value.defaultDescending }
             })) {
@@ -133,7 +164,7 @@ private struct PodcastsContent: View {
                 }
             }
         } label: {
-            Label("Sortuj", systemImage: "arrow.up.arrow.down")
+            Label("Widok i sortowanie", systemImage: "line.3.horizontal.decrease.circle")
         }
         .accessibilityLabel(Text("Sortuj podcasty: \(Self.title(sort)), \(descending ? "malejąco" : "rosnąco")"))
     }
@@ -183,7 +214,7 @@ struct PodcastCard: View {
     var body: some View {
         NavigationLink(value: Route.item(item.id)) {
             VStack(alignment: .leading, spacing: 4) {
-                ItemCover(itemID: item.id, session: session)
+                ItemCover(itemID: item.id, session: session, isPodcast: true)
                 Text(item.title)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(2)
@@ -207,9 +238,8 @@ struct PodcastCard: View {
 }
 
 /// Odcinki w trakcie: z serwera (`items-in-progress`) i słuchane ze strumienia (postęp na telefonie),
-/// połączone bez powtórzeń (`ContinueListening`): każdy zaczęty odcinek raz, od ostatnio słuchanego.
-struct ContinueEpisodes: View {
-    var title = "Słuchaj dalej"
+/// połączone bez powtórzeń (`ContinueListening`) — te same karty co na Starcie.
+struct ContinueEpisodesShelf: View {
     let serverItems: [Client.LibraryItem]
     let model: AppModel
     let session: ServerSession
@@ -218,50 +248,13 @@ struct ContinueEpisodes: View {
     var body: some View {
         let podcasts = session.library.podcasts
         let merged = ContinueListening.merge(books: [], serverEpisodes: serverItems, local: podcasts.localEpisodes.inProgress,
-                                             lastUpdate: session.library.progress.lastUpdateByKey, limit: 8)
-        if !merged.entries.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .font(.title3.bold())
-                    .padding(.horizontal)
-                    .accessibilityAddTraits(.isHeader)
-                VStack(spacing: 0) {
-                    ForEach(merged.entries) { entry in
-                        row(entry)
-                    }
-                }
-                .padding(.horizontal)
-            }
-            // Pewne dopasowania ukryte na półce — ich postęp trafia na serwer.
-            .task(id: merged.handover.map(\.id)) {
-                if !merged.handover.isEmpty { podcasts.handOver(merged.handover) }
-            }
+                                             lastUpdate: session.library.progress.lastUpdateByKey, limit: 12)
+        Shelf(title: "Słuchaj dalej", width: .wide, items: merged.entries) { entry in
+            ContinueCard(entry: entry, model: model, session: session, failed: failed)
         }
-    }
-
-    @ViewBuilder
-    private func row(_ entry: ContinueListening.Entry) -> some View {
-        switch entry.kind {
-        case .serverEpisode(let item, let episode, let weakLocal):
-            CompactEpisodeRow(itemID: item.id, title: episode.title ?? "Odcinek", podcastTitle: item.title,
-                              keys: Set([PlaybackTimeline.key(item.id, episode.id)] + (weakLocal.map { [PlaybackTimeline.feedKey(item.id, $0.feedKey)] } ?? [])),
-                              localOnly: false, session: session, playback: model.playback,
-                              download: .episode(episode, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId)) {
-                Task { await session.library.podcasts.play(itemID: item.id, episode: episode, weakLocal: weakLocal) }
-            }
-        case .localEpisode(let record):
-            CompactEpisodeRow(itemID: record.itemID, title: record.title, podcastTitle: record.podcastTitle ?? "",
-                              keys: [PlaybackTimeline.feedKey(record.itemID, record.feedKey)], localOnly: true, session: session, playback: model.playback) {
-                Task {
-                    let key = PlaybackTimeline.feedKey(record.itemID, record.feedKey)
-                    await model.playback.play(external: .init(
-                        itemID: record.itemID, feedKey: record.feedKey, title: record.title, podcastTitle: record.podcastTitle,
-                        guid: record.guid, enclosureURL: record.enclosureURL, published: record.published, feedDuration: record.duration))
-                    if let error = model.playback.loadError, !model.playback.nowPlayingKeys.contains(key) { failed(error) }
-                }
-            }
-        case .book:
-            EmptyView()
+        // Pewne dopasowania ukryte na półce — ich postęp trafia na serwer.
+        .task(id: merged.handover.map(\.id)) {
+            if !merged.handover.isEmpty { podcasts.handOver(merged.handover) }
         }
     }
 }
@@ -348,33 +341,3 @@ struct CompactEpisodeRow: View {
     }
 }
 
-/// „Najnowsze odcinki” — odcinki na serwerze ze wszystkich bibliotek, od najnowszego.
-struct EpisodeShelf: View {
-    let title: String
-    let episodes: [Client.PodcastEpisode]
-    let combined: CombinedLibraries
-    let model: AppModel
-    let session: ServerSession
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.title3.bold())
-                .padding(.horizontal)
-                .accessibilityAddTraits(.isHeader)
-            VStack(spacing: 0) {
-                ForEach(episodes) { episode in
-                    if let itemID = episode.libraryItemId {
-                        CompactEpisodeRow(itemID: itemID, title: episode.title ?? "Odcinek",
-                                          podcastTitle: [episode.podcast?.metadata?.title, episode.published.map { $0.formatted(.dateTime.day().month(.abbreviated)) }].compactMap(\.self).joined(separator: " · "),
-                                          keys: [PlaybackTimeline.key(itemID, episode.id)], localOnly: false, session: session, playback: model.playback,
-                                          download: .episode(episode, itemID: itemID, podcastTitle: episode.podcast?.metadata?.title, libraryID: nil)) {
-                            Task { await model.playback.play(itemID: itemID, episodeID: episode.id) }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal)
-        }
-    }
-}

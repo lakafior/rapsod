@@ -273,7 +273,7 @@ struct PodcastPage: View {
         } message: { failure in
             Text(failure.message)
         }
-        .alert("Pobieranie na serwer", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+        .alert("Pobieranie", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(notice ?? "")
@@ -354,8 +354,28 @@ struct PodcastPage: View {
         }
     }
 
+    /// Odcinki z serwera do pobrania na telefon, od najnowszych (`nil` — wszystkie).
+    private func downloadLatest(_ count: Int?) {
+        let server = page.rows.compactMap(\.server)
+        let chosen = count.map { Array(server.prefix($0)) } ?? server
+        Task {
+            notice = await BulkDownload.start(chosen.map { .episode($0, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId) }, session: session).message
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        if page.rows.contains(where: { $0.server != nil }) {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("Pobierz na telefon", systemImage: "arrow.down.circle") {
+                    Section("Odcinki z serwera") {
+                        Button("3 najnowsze") { downloadLatest(3) }
+                        Button("10 najnowszych") { downloadLatest(10) }
+                        Button("Wszystkie (\(page.rows.count { $0.server != nil }))") { downloadLatest(nil) }
+                    }
+                }
+            }
+        }
         // Bez uprawnień zaznaczanie nic by nie dało — przycisk znika (wyjaśnienie jest pod listą).
         if podcasts.permission.canOrder, page.rows.contains(where: \.canOrder) {
             ToolbarItem(placement: .topBarTrailing) {
