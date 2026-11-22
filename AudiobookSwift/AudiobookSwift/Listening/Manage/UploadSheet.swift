@@ -448,7 +448,7 @@ private struct UploadEntryCard: View {
             .disabled(locked)
             DisclosureGroup("\(Formats.files(entry.files.count)) · \(Formats.size(Double(entry.size)))") {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(entry.files, id: \.self) { Text($0.lastPathComponent).font(.caption).lineLimit(1) }
+                    ForEach(Array(zip(entry.files, UploadGrouping.uploadNames(for: entry.files))), id: \.0) { Text($0.1).font(.caption).lineLimit(1) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

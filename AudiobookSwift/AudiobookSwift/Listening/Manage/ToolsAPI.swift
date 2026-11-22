@@ -157,10 +157,11 @@ extension AudiobookshelfClient {
             if let series { try output.write(contentsOf: field("series", series)) }
             try output.write(contentsOf: field("library", libraryID))
             try output.write(contentsOf: field("folder", folderID))
+            let names = UploadGrouping.uploadNames(for: files)
             for (index, file) in files.enumerated() {
                 try Task.checkCancellation()
                 // Nazwa pliku w nagłówku: cudzysłów i znaki nowej linii rozbiłyby nagłówek.
-                let name = file.lastPathComponent.replacingOccurrences(of: "\"", with: "'")
+                let name = names[index].replacingOccurrences(of: "\"", with: "'")
                     .replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
                 try output.write(contentsOf: Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(index)\"; filename=\"\(name)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
                 let input = try FileHandle(forReadingFrom: file)
