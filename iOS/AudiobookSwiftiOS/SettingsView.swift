@@ -14,6 +14,9 @@ struct SettingsView: View {
     @State private var showsScanner = false
     @State private var scanned: String?
     @AppStorage("orderDownloadWhenStreaming") private var orderWhenStreaming = true
+    @AppStorage(DownloadsController.wifiOnlyKey) private var wifiOnly = true
+    @AppStorage(DownloadsController.tunnelKey) private var allowsTunnel = false
+    @State private var confirmsRemoveAll = false
 
     var body: some View {
         NavigationStack {
@@ -61,6 +64,8 @@ struct SettingsView: View {
                     Text("Telefon zawsze najpierw próbuje adresu w sieci lokalnej, potem dostępu spoza domu.")
                 }
 
+                downloadsSection
+
                 if let combined = session.library.combined, !combined.podcastLibraries.isEmpty {
                     Section {
                         LabeledContent("Pobieranie odcinków na serwer", value: podcastPermission)
@@ -101,9 +106,14 @@ struct SettingsView: View {
             .navigationTitle("Ustawienia")
             .confirmationDialog("Rozłączyć ten telefon?", isPresented: $confirmsDisconnect, titleVisibility: .visible) {
                 Button("Rozłącz", role: .destructive) { model.disconnect() }
+                if !session.downloads.manager.items(scope: session.scope).isEmpty {
+                    Button("Rozłącz i usuń pobrane", role: .destructive) { model.disconnect(removingDownloads: true) }
+                }
             } message: {
-                Text("Klucz dostępu zostanie usunięty z telefonu.")
+                Text("Klucz dostępu zostanie usunięty z telefonu. Pobrane pliki zostają, chyba że wybierzesz ich usunięcie — po ponownym sparowaniu z tym serwerem będą znowu dostępne.")
             }
+            .onChange(of: wifiOnly) { model.updateDownloadGate() }
+            .onChange(of: allowsTunnel) { model.updateDownloadGate() }
             // Kod obsługujemy po zamknięciu arkusza (alert w trakcie zamykania mógłby przepaść).
             .sheet(isPresented: $showsScanner, onDismiss: {
                 if let scanned {
@@ -116,6 +126,41 @@ struct SettingsView: View {
                     showsScanner = false
                 }
             }
+        }
+    }
+
+    private var downloadsSection: some View {
+        let manager = session.downloads.manager
+        let items = manager.items(scope: session.scope)
+        let otherServers = manager.usedBytes() - manager.usedBytes(scope: session.scope)
+        return Section {
+            NavigationLink {
+                DownloadsScreen(model: model, session: session)
+            } label: {
+                LabeledContent("Pobrane i kolejka", value: items.isEmpty ? "brak" : PolishCount.positions(items.count))
+            }
+            LabeledContent("Zajęte miejsce", value: manager.usedBytes(scope: session.scope).formatted(.byteCount(style: .file)))
+            if otherServers > 0 {
+                LabeledContent("Z innych serwerów", value: otherServers.formatted(.byteCount(style: .file)))
+            }
+            if case .closed(let wait) = manager.gate, items.contains(where: { !$0.isComplete }) {
+                Label(wait.text, systemImage: "pause.circle").foregroundStyle(.secondary)
+            }
+            Toggle("Pobieraj tylko przez Wi-Fi", isOn: $wifiOnly)
+            Toggle("Pobieraj przez dostęp spoza domu (tunel)", isOn: $allowsTunnel)
+            if !items.isEmpty || otherServers > 0 {
+                Button("Usuń wszystkie pobrane", role: .destructive) { confirmsRemoveAll = true }
+                    // Na samym przycisku: dwa okna potwierdzenia na jednym widoku się wykluczają.
+                    .confirmationDialog("Usunąć wszystkie pobrane?", isPresented: $confirmsRemoveAll, titleVisibility: .visible) {
+                        Button("Usuń wszystkie pobrane", role: .destructive) { session.downloads.manager.removeAll() }
+                    } message: {
+                        Text("Pliki znikną z telefonu, a trwające pobierania zostaną przerwane. Postęp słuchania zostaje.")
+                    }
+            }
+        } header: {
+            Text("Pobieranie na telefon")
+        } footer: {
+            Text("Pobrane książki i odcinki grają z telefonu, także bez sieci; postęp trafia na serwer, gdy połączenie wróci. Domyślnie pliki pobierają się tylko w sieci domowej: darmowy plan Cloudflare zastrzega ograniczenia dla dużych plików przesyłanych przez tunel, więc pobieranie spoza domu włączaj świadomie.")
         }
     }
 

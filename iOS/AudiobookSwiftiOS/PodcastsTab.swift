@@ -16,10 +16,13 @@ struct PodcastsTab: View {
         NavigationStack {
             Group {
                 switch session.library.state {
+                case .loading where model.isOffline:
+                    // Bez sieci nie czekamy na limit czasu zapytań — od razu to, co jest na telefonie.
+                    OfflineFallback(model: model, session: session, message: nil) { Task { await model.reconnect() } }
                 case .loading:
                     ProgressView()
                 case .failed(let message):
-                    LoadFailureView(message: message) { Task { await session.library.load() } }
+                    OfflineFallback(model: model, session: session, message: message) { Task { await session.library.load() } }
                 case .ready(let combined):
                     PodcastsContent(combined: combined, model: model, session: session)
                 }
@@ -223,7 +226,8 @@ struct ContinueEpisodes: View {
                     ForEach(serverItems.prefix(8)) { item in
                         if let episode = item.recentEpisode {
                             CompactEpisodeRow(itemID: item.id, title: episode.title ?? "Odcinek", podcastTitle: item.title,
-                                              keys: [PlaybackTimeline.key(item.id, episode.id)], localOnly: false, session: session, playback: model.playback) {
+                                              keys: [PlaybackTimeline.key(item.id, episode.id)], localOnly: false, session: session, playback: model.playback,
+                                              download: .episode(episode, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId)) {
                                 Task { await model.playback.play(itemID: item.id, episodeID: episode.id) }
                             }
                         }
@@ -256,8 +260,11 @@ struct CompactEpisodeRow: View {
     let localOnly: Bool
     let session: ServerSession
     let playback: PlaybackCoordinator
+    /// Odcinek na serwerze — można go pobrać na telefon (menu kontekstowe, znacznik stanu).
+    var download: DownloadTarget? = nil
     let play: () -> Void
     @ScaledMetric(relativeTo: .body) private var coverSide: CGFloat = 48
+    @State private var downloadError: String?
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -285,6 +292,7 @@ struct CompactEpisodeRow: View {
                         cover
                         texts(lineLimit: 2)
                         Spacer(minLength: 0)
+                        if let download { DownloadEntryBadge(entry: session.downloads.manager.entry(itemID: download.itemID, episodeID: download.episodeID)) }
                         icon
                     }
                 }
@@ -293,10 +301,27 @@ struct CompactEpisodeRow: View {
             .contentShape(.rect)
             // Na zawartości przycisku, nie na nim — inaczej VoiceOver widzi dwa elementy (etap 10d).
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("\(title), \(podcastTitle)\(localOnly ? ", postęp tylko na tym telefonie" : "")"))
+            .accessibilityLabel(Text("\(title), \(podcastTitle)\(localOnly ? ", postęp tylko na tym telefonie" : "")\(downloadSuffix)"))
         }
         .buttonStyle(.plain)
         .accessibilityHint(Text(isCurrent && playback.player.isPlaying ? "Wstrzymuje odtwarzanie" : "Odtwarza odcinek"))
+        .contextMenu {
+            if let download {
+                DownloadMenuItems(target: download, session: session) { downloadError = $0 }
+            }
+        }
+        .alert("Nie udało się pobrać", isPresented: Binding(get: { downloadError != nil }, set: { if !$0 { downloadError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(downloadError ?? "")
+        }
+    }
+
+    /// Stan pobrania w etykiecie VoiceOver (tylko gdy coś się dzieje albo jest pobrane).
+    private var downloadSuffix: String {
+        guard let download else { return "" }
+        let status = session.downloads.manager.entry(itemID: download.itemID, episodeID: download.episodeID).status
+        return status == .notDownloaded ? "" : ", \(status.text)"
     }
 
     private func texts(lineLimit: Int?) -> some View {
@@ -327,7 +352,8 @@ struct EpisodeShelf: View {
                     if let itemID = episode.libraryItemId {
                         CompactEpisodeRow(itemID: itemID, title: episode.title ?? "Odcinek",
                                           podcastTitle: [episode.podcast?.metadata?.title, episode.published.map { $0.formatted(.dateTime.day().month(.abbreviated)) }].compactMap(\.self).joined(separator: " · "),
-                                          keys: [PlaybackTimeline.key(itemID, episode.id)], localOnly: false, session: session, playback: model.playback) {
+                                          keys: [PlaybackTimeline.key(itemID, episode.id)], localOnly: false, session: session, playback: model.playback,
+                                          download: .episode(episode, itemID: itemID, podcastTitle: episode.podcast?.metadata?.title, libraryID: nil)) {
                             Task { await model.playback.play(itemID: itemID, episodeID: episode.id) }
                         }
                     }

@@ -159,10 +159,13 @@ struct BooksTab: View {
         NavigationStack {
             Group {
                 switch session.library.state {
+                case .loading where model.isOffline:
+                    // Bez sieci nie czekamy na limit czasu zapytań — od razu to, co jest na telefonie.
+                    OfflineFallback(model: model, session: session, message: nil) { Task { await model.reconnect() } }
                 case .loading:
                     ProgressView()
                 case .failed(let message):
-                    LoadFailureView(message: message) { Task { await session.library.load() } }
+                    OfflineFallback(model: model, session: session, message: message) { Task { await session.library.load() } }
                 case .ready(let combined):
                     switch mode {
                     case .books: BooksGrid(combined: combined, session: session, mode: $mode)

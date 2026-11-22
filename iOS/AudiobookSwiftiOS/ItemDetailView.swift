@@ -100,6 +100,7 @@ struct ItemDetailView: View {
                 if !item.isPodcast {
                     BookProgress(entry: session.library.progress.entry(item.id), duration: item.media.duration)
                     PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
+                    DownloadButton(target: .book(itemID: item.id), session: session)
                 }
             }
             .frame(maxWidth: .infinity)

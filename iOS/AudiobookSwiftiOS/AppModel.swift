@@ -22,29 +22,43 @@ final class ServerSession: Identifiable {
     let covers = CoverCache()
     /// Biblioteki połączone w jedną, postęp i zdarzenia serwera (etap 10d).
     let library: LibraryStore
+    /// Serwer w indeksie pobranych i w nazwie pliku dziennika (identyfikator z parowania).
+    let scope: String
+    /// Trwały postęp na telefonie (etap 10f) — ten sam obiekt dla wszystkich połączeń z tym serwerem.
+    let journal: ProgressJournal
+    let downloads: DownloadsController
 
     init(server: PairedServer, baseURL: URL, key: String, podcasts: PodcastContext) {
         self.server = server
         self.baseURL = baseURL
+        scope = podcasts.scope
+        journal = podcasts.journal
+        downloads = podcasts.downloads
         auth = ListeningAuth(client: AudiobookshelfClient(baseURL: baseURL), secret: .apiKey(key))
-        library = LibraryStore(auth: auth, playback: podcasts.playback, localEpisodes: podcasts.localEpisodes, feeds: podcasts.feeds)
+        library = LibraryStore(auth: auth, playback: podcasts.playback, journal: podcasts.journal, feeds: podcasts.feeds, downloads: podcasts.downloads)
     }
 
+    /// Okładka: z pobranych na telefon, gdy są (bez sieci i bez zapytania), inaczej z serwera.
     func cover(itemID: String, path: String?, size: CGFloat, scale: CGFloat) async -> PlatformImage? {
-        await covers.image(itemID: itemID, path: path, pixels: Int(size * scale)) { [auth] width in
+        let pixels = Int(size * scale)
+        if let local = downloads.coverURL(itemID: itemID), let image = await DownloadsController.thumbnail(at: local, pixels: pixels) {
+            return image
+        }
+        return await covers.image(itemID: itemID, path: path, pixels: pixels) { [auth] width in
             try? await auth.perform { try await $0.cover(itemID: itemID, width: width, token: $1) }
         }
     }
 }
 
-/// To, co żyje dłużej niż jedno połączenie, a potrzebne jest podcastom sesji: odtwarzacz,
-/// lokalny postęp odcinków (jeden plik na serwer — dwie kopie magazynu nadpisywałyby się nawzajem)
-/// i pamięć kanałów RSS.
+/// To, co żyje dłużej niż jedno połączenie: odtwarzacz, dziennik postępu (jeden plik na serwer —
+/// dwie kopie nadpisywałyby się nawzajem), pamięć kanałów RSS i pobieranie na telefon.
 @MainActor
 struct PodcastContext {
     let playback: PlaybackCoordinator
-    let localEpisodes: LocalEpisodeStore
+    let journal: ProgressJournal
     let feeds: PodcastFeedLoader
+    let downloads: DownloadsController
+    let scope: String
 }
 
 /// Stan aplikacji: niesparowana, łączenie, sparowana.
@@ -80,8 +94,13 @@ final class AppModel {
     /// a słuchanie trwa dalej.
     let playback: PlaybackCoordinator
     @ObservationIgnored private let audio: AudioSessionController
-    /// Lokalny postęp odcinków, według serwera.
-    @ObservationIgnored private var localEpisodeStores: [String: LocalEpisodeStore] = [:]
+    /// Dziennik postępu, według serwera.
+    @ObservationIgnored private var journals: [String: ProgressJournal] = [:]
+    /// Pobieranie na telefon — powstaje od razu przy starcie: system może uruchomić aplikację
+    /// w tle tylko po to, żeby oddać pobrane pliki.
+    let downloads = DownloadsController()
+    /// Adres, którym telefon ostatnio na pewno połączył się z serwerem (`nil` — brak połączenia).
+    @ObservationIgnored private var connectedURL: URL?
     @ObservationIgnored private let feeds = PodcastFeedLoader(
         directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appending(path: "PodcastFeeds")
     )
@@ -118,7 +137,33 @@ final class AppModel {
         playback.onServerReached = { [weak self] in
             if self?.isOffline == true { self?.isOffline = false }
         }
+        playback.isReachable = { [weak self] in self?.isOffline != true }
+        playback.offlineBook = { [weak self] itemID, episodeID in self?.downloads.playbackBook(itemID: itemID, episodeID: episodeID) }
+        downloads.manager.authorization = {
+            if case .apiKey(let key)? = try? PairedServer.secretStore.load() { return key }
+            return nil
+        }
+        downloads.manager.onConnectionError = { [weak self] in self?.connectionTroubled() }
+        downloads.backgroundWake = { [weak self] in
+            guard let self, connectedURL == nil else { return }
+            Task { await self.reconnect(silent: true) }
+        }
         startPathMonitor()
+        // Ponowne uruchomienie w tle: sparowany serwer i jego dziennik od razu, bez czekania na widok.
+        restoreIfNeeded()
+    }
+
+    /// Bramka pobierania z bieżącego stanu: adres połączenia, rodzaj adresu, Wi-Fi.
+    func updateDownloadGate() {
+        guard let session = currentSession else {
+            downloads.manager.activeScope = nil
+            downloads.updateGate(connectedURL: nil, isLocalAddress: false, onWiFi: hasLocalNetwork)
+            return
+        }
+        downloads.manager.activeScope = session.scope
+        let url = isOffline ? nil : connectedURL
+        let isLocal = url.map { url in session.server.addresses.first { $0.url == url }?.kind == .local } ?? false
+        downloads.updateGate(connectedURL: url, isLocalAddress: isLocal, onWiFi: hasLocalNetwork)
     }
 
     /// Stały identyfikator tego telefonu dla serwera: nowa sesja tego samego urządzenia zamyka
@@ -140,7 +185,9 @@ final class AppModel {
 
     func start() async {
         restoreIfNeeded()
-        await reconnect()
+        // Z pobranymi na telefonie brak serwera to nie błąd: zamiast alertu — „Pobrane” i pasek.
+        let hasDownloads = currentSession.map { !downloads.manager.items(scope: $0.scope).isEmpty } ?? false
+        await reconnect(silent: hasDownloads)
     }
 
     /// Odtwarza zapisane parowanie (synchronicznie). Wołane też przed obsługą adresu
@@ -183,6 +230,8 @@ final class AppModel {
             server.lastWorkingURL = connection.url
             server.save()
             isOffline = false
+            connectedURL = connection.url
+            defer { updateDownloadGate() }
             let changed = connection.url != session.baseURL
             if changed {
                 logger.notice("Nowy adres serwera: \(connection.url.absoluteString, privacy: .public)")
@@ -210,6 +259,8 @@ final class AppModel {
                 return
             }
             isOffline = true
+            connectedURL = nil
+            updateDownloadGate()
             if !silent {
                 self.error = error.localizedDescription
                 canRetry = true
@@ -302,6 +353,7 @@ final class AppModel {
             Task { @MainActor in
                 self?.hasLocalNetwork = local
                 self?.pathChanged(satisfied: satisfied)
+                self?.updateDownloadGate()
             }
         }
         pathMonitor.start(queue: DispatchQueue(label: "net.smigi.abswift.ios.path"))
@@ -321,19 +373,24 @@ final class AppModel {
         }
     }
 
-    /// Nowe połączenie z serwerem; odtwarzacz zapisuje lokalny postęp odcinków do magazynu tego serwera.
+    /// Nowe połączenie z serwerem; odtwarzacz zapisuje postęp do dziennika tego serwera.
     private func makeSession(server: PairedServer, baseURL: URL, key: String) -> ServerSession {
         let scope = server.serverID ?? server.addresses.first?.url.absoluteString ?? "serwer"
-        let store: LocalEpisodeStore
-        if let existing = localEpisodeStores[scope] {
-            store = existing
+        let journal: ProgressJournal
+        if let existing = journals[scope] {
+            journal = existing
         } else {
-            let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appending(path: "LocalEpisodeProgress")
-            store = LocalEpisodeStore(fileURL: directory?.appending(path: Self.fileName(scope)))
-            localEpisodeStores[scope] = store
+            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            // Lokalny postęp odcinków z etapu 10e przechodzi do dziennika przy pierwszym otwarciu.
+            journal = ProgressJournal(
+                fileURL: support?.appending(path: "Progress").appending(path: Self.fileName(scope)),
+                legacyEpisodesURL: support?.appending(path: "LocalEpisodeProgress").appending(path: Self.fileName(scope))
+            )
+            journals[scope] = journal
         }
-        playback.localEpisodes = store
-        return ServerSession(server: server, baseURL: baseURL, key: key, podcasts: PodcastContext(playback: playback, localEpisodes: store, feeds: feeds))
+        playback.journal = journal
+        let context = PodcastContext(playback: playback, journal: journal, feeds: feeds, downloads: downloads, scope: scope)
+        return ServerSession(server: server, baseURL: baseURL, key: key, podcasts: context)
     }
 
     /// Stała nazwa pliku z identyfikatora serwera (FNV-1a) — bez adresu w nazwie.
@@ -471,6 +528,8 @@ final class AppModel {
             phase = .paired(makeSession(server: server, baseURL: connection.url, key: key))
             offersDisconnect = false
             isOffline = false
+            connectedURL = connection.url
+            updateDownloadGate()
         } catch {
             logger.error("Parowanie nieudane: \(error.localizedDescription, privacy: .public)")
             throw error
@@ -485,14 +544,17 @@ final class AppModel {
     // MARK: - Rozłączanie
 
     /// Usuwa klucz i opis serwera z telefonu. Klucz na serwerze unieważnia się na Macu.
-    func disconnect() {
-        guard playback.player.book != nil else {
-            forgetServer()
-            return
-        }
-        // Pozycja na serwer, zanim zniknie klucz (bez sieci nie ma po co czekać).
+    /// Pobrane pliki zostają (po ponownym sparowaniu z tym samym serwerem wracają), chyba że
+    /// `removingDownloads`.
+    func disconnect(removingDownloads: Bool = false) {
+        let scope = currentSession?.scope
         Task {
-            if isOffline { playback.player.stop() } else { await playback.stop() }
+            // Pozycja na serwer, zanim zniknie klucz (bez sieci nie ma po co czekać — zostaje w dzienniku).
+            if playback.player.book != nil {
+                if isOffline { playback.player.stop() } else { await playback.stop() }
+            }
+            if !isOffline { await playback.uploadJournal() }
+            if removingDownloads, let scope { downloads.manager.removeAll(scope: scope) }
             forgetServer()
         }
     }
@@ -505,6 +567,8 @@ final class AppModel {
         }
         PairedServer.forget()
         offersDisconnect = false
+        connectedURL = nil
         phase = .unpaired
+        updateDownloadGate()
     }
 }

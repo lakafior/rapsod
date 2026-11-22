@@ -47,7 +47,7 @@ final class PodcastStore {
     /// Rośnie, gdy pozycja podcastu zmieniła się na serwerze (np. doszedł pobrany odcinek).
     private(set) var revision: [String: Int] = [:]
 
-    let localEpisodes: LocalEpisodeStore
+    let localEpisodes: ProgressJournal
     let feeds: PodcastFeedLoader
     @ObservationIgnored private let auth: ListeningAuth
     @ObservationIgnored private let playback: PlaybackCoordinator
@@ -56,7 +56,7 @@ final class PodcastStore {
     @ObservationIgnored private var serverFeeds: [String: (date: Date, episodes: [Client.FeedEpisode])] = [:]
     @ObservationIgnored var onProgressSent: (@MainActor () async -> Void)?
 
-    init(auth: ListeningAuth, playback: PlaybackCoordinator, progress: ProgressStore, localEpisodes: LocalEpisodeStore, feeds: PodcastFeedLoader) {
+    init(auth: ListeningAuth, playback: PlaybackCoordinator, progress: ProgressStore, localEpisodes: ProgressJournal, feeds: PodcastFeedLoader) {
         self.auth = auth
         self.playback = playback
         self.progress = progress

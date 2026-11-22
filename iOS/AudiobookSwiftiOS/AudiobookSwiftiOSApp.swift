@@ -3,9 +3,30 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import SwiftUI
+import UIKit
+
+/// Delegat aplikacji tylko dla sesji pobierania w tle: system uruchamia aplikację, żeby oddać
+/// pobrane pliki, i czeka na zakończenie (`completionHandler`), zanim znowu ją uśpi.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        guard identifier == DownloadsController.sessionIdentifier else {
+            completionHandler()
+            return
+        }
+        MainActor.assumeIsolated {
+            if let downloads = DownloadsController.current {
+                downloads.manager.backgroundEventsCompletion = completionHandler
+                downloads.backgroundWake?()
+            } else {
+                DownloadsController.pendingBackgroundCompletion = completionHandler
+            }
+        }
+    }
+}
 
 @main
 struct AudiobookSwiftiOSApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
