@@ -7,7 +7,8 @@
 // wznowieniem, nic po ukończeniu, ponowienie bez sesji po 404), przepisane dla klienta, który
 // gra strumień z serwera przez sieć. Kształty zapytań — z kodu serwera audiobookshelf
 // (`SessionController.js`, `PlaybackSessionManager.js`), bez przenoszenia jego kodu.
-// Odcinki prosto z kanału RSS (etap 10e): kod własny projektu.
+// Odcinki prosto z kanału RSS (etap 10e), pliki pobrane na telefon i trwała kolejka postępu
+// (etap 10f): kod własny projektu.
 
 import AVFoundation
 import AudiobookshelfKit
@@ -22,8 +23,14 @@ private let logger = Logger(subsystem: "net.smigi.abswift", category: "Playback"
 /// Książka zaczyna od pozycji z serwera; podczas słuchania pozycja idzie na serwer co
 /// `syncInterval`, przy pauzie i przy zmianie książki. Wysyłana jest tylko pozycja, którą wytworzył
 /// ten odtwarzacz (`AudiobookPlayer.isDirty`), żeby nie cofnąć postępu z innego urządzenia.
-/// Nieudana wysyłka zostaje w `pending` (w pamięci) i idzie przy następnej okazji; przed
-/// wznowieniem po pauzie odtwarzacz przejmuje pozycję z serwera, jeśli zmieniła się gdzie indziej.
+/// Nieudana wysyłka zostaje w dzienniku (`journal`, na dysku) i idzie przy następnej okazji —
+/// tylko jeśli serwer nie ma nowszego zapisu; przed wznowieniem po pauzie odtwarzacz przejmuje
+/// pozycję z serwera, jeśli zmieniła się gdzie indziej.
+///
+/// **Pozycja pobrana na telefon** (`offlineBook`) gra zawsze z plików, także przy dostępnej sieci,
+/// bez sesji na serwerze: słuchanie zapisuje się jako sesja lokalna w dzienniku i idzie na serwer
+/// przez `POST /api/session/local-all` (statystyki słuchania; serwer sam odrzuca pozycję starszą
+/// niż jego zapis). Bez sieci start bierze pozycję z dziennika.
 ///
 /// **Odcinek prosto z kanału** (`play(external:)`): dźwięk idzie wprost od wydawcy, a postęp —
 /// do `localEpisodes` na telefonie, bo na serwerze odcinka jeszcze nie ma. Gdy serwer go pobierze
@@ -38,7 +45,9 @@ public final class PlaybackCoordinator {
     /// Pozycja, której sesja się właśnie otwiera.
     public private(set) var startingKey: String?
     /// Pozycje czekające na wysłanie (brak sieci, serwer wyłączony), według klucza pozycji.
-    public private(set) var pending: [String: PendingPosition] = [:]
+    public var pending: [String: PositionRecord] {
+        Dictionary(journal.unsentPositions.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+    }
     /// Rośnie po każdym zapisie postępu na serwerze — strony pozycji odświeżają wtedy postęp.
     public private(set) var progressRevision = 0
     /// Odcinki z kanału, których postęp idzie już do odcinka na serwerze: klucz odtwarzacza → id odcinka.
@@ -46,8 +55,12 @@ public final class PlaybackCoordinator {
     /// Długość pliku na serwerze dla przekierowanych odcinków (pozycja przeliczana proporcjonalnie).
     @ObservationIgnored private var redirectedDurations: [String: Double] = [:]
 
-    /// Postęp odcinków słuchanych prosto z kanału (trwały, na telefonie).
-    @ObservationIgnored public var localEpisodes: LocalEpisodeStore?
+    /// Trwały postęp na telefonie: niewysłane pozycje, sesje lokalne, odcinki z kanału (jeden na serwer).
+    @ObservationIgnored public var journal = ProgressJournal(fileURL: nil)
+    /// Pozycja pobrana na telefon, gotowa do grania z plików (`nil` — nie ma jej w całości).
+    @ObservationIgnored public var offlineBook: (@MainActor (_ itemID: String, _ episodeID: String?) -> PlaybackBook?)?
+    /// Czy jest połączenie z serwerem (bez niego nie ma po co czekać na zapytania).
+    @ObservationIgnored public var isReachable: @MainActor () -> Bool = { true }
     /// Sprawdzenie pliku od wydawcy (adres do odtworzenia, długość); `nil` — AVFoundation.
     /// Podmieniane tylko w testach (przez zaślepkę serwera AVFoundation nie przechodzi).
     @ObservationIgnored public var streamProbe: (@Sendable (URL) async throws -> (URL, Double?))?
@@ -72,6 +85,12 @@ public final class PlaybackCoordinator {
     @ObservationIgnored private var lastAgreed: Double?
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
     @ObservationIgnored private var syncInFlight: Task<Void, Never>?
+    @ObservationIgnored private var uploadInFlight: Task<Void, Never>?
+    /// Sesja lokalna bieżącej pozycji pobranej na telefon.
+    @ObservationIgnored private var localSessionID: String?
+
+    /// Komunikat, gdy pozycji nie ma na telefonie, a serwer jest nieosiągalny.
+    public static let offlineMessage = "Brak połączenia z serwerem, a tej pozycji nie ma na telefonie. Pobierz ją, gdy połączenie wróci, żeby słuchać bez sieci."
 
     public init(device: AudiobookshelfClient.DeviceInfo, authProvider: @escaping @MainActor () -> ListeningAuth?) {
         self.device = device
@@ -121,7 +140,7 @@ public final class PlaybackCoordinator {
     private func target(for book: PlaybackBook) -> Target {
         guard let feedKey = book.feedKey else { return .server(itemID: book.itemID, episodeID: book.episodeID) }
         if let episodeID = redirected[book.key] { return .server(itemID: book.itemID, episodeID: episodeID) }
-        if let stored = localEpisodes?.record(itemID: book.itemID, feedKey: feedKey) { return .local(stored) }
+        if let stored = journal.record(itemID: book.itemID, feedKey: feedKey) { return .local(stored) }
         if let externalTemplate, externalTemplate.itemID == book.itemID, externalTemplate.feedKey == feedKey { return .local(externalTemplate) }
         return .local(LocalEpisodeRecord(itemID: book.itemID, feedKey: feedKey, title: book.title, podcastTitle: book.author, guid: nil,
                                          enclosureURL: "", published: nil, duration: book.duration, currentTime: 0, isFinished: false, updatedAt: .now))
@@ -134,7 +153,7 @@ public final class PlaybackCoordinator {
         record.isFinished = finished
         record.updatedAt = .now
         externalTemplate = record
-        localEpisodes?.save(record)
+        journal.save(record)
         progressRevision += 1
     }
 
@@ -155,20 +174,21 @@ public final class PlaybackCoordinator {
             }
             return
         }
-        guard let auth = authProvider(), startingKey == nil else { return }
+        guard startingKey == nil else { return }
+        if let downloaded = offlineBook?(itemID, episodeID) {
+            await playDownloaded(downloaded, from: position)
+            return
+        }
+        guard isReachable() else {
+            loadError = Self.offlineMessage
+            return
+        }
+        guard let auth = authProvider() else { return }
         startingKey = key
         defer { startingKey = nil }
         loadError = nil
 
-        // Poprzednia książka: pozycja na serwer, sesja zamknięta.
-        if player.book != nil {
-            player.pause()
-            await closeSession()
-            player.stop()
-        }
-        redirected = [:]
-        redirectedDurations = [:]
-        externalTemplate = nil
+        await unloadCurrent()
 
         do {
             var playback = try await auth.perform {
@@ -187,14 +207,14 @@ public final class PlaybackCoordinator {
 
             var start = PlaybackTimeline.rewoundStart(playback.currentTime)
             var adoptedLocal = false
-            if let unsent = pending[key] {
+            if let unsent = journal.position(itemID: itemID, episodeID: episodeID), unsent.isUnsent {
                 let server = try? await auth.perform { try await $0.progress(itemID: itemID, episodeID: episodeID, token: $1) }
-                let resolved = PendingPosition.resolveStart(server: server, sessionTime: playback.currentTime, pending: unsent)
-                if resolved.local {
-                    start = resolved.time
+                let resolved = ProgressMerge.start(local: unsent, server: server.map { .some($0) } ?? .none)
+                if let resolved, resolved.fromDevice {
+                    start = resolved.isFinished ? 0 : resolved.time
                     adoptedLocal = true
                 } else {
-                    pending[key] = nil
+                    journal.discardUnsent(itemID: itemID, episodeID: episodeID)
                 }
             }
 
@@ -219,9 +239,88 @@ public final class PlaybackCoordinator {
             loadArtwork(book)
         } catch {
             logger.error("Start odtwarzania: \(error.localizedDescription, privacy: .public)")
-            loadError = error.localizedDescription
+            loadError = AddressSelection.isConnectionError(error) ? Self.offlineMessage : error.localizedDescription
             reportIfConnection(error)
         }
+    }
+
+    /// Poprzednia książka: pozycja na serwer (albo do dziennika), sesja zamknięta.
+    private func unloadCurrent() async {
+        if player.book != nil {
+            player.pause()
+            await closeSession()
+            player.stop()
+        }
+        redirected = [:]
+        redirectedDurations = [:]
+        externalTemplate = nil
+    }
+
+    // MARK: - Pozycja pobrana na telefon
+
+    /// Gra z plików na telefonie, bez sesji serwera. Pozycja startowa: nowszy z zapisów — serwera
+    /// (gdy odpowie w kilka sekund) albo dziennika na telefonie.
+    private func playDownloaded(_ book: PlaybackBook, from position: Double?) async {
+        startingKey = book.key
+        defer { startingKey = nil }
+        loadError = nil
+        await unloadCurrent()
+
+        let local = journal.position(itemID: book.itemID, episodeID: book.episodeID)
+        var lookup = ServerProgressLookup.unreachable
+        if isReachable(), let auth = authProvider() {
+            lookup = await lookupProgress(itemID: book.itemID, episodeID: book.episodeID, auth: auth, timeout: .seconds(4))
+        }
+        if case .some(let remote) = lookup { journal.recordServer(remote) }
+        let point = ProgressMerge.start(local: local, server: lookup)
+        var start = point.map { $0.isFinished ? 0 : PlaybackTimeline.rewoundStart($0.time) } ?? 0
+        if let position { start = position }
+        let chosen = point?.fromDevice == true || position != nil
+
+        session = nil
+        lastAgreed = point.flatMap { $0.fromDevice ? nil : $0.time }
+        player.start(book, at: start)
+        openLocalSession(for: book, startTime: start)
+        if chosen { player.isDirty = true }
+        startSyncLoop()
+        loadArtwork(book)
+        if chosen || journal.unsentCount > 0 { Task { await uploadJournal() } }
+    }
+
+    private func openLocalSession(for book: PlaybackBook, startTime: Double) {
+        let session = LocalListeningSession(
+            itemID: book.itemID, episodeID: book.episodeID, libraryID: nil,
+            mediaType: book.episodeID == nil ? "book" : "podcast",
+            displayTitle: book.title, displayAuthor: book.author, duration: book.duration, startTime: startTime
+        )
+        journal.openSession(session)
+        localSessionID = session.id
+    }
+
+    /// Bieżąca książka gra z plików na telefonie (sesja lokalna zamiast sesji serwera).
+    private func isDownloadedBook(_ book: PlaybackBook) -> Bool {
+        book.feedKey == nil && !book.tracks.isEmpty && book.tracks.allSatisfy { if case .file = $0.source { true } else { false } }
+    }
+
+    /// Postęp z serwera, ale nie dłużej niż `timeout` — słaba sieć nie może opóźniać startu.
+    private func lookupProgress(itemID: String, episodeID: String?, auth: ListeningAuth, timeout: Duration) async -> ServerProgressLookup {
+        // Zapytanie przerwane po czasie (anulowanie przerywa też `URLSession`).
+        let fetch = Task { @MainActor () -> ServerProgressLookup in
+            do {
+                let progress = try await auth.perform { try await $0.progress(itemID: itemID, episodeID: episodeID, token: $1) }
+                return progress.map { .some($0) } ?? ServerProgressLookup.none
+            } catch {
+                if !Task.isCancelled { self.reportIfConnection(error) }
+                return .unreachable
+            }
+        }
+        let timer = Task {
+            try? await Task.sleep(for: timeout)
+            fetch.cancel()
+        }
+        let result = await fetch.value
+        timer.cancel()
+        return result
     }
 
     // MARK: - Odcinek prosto z kanału
@@ -288,21 +387,14 @@ public final class PlaybackCoordinator {
         startingKey = key
         defer { startingKey = nil }
         loadError = nil
-        if player.book != nil {
-            player.pause()
-            await closeSession()
-            player.stop()
-        }
-        redirected = [:]
-        redirectedDurations = [:]
-        externalTemplate = nil
+        await unloadCurrent()
         do {
             guard let original = URL(string: episode.enclosureURL.trimmingCharacters(in: .whitespacesAndNewlines)),
                   ["http", "https"].contains(original.scheme?.lowercased() ?? "") else { throw StreamError.invalidURL }
             let (url, probed) = try await (streamProbe ?? { try await Self.probe($0) })(original)
             guard let duration = probed ?? episode.feedDuration, duration > 1 else { throw StreamError.unknownDuration }
 
-            let stored = localEpisodes?.record(itemID: episode.itemID, feedKey: episode.feedKey)
+            let stored = journal.record(itemID: episode.itemID, feedKey: episode.feedKey)
             var record = stored ?? LocalEpisodeRecord(
                 itemID: episode.itemID, feedKey: episode.feedKey, title: episode.title, podcastTitle: episode.podcastTitle,
                 guid: episode.guid, enclosureURL: episode.enclosureURL, published: episode.published,
@@ -336,7 +428,7 @@ public final class PlaybackCoordinator {
             lastAgreed = nil
             player.start(book, at: start)
             // Wpis od razu: odcinek jest „w trakcie” i da się go rozpoznać po pobraniu na serwer.
-            if stored == nil { localEpisodes?.save(record) }
+            if stored == nil { journal.save(record) }
             startSyncLoop()
             loadArtwork(book)
         } catch {
@@ -457,7 +549,7 @@ public final class PlaybackCoordinator {
             // lokalną w domu nie przerywa słuchania, a nieudany plik i tak odbuduje `remoteFailed`.
             player.reload(fresh: false)
         }
-        await flushPending()
+        await uploadJournal()
         if player.isDirty, !player.isPlaying { await sync() }
     }
 
@@ -566,17 +658,19 @@ public final class PlaybackCoordinator {
     }
 
     /// Przed wznowieniem: pozycja z serwera, jeśli ktoś (Mac) zmienił ją od naszej ostatniej.
+    /// Bez sieci od razu `nil`, a z siecią — najwyżej po kilku sekundach.
     private func serverPositionIfChanged() async -> Double? {
-        guard let book = player.book, case .server(let itemID, let episodeID) = target(for: book), let auth = authProvider() else { return nil }
-        guard let server = try? await auth.perform({ try await $0.progress(itemID: itemID, episodeID: episodeID, token: $1) }),
+        guard let book = player.book, case .server(let itemID, let episodeID) = target(for: book), isReachable(), let auth = authProvider() else { return nil }
+        guard case .some(let server) = await lookupProgress(itemID: itemID, episodeID: episodeID, auth: auth, timeout: .seconds(3)),
               !server.isFinished
         else { return nil }
-        if let unsent = pending[book.key], unsent.isNewer(thanServer: server.lastUpdate) { return nil }
+        if let unsent = journal.position(itemID: itemID, episodeID: episodeID), unsent.isUnsent,
+           ProgressMerge.isNewer(unsent, thanServer: server.lastUpdate) { return nil }
         let serverTime = server.currentTime ?? 0
         if let lastAgreed, abs(serverTime - lastAgreed) < 1 { return nil }
         logger.notice("Pozycja zmieniła się na serwerze — przejmuję ją przed wznowieniem")
         lastAgreed = serverTime
-        pending[book.key] = nil
+        journal.recordServer(server)
         return serverTime
     }
 
@@ -589,7 +683,7 @@ public final class PlaybackCoordinator {
                 try? await Task.sleep(for: Self.syncInterval)
                 guard let self, !Task.isCancelled else { return }
                 if player.isDirty { await sync() }
-                if !pending.isEmpty { await flushPending() }
+                if journal.unsentCount > 0 { await uploadJournal() }
             }
         }
     }
@@ -607,6 +701,12 @@ public final class PlaybackCoordinator {
             player.isDirty = false
             _ = player.takeListenedTime()
             saveLocal(record, book: book, time: player.currentTime)
+            return
+        }
+        if isDownloadedBook(book) {
+            player.isDirty = false
+            recordLocalListening(book, time: player.currentTime)
+            await uploadJournal()
             return
         }
         guard let auth = authProvider() else { return }
@@ -628,9 +728,9 @@ public final class PlaybackCoordinator {
                     try await saveProgress(book, time: data.currentTime, auth: auth)
                 }
                 lastAgreed = data.currentTime
-                pending[book.key] = nil
+                confirmSent(book, time: data.currentTime, duration: data.duration)
                 // Postęp odcinka z kanału doszedł do odcinka na serwerze — lokalny wpis zbędny.
-                if let feedKey = book.feedKey { localEpisodes?.remove(itemID: book.itemID, feedKey: feedKey) }
+                if let feedKey = book.feedKey { journal.remove(itemID: book.itemID, feedKey: feedKey) }
                 progressRevision += 1
                 onServerReached?()
             } catch {
@@ -644,6 +744,26 @@ public final class PlaybackCoordinator {
         syncInFlight = task
         await task.value
         syncInFlight = nil
+    }
+
+    /// Słuchanie pobranej pozycji: sesja lokalna (czas słuchania) i pozycja — do dziennika.
+    /// Po ukończeniu i ponownym „Odtwarzaj” zaczyna się nowa sesja.
+    private func recordLocalListening(_ book: PlaybackBook, time: Double, finished: Bool = false) {
+        if localSessionID.flatMap({ journal.session(id: $0) }) == nil { openLocalSession(for: book, startTime: time) }
+        let now = Date.now
+        if let id = localSessionID {
+            journal.updateSession(id: id, currentTime: finished ? book.duration : time, listened: player.takeListenedTime(), at: now)
+        }
+        journal.recordLocal(itemID: book.itemID, episodeID: book.episodeID, currentTime: time, duration: book.duration, isFinished: finished, at: now)
+        progressRevision += 1
+    }
+
+    /// Serwer przyjął pozycję bieżącej książki — dziennik pamięta ją jako uzgodnioną.
+    private func confirmSent(_ book: PlaybackBook, time: Double, duration: Double, finished: Bool = false) {
+        guard case .server(let itemID, let episodeID) = target(for: book) else { return }
+        let now = Date.now
+        journal.recordLocal(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration, isFinished: finished, at: now)
+        journal.markSent(itemID: itemID, episodeID: episodeID, upTo: now)
     }
 
     private func saveProgress(_ book: PlaybackBook, time: Double, auth: ListeningAuth) async throws {
@@ -661,10 +781,11 @@ public final class PlaybackCoordinator {
         return (EpisodeHandover.serverTime(time, streamDuration: book.duration, serverDuration: serverDuration), serverDuration)
     }
 
+    /// Nieudana wysyłka: pozycja czeka w dzienniku (na dysku) na powrót połączenia.
     private func remember(_ book: PlaybackBook, time: Double) {
         switch target(for: book) {
         case .server(let itemID, let episodeID):
-            pending[book.key] = PendingPosition(itemID: itemID, episodeID: episodeID, currentTime: time, duration: redirectedDurations[book.key] ?? book.duration, savedAt: .now)
+            journal.recordLocal(itemID: itemID, episodeID: episodeID, currentTime: time, duration: redirectedDurations[book.key] ?? book.duration)
         case .local(let record):
             saveLocal(record, book: book, time: time)
         }
@@ -676,6 +797,15 @@ public final class PlaybackCoordinator {
         endSyncLoop()
         guard let book = player.book else { return }
         let dirty = player.isDirty
+        if isDownloadedBook(book) {
+            player.isDirty = false
+            if dirty { recordLocalListening(book, time: player.currentTime) }
+            if let id = localSessionID { journal.closeSession(id: id) }
+            localSessionID = nil
+            lastAgreed = nil
+            await uploadJournal()
+            return
+        }
         let (closeTime, closeDuration) = serverPosition(book, time: player.currentTime)
         let data = AudiobookshelfClient.SyncData(currentTime: closeTime, timeListened: player.takeListenedTime(), duration: closeDuration)
         player.isDirty = false
@@ -684,7 +814,7 @@ public final class PlaybackCoordinator {
             if dirty { saveLocal(record, book: book, time: data.currentTime) }
             return
         }
-        guard let auth = authProvider() else {
+        guard isReachable(), let auth = authProvider() else {
             if dirty { remember(book, time: data.currentTime) }
             return
         }
@@ -695,8 +825,8 @@ public final class PlaybackCoordinator {
                 try await saveProgress(book, time: data.currentTime, auth: auth)
             }
             if dirty {
-                pending[book.key] = nil
-                if let feedKey = book.feedKey { localEpisodes?.remove(itemID: book.itemID, feedKey: feedKey) }
+                confirmSent(book, time: data.currentTime, duration: data.duration)
+                if let feedKey = book.feedKey { journal.remove(itemID: book.itemID, feedKey: feedKey) }
                 progressRevision += 1
             }
         } catch {
@@ -712,8 +842,17 @@ public final class PlaybackCoordinator {
         if let syncInFlight { await syncInFlight.value }
         endSyncLoop()
         player.isDirty = false
+        if isDownloadedBook(book) {
+            // Bez sieci „ukończone” czeka w dzienniku razem z sesją.
+            recordLocalListening(book, time: book.duration, finished: true)
+            if let id = localSessionID { journal.closeSession(id: id) }
+            localSessionID = nil
+            lastAgreed = nil
+            await uploadJournal()
+            if player.book?.key == book.key { startSyncLoop() }
+            return
+        }
         _ = player.takeListenedTime()
-        pending[book.key] = nil
         defer {
             session = nil
             lastAgreed = nil
@@ -730,50 +869,135 @@ public final class PlaybackCoordinator {
             episodeID = episode
         }
         let finalDuration = redirectedDurations[book.key] ?? book.duration
-        guard let auth = authProvider() else { return }
+        guard isReachable(), let auth = authProvider() else {
+            journal.recordLocal(itemID: itemID, episodeID: episodeID, currentTime: finalDuration, duration: finalDuration, isFinished: true)
+            if player.book?.key == book.key { startSyncLoop() }
+            return
+        }
         do {
             try await auth.perform {
                 try await $0.updateProgress(itemID: itemID, episodeID: episodeID, currentTime: finalDuration, duration: finalDuration, isFinished: true, token: $1)
             }
-            if let feedKey = book.feedKey { localEpisodes?.remove(itemID: book.itemID, feedKey: feedKey) }
+            confirmSent(book, time: finalDuration, duration: finalDuration, finished: true)
+            if let feedKey = book.feedKey { journal.remove(itemID: book.itemID, feedKey: feedKey) }
             if let session, session.key == book.key {
                 try? await auth.perform { try await $0.closeSession(id: session.id, nil, token: $1) }
             }
             progressRevision += 1
         } catch {
             logger.error("Oznaczenie jako ukończone: \(error.localizedDescription, privacy: .public)")
-            loadError = error.localizedDescription
+            journal.recordLocal(itemID: itemID, episodeID: episodeID, currentTime: finalDuration, duration: finalDuration, isFinished: true)
+            if !AddressSelection.isConnectionError(error) { loadError = error.localizedDescription }
             reportIfConnection(error)
         }
         // Książka zostaje załadowana od początku: ponowne „Odtwarzaj” otworzy nową sesję.
         if player.book?.key == book.key { startSyncLoop() }
     }
 
-    /// Niewysłane pozycje trafiają na serwer, o ile są nowsze niż jego postęp.
+    /// Dawna nazwa wysyłki zaległych pozycji (aplikacja woła ją po powrocie połączenia).
     public func flushPending() async {
-        guard let auth = authProvider(), !pending.isEmpty else { return }
-        for (key, entry) in pending {
-            // Bieżąca książka idzie zwykłą synchronizacją (z sesją).
-            if key == player.book?.key, player.isDirty { continue }
-            do {
-                let server = try await auth.perform { try await $0.progress(itemID: entry.itemID, episodeID: entry.episodeID, token: $1) }
-                if entry.isNewer(thanServer: server?.lastUpdate) {
-                    try await auth.perform {
-                        try await $0.updateProgress(itemID: entry.itemID, episodeID: entry.episodeID, currentTime: entry.currentTime, duration: entry.duration, token: $1)
-                    }
-                    logger.notice("Wysłano zaległą pozycję słuchania")
-                    if key == player.book?.key { lastAgreed = entry.currentTime }
+        await uploadJournal()
+    }
+
+    /// Wysyła dziennik: najpierw sesje lokalne (serwer sam odrzuca pozycję starszą niż jego zapis
+    /// i liczy czas słuchania), potem pojedyncze niewysłane pozycje — tylko te nowsze niż serwer.
+    /// Jedna wysyłka naraz; bez połączenia nic nie robi.
+    public func uploadJournal() async {
+        if let uploadInFlight { await uploadInFlight.value }
+        guard isReachable(), journal.unsentCount > 0, let auth = authProvider() else { return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            var sent = false
+            defer {
+                if sent {
                     progressRevision += 1
+                    onServerReached?()
                 }
-                if pending[key] == entry { pending[key] = nil }
-            } catch AudiobookshelfClient.APIError.http(status: 404, _) {
-                pending[key] = nil
-            } catch {
-                logger.error("Zaległa pozycja: \(error.localizedDescription, privacy: .public)")
-                reportIfConnection(error)
-                return
+            }
+            // 1. Sesje lokalne.
+            let sessions = journal.sessionsToUpload
+            var sessionKeys: Set<String> = []
+            if !sessions.isEmpty {
+                let device = device
+                let results: [AudiobookshelfClient.LocalSessionResult]
+                do {
+                    results = try await auth.perform { try await $0.syncLocalSessions(sessions, device: device, token: $1) }
+                } catch {
+                    logger.error("Wysyłka sesji lokalnych: \(error.localizedDescription, privacy: .public)")
+                    reportIfConnection(error)
+                    return
+                }
+                for local in sessions {
+                    guard let result = results.first(where: { $0.id == local.id }) else { continue }
+                    sessionKeys.insert(local.key)
+                    guard result.success else {
+                        // Pozycji nie ma już na serwerze — sesja i pozycja nie mają dokąd iść.
+                        if result.error?.localizedCaseInsensitiveContains("not found") == true {
+                            journal.removeSession(id: local.id)
+                            journal.discardUnsent(itemID: local.itemID, episodeID: local.episodeID)
+                        }
+                        continue
+                    }
+                    sent = true
+                    journal.markUploaded(id: local.id, upTo: local.updatedAt)
+                    let position = journal.position(itemID: local.itemID, episodeID: local.episodeID)
+                    if result.progressSynced == true {
+                        // Sesja nie niesie „ukończone” (nowy postęp z niej nie jest oznaczany) — osobno.
+                        if let position, position.isUnsent, position.isFinished, position.updatedAt <= local.updatedAt {
+                            do {
+                                try await auth.perform {
+                                    try await $0.updateProgress(itemID: local.itemID, episodeID: local.episodeID, currentTime: position.duration, duration: position.duration, isFinished: true, token: $1)
+                                }
+                            } catch {
+                                reportIfConnection(error)
+                                continue
+                            }
+                        }
+                        journal.markSent(itemID: local.itemID, episodeID: local.episodeID, upTo: local.updatedAt)
+                        if local.key == player.book?.key { lastAgreed = local.currentTime }
+                    } else if let position, position.isUnsent, position.updatedAt <= local.updatedAt {
+                        // Serwer ma nowszy zapis (z innego urządzenia) — on wygrywa.
+                        logger.notice("Serwer ma nowszą pozycję niż sesja z telefonu — zostaje serwerowa")
+                        journal.discardUnsent(itemID: local.itemID, episodeID: local.episodeID)
+                        if let server = try? await auth.perform({ try await $0.progress(itemID: local.itemID, episodeID: local.episodeID, token: $1) }) {
+                            journal.recordServer(server)
+                        }
+                    }
+                }
+            }
+            // 2. Pojedyncze pozycje (ze strumienia, ukończenia) — bez sesji do wysłania.
+            for entry in journal.unsentPositions {
+                if sessionKeys.contains(entry.key) || journal.sessionsToUpload.contains(where: { $0.key == entry.key }) { continue }
+                // Bieżąca książka ze strumienia idzie zwykłą synchronizacją (z sesją).
+                if entry.key == player.book?.key, player.isDirty, session != nil { continue }
+                do {
+                    let server = try await auth.perform { try await $0.progress(itemID: entry.itemID, episodeID: entry.episodeID, token: $1) }
+                    switch ProgressMerge.upload(entry, serverLastUpdate: server?.lastUpdate) {
+                    case .send:
+                        try await auth.perform {
+                            try await $0.updateProgress(itemID: entry.itemID, episodeID: entry.episodeID, currentTime: entry.currentTime, duration: entry.duration, isFinished: entry.isFinished ? true : nil, token: $1)
+                        }
+                        logger.notice("Wysłano zaległą pozycję słuchania")
+                        journal.markSent(itemID: entry.itemID, episodeID: entry.episodeID, upTo: entry.updatedAt)
+                        if entry.key == player.book?.key { lastAgreed = entry.currentTime }
+                        sent = true
+                    case .serverIsNewer:
+                        journal.discardUnsent(itemID: entry.itemID, episodeID: entry.episodeID)
+                        if let server { journal.recordServer(server) }
+                        sent = true
+                    }
+                } catch AudiobookshelfClient.APIError.http(status: 404, _) {
+                    journal.removePosition(itemID: entry.itemID, episodeID: entry.episodeID)
+                } catch {
+                    logger.error("Zaległa pozycja: \(error.localizedDescription, privacy: .public)")
+                    reportIfConnection(error)
+                    return
+                }
             }
         }
+        uploadInFlight = task
+        await task.value
+        uploadInFlight = nil
     }
 
     private func reportIfConnection(_ error: any Error) {

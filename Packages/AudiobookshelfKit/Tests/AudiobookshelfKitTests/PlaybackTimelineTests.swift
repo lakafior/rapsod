@@ -132,24 +132,6 @@ private let chapters = [
         let session = try JSONDecoder().decode(AudiobookshelfClient.PlaybackSession.self, from: Data(json.utf8))
         #expect(PlaybackTimeline.needsTranscoding(session))
     }
-
-    @Test func pendingPositionAgainstServer() {
-        let saved = Date(timeIntervalSince1970: 1_000)
-        let pending = PendingPosition(itemID: "li", episodeID: nil, currentTime: 50, duration: 100, savedAt: saved)
-        #expect(pending.isNewer(thanServer: nil))
-        #expect(pending.isNewer(thanServer: 999_000))
-        #expect(!pending.isNewer(thanServer: 1_001_000), "Mac zapisał później — wygrywa serwer")
-
-        func server(_ lastUpdate: Double) -> AudiobookshelfClient.MediaProgress {
-            .init(libraryItemId: "li", episodeId: nil, duration: 100, progress: 0.2, currentTime: 20, isFinished: false, hideFromContinueListening: nil, lastUpdate: lastUpdate)
-        }
-        let local = PendingPosition.resolveStart(server: server(999_000), sessionTime: 20, pending: pending)
-        #expect(local.time == 50 && local.local)
-        let remote = PendingPosition.resolveStart(server: server(1_001_000), sessionTime: 20, pending: pending)
-        #expect(remote.time == 20 && !remote.local)
-        let none = PendingPosition.resolveStart(server: nil, sessionTime: 20, pending: nil)
-        #expect(none.time == 20 && !none.local)
-    }
 }
 
 @Suite struct AddressSelectionTests {
