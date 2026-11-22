@@ -140,6 +140,7 @@ public enum EpisodeMatching {
     static let trackingPrefixes: [String: Int?] = [
         "dts.podtrac.com": 1,            // /redirect.mp3/<adres>
         "www.podtrac.com": 2,            // /pts/redirect.mp3/<adres>
+        "play.podtrac.com": 1,           // /<program>/<adres>
         "chtbl.com": 2,                  // /track/<id>/<adres>
         "chrt.fm": 2,                    // /track/<id>/<adres>
         "pdst.fm": 1,                    // /e/<adres>
