@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 
 // MARK: - Tagi i gatunki (etap 9i; wzorzec: `pages/config/item-metadata-utils/tags.vue` i `genres.vue`)
@@ -161,15 +160,19 @@ struct LibraryStatsView: View {
                         if !genres.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Najczęstsze gatunki").font(.title2.weight(.semibold))
-                                Chart(genres) { genre in
-                                    BarMark(x: .value("Pozycje", genre.count ?? 0), y: .value("Gatunek", genre.title), height: .fixed(16))
-                                        .annotation(position: .trailing) {
-                                            Text("\(genre.count ?? 0)").font(.caption).foregroundStyle(.secondary)
+                                let top = Double(genres.map { $0.count ?? 0 }.max() ?? 1)
+                                ForEach(genres) { genre in
+                                    HStack(spacing: 10) {
+                                        Text(genre.title).lineLimit(1).frame(width: 170, alignment: .leading)
+                                        GeometryReader { geometry in
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(.tint)
+                                                .frame(width: max(4, geometry.size.width * Double(genre.count ?? 0) / max(top, 1)))
                                         }
+                                        .frame(height: 12)
+                                        Text("\(genre.count ?? 0)").monospacedDigit().foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
+                                    }
                                 }
-                                .chartXAxis(.hidden)
-                                .chartYAxis { AxisMarks(position: .leading) { _ in AxisValueLabel() } }
-                                .frame(height: CGFloat(genres.count) * 30 + 10)
                             }
                         }
                         ranking("Autorzy z największą liczbą książek", stats.authorsWithCount?.elements ?? []) { author in
