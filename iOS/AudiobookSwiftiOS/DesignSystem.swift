@@ -378,7 +378,8 @@ struct CirclePlayButton: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .frame(width: 22, height: 22)
+            .frame(minWidth: 22, minHeight: 22)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .buttonStyle(.glassProminent)
         .buttonBorderShape(.circle)

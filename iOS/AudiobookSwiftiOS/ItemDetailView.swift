@@ -34,6 +34,7 @@ struct ItemDetailView: View {
     }
 
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var bookPage: some View {
         Group {
@@ -136,11 +137,19 @@ struct ItemDetailView: View {
                 }
             }
             BookProgress(entry: session.library.progress.entry(item.id), duration: item.media.duration)
-            HStack(spacing: 12) {
-                PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
-                DownloadButton(target: .book(itemID: item.id), session: session, compact: true)
+            if typeSize.isAccessibilitySize {
+                // Największy tekst: przyciski pod sobą, pobieranie z podpisem.
+                VStack(spacing: 12) {
+                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
+                    DownloadButton(target: .book(itemID: item.id), session: session)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    PlayButton(model: model, itemID: item.id, episodeID: nil, progress: session.library.progress.entry(item.id).value)
+                    DownloadButton(target: .book(itemID: item.id), session: session, compact: true)
+                }
+                .frame(maxWidth: 360)
             }
-            .frame(maxWidth: 360)
             PlayErrorText(model: model, key: item.id)
         }
     }
@@ -315,11 +324,14 @@ struct PlayButton: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
                 Text(title(isCurrent: isCurrent))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
             .font(.headline)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.glassProminent)
+        .buttonBorderShape(.capsule)
         .controlSize(.large)
         .disabled(isStarting)
     }

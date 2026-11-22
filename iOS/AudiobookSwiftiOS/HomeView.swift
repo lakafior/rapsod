@@ -211,39 +211,49 @@ struct ContinueCard: View {
     let failed: (String) -> Void
     @State private var downloadError: String?
     @ScaledMetric(relativeTo: .body) private var coverSide: CGFloat = 92
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let info = Info(entry)
+        let large = typeSize.isAccessibilitySize
         VStack(alignment: .leading, spacing: 12) {
             NavigationLink(value: Route.item(info.itemID)) {
-                HStack(alignment: .top, spacing: 14) {
+                // Największy tekst: okładka nad tekstem, bez ucinania tytułu.
+                let layout = large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+                layout {
                     ItemCover(itemID: info.itemID, session: session, points: 120, isPodcast: info.isEpisode, shadow: false)
-                        .frame(width: min(coverSide, 130))
+                        .frame(width: large ? 110 : min(coverSide, 130))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(info.kicker)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
-                            .lineLimit(1)
+                            .lineLimit(large ? nil : 1)
                         Text(info.title)
                             .font(.headline)
-                            .lineLimit(3)
+                            .lineLimit(large ? nil : 3)
                             .multilineTextAlignment(.leading)
                         if let subtitle = info.subtitle {
-                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(large ? nil : 1)
                         }
                     }
-                    Spacer(minLength: 0)
+                    if !large { Spacer(minLength: 0) }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text([info.kicker, info.title, info.subtitle].compactMap(\.self).joined(separator: ", ")))
             Spacer(minLength: 0)
-            HStack(spacing: 12) {
-                PlayControl(entry: entry, model: model, session: session, failed: failed)
+            if large {
                 CardProgressLine(entry: entry, session: session)
+                PlayControl(entry: entry, model: model, session: session, failed: failed)
+            } else {
+                HStack(spacing: 12) {
+                    PlayControl(entry: entry, model: model, session: session, failed: failed)
+                    CardProgressLine(entry: entry, session: session)
+                }
             }
         }
         .padding(14)

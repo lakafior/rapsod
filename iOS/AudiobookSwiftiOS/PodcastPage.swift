@@ -309,9 +309,12 @@ struct PodcastPage: View {
                     } label: {
                         Label(latest.server == nil ? "Najnowszy odcinek (ze strumienia)" : "Najnowszy odcinek", systemImage: "play.fill")
                             .font(.headline)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
                             .frame(maxWidth: 320)
                     }
                     .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.roundedRectangle(radius: 22))
                     .controlSize(.large)
                     .accessibilityHint(Text(latest.title))
                 }
