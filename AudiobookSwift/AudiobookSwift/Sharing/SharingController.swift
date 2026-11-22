@@ -137,6 +137,15 @@ final class SharingController {
         return true
     }
 
+    /// Identyfikator serwera do kodów parowania; przy pierwszym użyciu nadaje go i zapisuje.
+    func ensureServerID() -> String {
+        if let id = settings.serverID { return id }
+        let id = UUID().uuidString.lowercased()
+        settings.serverID = id
+        saveSettings()
+        return id
+    }
+
     private func networkDidChange() {
         networkDebounce?.cancel()
         networkDebounce = Task { [weak self] in

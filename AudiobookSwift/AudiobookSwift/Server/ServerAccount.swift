@@ -314,7 +314,11 @@ final class ServerAccount {
         }
         guard let login else { throw AudiobookshelfClient.APIError.unauthorized }
         // Hasło tego konta jest wpisywane w telefonie i idzie przez sieć lokalną — tylko najmniejsze uprawnienia.
-        guard try await client.me(token: login.accessToken).type == "user" else { throw UserSetupError.notRegularUser }
+        // Wyjątek: to samo konto, któremu użytkownik sam nadał uprawnienia administratora przy
+        // parowaniu telefonu (etap 10b) — ponowne podanie jego hasła nie może go odrzucić.
+        let type = try await client.me(token: login.accessToken).type
+        let previous = (try? userStore.load())?.username
+        guard type == "user" || (type == "admin" && previous == login.username) else { throw UserSetupError.notRegularUser }
         try userStore.save(credentials)
         userCredentials = credentials
         userState = .ready(username: login.username)
