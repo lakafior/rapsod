@@ -1,7 +1,9 @@
+import AudiobookshelfKit
 import Foundation
 
 /// Rozpoznanie książek w upuszczonym folderze (etap 9h; wzorzec `client/mixins/uploadHelpers.js`).
-/// Bez zależności od widoków, żeby dało się je sprawdzić osobno.
+/// Bez zależności od widoków, żeby dało się je sprawdzić osobno. Zostaje w aplikacji (GPL-3.0), poza
+/// pakietem MPL-2.0: algorytm jest przetłumaczony z klienta web audiobookshelf.
 ///
 /// Folder z plikami książki (audio albo e-book) to jedna książka; folder z samymi podfolderami —
 /// przechodzimy w głąb. Z drogi od upuszczonego folderu: ostatni człon to tytuł, przedostatni
@@ -9,21 +11,21 @@ import Foundation
 /// `Autor/Tytuł`. Odstępstwo od web UI: podfoldery płyt (`CD1`, `Disc 2`) zostają częścią
 /// książki, tak jak przy skanie serwera (`server/utils/scandir.js`) — web UI zrobiłby z nich
 /// osobne pozycje.
-public enum UploadGrouping {
-    public struct Book: Equatable {
-        public let files: [URL]
-        public let title: String
-        public let author: String
-        public let series: String
+enum UploadGrouping {
+    struct Book: Equatable {
+        let files: [URL]
+        let title: String
+        let author: String
+        let series: String
     }
 
-    public static let ebookExtensions: Set<String> = ["epub", "pdf", "mobi", "azw3", "cbr", "cbz"]
+    static let ebookExtensions: Set<String> = ["epub", "pdf", "mobi", "azw3", "cbr", "cbz"]
 
-    public static func isDiscFolder(_ name: String) -> Bool {
+    static func isDiscFolder(_ name: String) -> Bool {
         name.range(of: #"^(cd|dis[ck])\s*\d{1,3}$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    public static func books(in directory: URL, path: [String], supported: Set<String>, audio: Set<String>, ignored: inout [String]) -> [Book] {
+    static func books(in directory: URL, path: [String], supported: Set<String>, audio: Set<String>, ignored: inout [String]) -> [Book] {
         let keys: [URLResourceKey] = [.isDirectoryKey]
         let children = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
         let isFolder = { (url: URL) in (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
@@ -50,44 +52,11 @@ public enum UploadGrouping {
             .flatMap { books(in: $0, path: path + [$0.lastPathComponent], supported: supported, audio: audio, ignored: &ignored) }
     }
 
-    /// Nazwy plików do wysłania. Serwer kładzie każdy plik płasko w folderze książki pod jego samą
-    /// nazwą (`MiscController.handleUpload`: `sanitizeFilename(file.name)`), więc `CD1/01.mp3`
-    /// i `Disc 2/01.mp3` nadpisałyby się nawzajem. Gdy nazwy się powtarzają, każdy plik z podfolderu
-    /// dostaje prefiks folderu (`CD1 - 01.mp3`) — wszystkie, żeby kolejność płyt została. Bez powtórek
-    /// nazwy zostają (np. `Extras/cover.jpg` to dalej `cover.jpg`). Co się wciąż powtarza, dostaje numer.
-    public static func uploadNames(for files: [URL]) -> [String] {
-        let plain = files.map(\.lastPathComponent)
-        guard Set(plain.map { $0.lowercased() }).count < plain.count else { return plain }
-        let parents = files.map { $0.deletingLastPathComponent().standardizedFileURL.path }
-        // Wspólny folder nadrzędny (książka z samymi podfolderami płyt nie ma plików na wierzchu).
-        let split = parents.map { $0.split(separator: "/", omittingEmptySubsequences: false) }
-        var common = split.first ?? []
-        for components in split.dropFirst() {
-            common = Array(zip(common, components).prefix { $0 == $1 }.map(\.0))
-        }
-        let base = common.joined(separator: "/")
-        var used: Set<String> = []
-        return zip(files, parents).map { file, parent in
-            var name = file.lastPathComponent
-            if parent != base, parent.hasPrefix(base + "/") {
-                let relative = parent.dropFirst(base.count + 1).replacingOccurrences(of: "/", with: " - ")
-                name = "\(relative) - \(name)"
-            }
-            var candidate = name
-            var counter = 2
-            while used.contains(candidate.lowercased()) {
-                let ext = (name as NSString).pathExtension
-                let stem = (name as NSString).deletingPathExtension
-                candidate = ext.isEmpty ? "\(stem) \(counter)" : "\(stem) \(counter).\(ext)"
-                counter += 1
-            }
-            used.insert(candidate.lowercased())
-            return candidate
-        }
-    }
+    /// Nazwy plików do wysłania — w pakiecie (`AudiobookshelfClient.uploadNames`), bo używa ich `upload`.
+    static func uploadNames(for files: [URL]) -> [String] { AudiobookshelfClient.uploadNames(for: files) }
 
     /// Pliki folderu razem z podfolderami (serwer i tak kładzie je płasko w folderze książki).
-    public static func collect(in directory: URL, supported: Set<String>, ignored: inout [String]) -> [URL] {
+    static func collect(in directory: URL, supported: Set<String>, ignored: inout [String]) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [] }
         var files: [URL] = []
         for case let url as URL in enumerator {

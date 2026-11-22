@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 
 /// Punkty API administracji serwerem (etap 9c): kopie zapasowe, ustawienia automatu kopii,
@@ -190,19 +194,6 @@ extension AudiobookshelfClient {
         public var selectedTagsNotAccessible = false
 
         public init() {}
-
-        /// Domyślne uprawnienia typu konta (jak `userTypeUpdated` w `AccountModal.vue`).
-        public static func defaults(for type: String) -> Permissions {
-            var permissions = Permissions()
-            let isAdmin = type == "admin"
-            permissions.download = type != "guest"
-            permissions.update = isAdmin
-            permissions.delete = isAdmin
-            permissions.upload = isAdmin
-            permissions.accessExplicitContent = isAdmin
-            permissions.createEreader = isAdmin
-            return permissions
-        }
 
         public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)

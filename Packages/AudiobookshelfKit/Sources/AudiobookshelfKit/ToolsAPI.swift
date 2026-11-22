@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 
 /// Punkty API narzędzi pozycji (etap 9e): usunięcie, ponowny skan, kolejność plików,
@@ -163,7 +167,7 @@ extension AudiobookshelfClient {
             if let series { try output.write(contentsOf: field("series", series)) }
             try output.write(contentsOf: field("library", libraryID))
             try output.write(contentsOf: field("folder", folderID))
-            let names = UploadGrouping.uploadNames(for: files)
+            let names = Self.uploadNames(for: files)
             for (index, file) in files.enumerated() {
                 try Task.checkCancellation()
                 // Nazwa pliku w nagłówku: cudzysłów i znaki nowej linii rozbiłyby nagłówek.

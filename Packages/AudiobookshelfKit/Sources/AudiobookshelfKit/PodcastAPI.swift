@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 
 /// Punkty API zarządzania podcastami (etap 9d). Prawie wszystkie są w upstreamie tylko dla
@@ -146,16 +150,6 @@ extension AudiobookshelfClient {
         public var published: Date? { raw["publishedAt"]?.number.map { Date(timeIntervalSince1970: $0 / 1000) } }
     }
 
-    /// Adres odcinka bez parametrów śledzących — tak `EpisodeFeed.vue` porównuje z pobranymi
-    /// (zostaje tylko `id`, bo bywa częścią adresu pliku).
-    public static func cleanEpisodeURL(_ url: String) -> String {
-        guard var components = URLComponents(string: url), let items = components.queryItems, !items.isEmpty else { return url }
-        let kept = items.filter { $0.name == "id" }
-        guard !kept.isEmpty else { return url }
-        components.queryItems = kept
-        return components.string ?? url
-    }
-
     public struct OPMLFeed: Decodable, Sendable, Identifiable, Hashable {
         public let title: String?
         public let feedUrl: String
@@ -265,21 +259,6 @@ extension AudiobookshelfClient {
     public func createPodcast(_ podcast: NewPodcast, token: String) async throws -> String {
         struct Response: Decodable { let id: String }
         return try decode(Response.self, from: await send("POST", "api/podcasts", body: podcast, token: token, timeout: 60)).id
-    }
-
-    /// Nazwa folderu z tytułu — ta sama zasada co `$sanitizeFilename` web UI (pierwszy dwukropek → „ - ”).
-    public static func podcastFolderName(_ title: String) -> String {
-        var name = title
-        if let colon = name.firstIndex(of: ":") { name.replaceSubrange(colon...colon, with: " - ") }
-        name = name.replacingOccurrences(of: "[/?<>\\\\:*|\"]", with: "", options: .regularExpression)
-        name = name.replacingOccurrences(of: "[\\x00-\\x1f\\x80-\\x9f\\n\\r]", with: "", options: .regularExpression)
-        name = name.replacingOccurrences(of: "[. ]+$", with: "", options: .regularExpression)
-        name = name.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        name = name.trimmingCharacters(in: .whitespaces)
-        if name.allSatisfy({ $0 == "." }) { name = "" }
-        // 255 bajtów UTF-16 jak w upstreamie — tnie po znakach, nie w połowie.
-        while name.utf16.count * 2 > 255 { name.removeLast() }
-        return name
     }
 
     // MARK: Odcinki i pobieranie

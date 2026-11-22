@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import Foundation
 import Testing
 import AudiobookshelfKit
@@ -82,8 +86,8 @@ struct ModelDecodingTests {
 
     @Test func uploadNamesStayUniqueAcrossDiscFolders() {
         let files = [URL(filePath: "/b/Ksiazka/CD1/01.mp3"), URL(filePath: "/b/Ksiazka/CD2/01.mp3")]
-        let names = UploadGrouping.uploadNames(for: files)
+        let names = AudiobookshelfClient.uploadNames(for: files)
         #expect(Set(names).count == 2)
-        #expect(UploadGrouping.uploadNames(for: [URL(filePath: "/b/a.mp3"), URL(filePath: "/b/b.mp3")]) == ["a.mp3", "b.mp3"])
+        #expect(AudiobookshelfClient.uploadNames(for: [URL(filePath: "/b/a.mp3"), URL(filePath: "/b/b.mp3")]) == ["a.mp3", "b.mp3"])
     }
 }
