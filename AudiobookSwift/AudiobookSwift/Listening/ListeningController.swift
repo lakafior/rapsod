@@ -30,7 +30,14 @@ final class ListeningController {
     private(set) var availability: Availability = .unavailable
     private(set) var libraries: [AudiobookshelfClient.Library] = []
     /// Postęp według `itemID` albo `itemID/episodeID`.
-    private(set) var progress: [String: AudiobookshelfClient.MediaProgress] = [:]
+    private(set) var progress: [String: AudiobookshelfClient.MediaProgress] = [:] {
+        didSet { updateShelfRevision() }
+    }
+    /// Rośnie, gdy zmieni się zbiór rozpoczętych i ukończonych pozycji (albo ich ukrycie
+    /// w „Słuchaj dalej”) — półki strony startowej wczytują się wtedy od nowa. Samo przesunięcie
+    /// miejsca w książce (synchronizacja co kilkanaście sekund) go nie zmienia.
+    private(set) var shelfRevision = 0
+    @ObservationIgnored private var shelfSignature = 0
     /// Zakładki według `itemID`, posortowane po czasie.
     private(set) var bookmarks: [String: [AudiobookshelfClient.Bookmark]] = [:]
     /// Rośnie, gdy serwer zgłosi zmianę pozycji w bibliotece (skan, nowa książka) — widoki
@@ -308,6 +315,22 @@ final class ListeningController {
         player.replaceChapters(chapters)
     }
 
+    /// Podpis zbioru pozycji z półek „Słuchaj dalej” i „Posłuchaj ponownie”: suma skrótów
+    /// niezależna od kolejności, bez sortowania słownika.
+    private func updateShelfRevision() {
+        var signature = 0
+        for (key, value) in progress where (value.currentTime ?? 0) > 0 || value.isFinished {
+            var hasher = Hasher()
+            hasher.combine(key)
+            hasher.combine(value.isFinished)
+            hasher.combine(value.hideFromContinueListening)
+            signature &+= hasher.finalize()
+        }
+        guard signature != shelfSignature else { return }
+        shelfSignature = signature
+        shelfRevision += 1
+    }
+
     static func key(_ itemID: String, _ episodeID: String?) -> String {
         episodeID.map { "\(itemID)/\($0)" } ?? itemID
     }
@@ -489,7 +512,7 @@ final class ListeningController {
         case .remote(let path):
             guard let auth else { throw AudiobookshelfClient.APIError.unauthorized }
             let token = fresh ? try await auth.renew(expired: try await auth.token()) : try await auth.token()
-            let url = URL(string: auth.baseURL.absoluteString + path)!
+            guard let url = URL(string: auth.baseURL.absoluteString + path) else { throw URLError(.badURL) }
             // Nagłówek obejmuje też segmenty strumienia HLS (token w adresie by ich nie objął).
             return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["Authorization": "Bearer \(token)"]])
         }

@@ -149,13 +149,13 @@ struct LibraryFileActions: ViewModifier {
             } message: { file in
                 Text(deleteMessage(file))
             }
-            .alert("Kosz jest niedostępny", isPresented: Binding(get: { permanent != nil }, set: { if !$0 { permanent = nil } }), presenting: permanent) { file in
+            .alert("Kosz jest niedostępny", item: $permanent) { file in
                 Button("Usuń trwale", role: .destructive) { deletePermanently(file) }
                 Button("Anuluj", role: .cancel) {}
             } message: { _ in
                 Text("Pliku nie da się przenieść do Kosza. Usunąć go trwale? Tego nie można cofnąć.")
             }
-            .alert("Nie udało się", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }), presenting: failure) { _ in
+            .alert("Nie udało się", item: $failure) { _ in
                 Button("OK") {}
             } message: { Text($0) }
             .sheet(item: Binding(get: { audioInfo.map(AudioInfoRequest.init) }, set: { if $0 == nil { request = nil } })) { info in
@@ -244,10 +244,7 @@ struct AudioFileSheet: View {
             }
             HStack {
                 if let probe {
-                    Button("Kopiuj") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(probe, forType: .string)
-                    }
+                    Button("Kopiuj") { NSPasteboard.copy(probe) }
                     Button("Wróć do szczegółów") { self.probe = nil }
                 } else {
                     Button {
@@ -267,6 +264,14 @@ struct AudioFileSheet: View {
         }
         .padding(20)
         .frame(width: 620)
+        // Stopka ma też „Kopiuj”/„Zbadaj plik”, więc zostaje; Return zostaje przy „Zamknij”,
+        // a Esc obsługuje niewidoczny przycisk anulowania.
+        .background {
+            Button("Zamknij") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
     }
 
     private var details: some View {

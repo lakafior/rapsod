@@ -12,6 +12,9 @@ struct AccessSettingsPage: View {
 
     let models: AppModels
     @State private var tab: Tab = .apiKeys
+    // Modele kart trzymane tutaj, żeby przełączenie karty nie wyrzucało ich (i stanu filtrów) — wracając, karta tylko się odświeża.
+    @State private var apiKeysModel: ApiKeysModel?
+    @State private var authModel: AuthSettingsModel?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,15 +27,29 @@ struct AccessSettingsPage: View {
             .padding(.top, 12)
             switch tab {
             case .apiKeys:
-                AdminPage(account: models.account, title: "Klucze API", make: { ApiKeysModel(account: models.account) }, load: { await $0.load() }) { model in
+                AdminPage(account: models.account, title: "Klucze API", make: { cachedApiKeysModel() }, load: { await $0.load() }) { model in
                     ApiKeysContent(model: model, account: models.account)
                 }
             case .login:
-                AdminPage(account: models.account, title: "Logowanie", make: { AuthSettingsModel(account: models.account) }, load: { await $0.load() }) { model in
+                AdminPage(account: models.account, title: "Logowanie", make: { cachedAuthModel() }, load: { await $0.load() }) { model in
                     AuthContent(model: model)
                 }
             }
         }
+    }
+
+    private func cachedApiKeysModel() -> ApiKeysModel {
+        if let apiKeysModel { return apiKeysModel }
+        let made = ApiKeysModel(account: models.account)
+        apiKeysModel = made
+        return made
+    }
+
+    private func cachedAuthModel() -> AuthSettingsModel {
+        if let authModel { return authModel }
+        let made = AuthSettingsModel(account: models.account)
+        authModel = made
+        return made
     }
 }
 
@@ -72,7 +89,7 @@ private struct ApiKeysContent: View {
                 ApiKeySecretSheet(name: created.name, secret: created.secret) { model.createdSecret = nil }
             }
         }
-        .confirmationDialog("Usunąć klucz „\(keyToDelete?.name ?? "")”?", isPresented: Binding(get: { keyToDelete != nil }, set: { if !$0 { keyToDelete = nil } }), presenting: keyToDelete) { key in
+        .confirmationDialog("Usunąć klucz „\(keyToDelete?.name ?? "")”?", item: $keyToDelete) { key in
             Button("Usuń", role: .destructive) { Task { await model.delete(key) } }
             Button("Anuluj", role: .cancel) {}
         } message: { _ in
@@ -104,12 +121,11 @@ private struct ApiKeyRow: View {
             Button(key.isActive ? "Wyłącz" : "Włącz") { Task { await model.setActive(key, !key.isActive) } }
                 .disabled(model.status.isBusy)
                 .help(key.isActive ? "Wyłącz klucz — przestanie działać od razu" : "Włącz klucz")
-            Button(role: .destructive, action: delete) {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-            .disabled(model.status.isBusy)
-            .help("Usuń klucz")
+            Button("Usuń klucz", systemImage: "trash", role: .destructive, action: delete)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .disabled(model.status.isBusy)
+                .help("Usuń klucz")
         }
     }
 
@@ -232,8 +248,7 @@ private struct ApiKeySecretSheet: View {
                 if copied { Label("Skopiowano", systemImage: "checkmark").foregroundStyle(.green) }
                 Spacer()
                 Button("Kopiuj") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(secret, forType: .string)
+                    NSPasteboard.copy(secret)
                     copied = true
                 }
                 Button("Gotowe", action: done).keyboardShortcut(.defaultAction)

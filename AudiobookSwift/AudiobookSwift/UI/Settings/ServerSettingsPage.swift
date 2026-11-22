@@ -160,8 +160,7 @@ private struct ServerSettingsContent: View {
                     .foregroundStyle(.secondary)
             }
             .confirmationDialog(confirmPurge == true ? "Wyczyścić okładki pozycji?" : "Wyczyścić całą pamięć podręczną?",
-                                isPresented: Binding(get: { confirmPurge != nil }, set: { if !$0 { confirmPurge = nil } }),
-                                presenting: confirmPurge) { itemsOnly in
+                                item: $confirmPurge) { itemsOnly in
                 Button("Wyczyść", role: .destructive) { Task { await model.purgeCache(itemsOnly: itemsOnly) } }
                 Button("Anuluj", role: .cancel) {}
             } message: { itemsOnly in

@@ -21,8 +21,7 @@ struct ItemPage: View {
             }
         }
         .navigationTitle(item?.title ?? "")
-        .task(id: itemID) { await load() }
-        .onChange(of: browser.revision) { Task { await load() } }
+        .task(id: ReloadKey(id: itemID, revision: browser.revision)) { await load() }
     }
 
     private func load() async {
@@ -30,6 +29,7 @@ struct ItemPage: View {
             item = try await browser.listening.api { try await $0.item(id: itemID, token: $1) }
             error = nil
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
         }
     }
@@ -380,7 +380,7 @@ struct BookmarksSection: View {
                 .padding(.top, 6)
             }
             .frame(maxWidth: 760)
-            .alert("Nazwa zakładki", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { bookmark in
+            .alert("Nazwa zakładki", item: $renaming) { bookmark in
                 TextField("Nazwa", text: $newTitle)
                 Button("Zapisz") {
                     let title = newTitle
@@ -501,6 +501,7 @@ private struct PodcastPage: View {
     @State private var filter = EpisodeFilter.incomplete
     @State private var sort = "publishedAt"
     @State private var query = ""
+    @FocusState private var queryFocused: Bool
     @State private var shown: AudiobookshelfClient.PodcastEpisode?
     @State private var editing: EditRequest?
     @State private var showsFeed = false
@@ -553,6 +554,9 @@ private struct PodcastPage: View {
                     Text("Odcinki (\(episodes.count))")
                     Spacer()
                     TextField("Szukaj odcinka", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 160)
+                        .focused($queryFocused)
+                        .onChange(of: queryFocused) { browser.textField("podcast.episodeSearch", focused: queryFocused) }
+                        .onDisappear { browser.textField("podcast.episodeSearch", focused: false) }
                     Picker("Pokaż", selection: $filter) { ForEach(EpisodeFilter.allCases, id: \.self) { Text($0.rawValue) } }
                         .labelsHidden().fixedSize()
                     Picker("Sortuj", selection: $sort) {

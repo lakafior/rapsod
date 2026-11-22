@@ -53,18 +53,20 @@ struct MetadataSourcesSection: View {
             }
             if !sources.recentLog.isEmpty {
                 DisclosureGroup("Log źródeł", isExpanded: $showsLog) {
-                    VStack(alignment: .trailing) {
-                        ScrollView([.vertical, .horizontal]) {
-                            Text(sources.recentLog.suffix(120).joined(separator: "\n"))
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                                .fixedSize()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(height: 160)
-                        Button("Kopiuj log źródeł") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(sources.recentLog.joined(separator: "\n"), forType: .string)
+                    // Tekst logu składany tylko po rozwinięciu — zwinięta grupa nie przelicza go przy każdym wpisie.
+                    if showsLog {
+                        VStack(alignment: .trailing) {
+                            ScrollView([.vertical, .horizontal]) {
+                                Text(sources.recentLog.suffix(120).joined(separator: "\n"))
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                                    .fixedSize()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(height: 160)
+                            Button("Kopiuj log źródeł") {
+                                NSPasteboard.copy(sources.recentLog.joined(separator: "\n"))
+                            }
                         }
                     }
                 }

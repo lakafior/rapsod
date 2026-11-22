@@ -41,6 +41,7 @@ struct AuthorEditSheet: View {
                         .font(.body)
                         .frame(minHeight: 120)
                         .scrollContentBackground(.hidden)
+                        .accessibilityLabel("Opis")
                         .padding(4)
                         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
                 }

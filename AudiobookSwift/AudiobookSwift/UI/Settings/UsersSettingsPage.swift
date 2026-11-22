@@ -80,8 +80,7 @@ private struct UsersContent: View {
         }
         .confirmationDialog(
             "Usunąć konto „\(userToDelete?.username ?? "")”?",
-            isPresented: Binding(get: { userToDelete != nil }, set: { if !$0 { userToDelete = nil } }),
-            presenting: userToDelete
+            item: $userToDelete
         ) { user in
             Button(model.isListener(user) ? "Usuń konto używane przez aplikację" : "Usuń konto", role: .destructive) {
                 Task { await model.delete(user) }
@@ -181,7 +180,6 @@ private struct UserStatsSheet: View {
             HStack {
                 Label("Słuchanie: \(user.username)", systemImage: "chart.bar").font(.headline)
                 Spacer()
-                Button("Gotowe") { dismiss() }.keyboardShortcut(.defaultAction)
             }
             .padding(14)
             Divider()
@@ -196,6 +194,9 @@ private struct UserStatsSheet: View {
             }
         }
         .frame(width: 520, height: 600)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("Gotowe") { dismiss() } }
+        }
         .task {
             do {
                 stats = try await model.listeningStats(user)

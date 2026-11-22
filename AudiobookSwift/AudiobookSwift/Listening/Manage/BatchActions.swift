@@ -44,7 +44,7 @@ private struct BatchSelection: ViewModifier {
         content
             .toolbar {
                 ToolbarItem {
-                    Toggle(isOn: Binding(get: { browser.isSelecting }, set: { browser.isSelecting = $0 })) {
+                    Toggle(isOn: Bindable(browser).isSelecting) {
                         Label("Zaznacz", systemImage: "checkmark.circle")
                     }
                     .help(browser.isSelecting ? "Zakończ zaznaczanie" : "Zaznacz wiele pozycji")
@@ -62,7 +62,7 @@ private struct BatchSelection: ViewModifier {
                 case .playlist: BatchPlaylistSheet(browser: browser, items: selection) { finish($0) }
                 }
             }
-            .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), presenting: confirm) { kind in
+            .confirmationDialog(confirmTitle, item: $confirm) { kind in
                 switch kind {
                 case .delete:
                     Button("Przenieś do Kosza i usuń z biblioteki", role: .destructive) { delete() }
@@ -75,13 +75,13 @@ private struct BatchSelection: ViewModifier {
             } message: { kind in
                 Text(confirmMessage(kind))
             }
-            .alert("Kosz jest niedostępny", isPresented: Binding(get: { permanentIDs != nil }, set: { if !$0 { permanentIDs = nil } }), presenting: permanentIDs) { ids in
+            .alert("Kosz jest niedostępny", item: $permanentIDs) { ids in
                 Button("Usuń trwale (\(ids.count))", role: .destructive) { deletePermanently(ids) }
                 Button("Anuluj", role: .cancel) {}
             } message: { ids in
                 Text("Folderów \(ids.count) pozycji nie da się przenieść do Kosza. Usunąć je trwale razem z plikami? Tego nie można cofnąć.")
             }
-            .alert(result?.title ?? "", isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } }), presenting: result) { _ in
+            .alert(result?.title ?? "", item: $result) { _ in
                 Button("OK") {}
             } message: { Text($0.message) }
     }

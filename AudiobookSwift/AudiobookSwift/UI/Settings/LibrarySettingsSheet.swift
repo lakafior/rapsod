@@ -44,13 +44,13 @@ struct LibrarySettingsSheet: View {
             }
         }
         .task { await model.load() }
-        .confirmationDialog("Usunąć folder z biblioteki?", isPresented: Binding(get: { folderToRemove != nil }, set: { if !$0 { folderToRemove = nil } }), presenting: folderToRemove) { folder in
+        .confirmationDialog("Usunąć folder z biblioteki?", item: $folderToRemove) { folder in
             Button("Usuń folder z biblioteki", role: .destructive) { Task { await model.removeFolder(folder) } }
             Button("Anuluj", role: .cancel) {}
         } message: { folder in
             Text("Pozycje z „\(folder.fullPath)” znikną z biblioteki razem z postępem słuchania, także na telefonie. Pliki zostaną na dysku nietknięte.")
         }
-        .confirmationDialog("Usunąć wszystkie pliki metadata.\(confirmRemove ?? "")?", isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } }), presenting: confirmRemove) { ext in
+        .confirmationDialog("Usunąć wszystkie pliki metadata.\(confirmRemove ?? "")?", item: $confirmRemove) { ext in
             Button("Usuń pliki", role: .destructive) { Task { await model.removeMetadataFiles(ext: ext) } }
             Button("Anuluj", role: .cancel) {}
         } message: { ext in
@@ -152,12 +152,12 @@ struct LibrarySettingsSheet: View {
                     }
                     .toggleStyle(.checkbox)
                     Spacer()
-                    Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
+                    Button("Przesuń wyżej", systemImage: "chevron.up") { move(index, by: -1) }
+                        .labelStyle(.iconOnly)
                         .buttonStyle(.borderless).disabled(index == 0)
-                        .accessibilityLabel("Przesuń wyżej")
-                    Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
+                    Button("Przesuń niżej", systemImage: "chevron.down") { move(index, by: 1) }
+                        .labelStyle(.iconOnly)
                         .buttonStyle(.borderless).disabled(index == model.sources.count - 1)
-                        .accessibilityLabel("Przesuń niżej")
                 }
             }
         } header: {
@@ -202,8 +202,8 @@ struct LibrarySettingsSheet: View {
                 Text("zostało do końca (sekundy)").tag(LibrarySettingsModel.FinishedRule.timeRemaining)
                 Text("przesłuchano procent").tag(LibrarySettingsModel.FinishedRule.percentComplete)
             }
-            LabeledContent(model.finishedRule == .timeRemaining ? "Sekundy do końca" : "Procent") {
-                TextField("", value: $model.finishedValue, format: .number.precision(.fractionLength(0)))
+            LabeledContent(finishedValueLabel) {
+                TextField(finishedValueLabel, value: $model.finishedValue, format: .number.precision(.fractionLength(0)))
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .frame(width: 80)
@@ -229,6 +229,10 @@ struct LibrarySettingsSheet: View {
     }
 
     // MARK: Pomocnicze
+
+    private var finishedValueLabel: String {
+        model.finishedRule == .timeRemaining ? "Sekundy do końca" : "Procent"
+    }
 
     private func bind(_ key: WritableKeyPath<AudiobookshelfClient.LibrarySettings, Bool?>, default value: Bool) -> Binding<Bool> {
         Binding(get: { model.settings?[keyPath: key] ?? value }, set: { model.settings?[keyPath: key] = $0 })

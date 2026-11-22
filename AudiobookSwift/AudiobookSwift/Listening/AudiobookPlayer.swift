@@ -140,6 +140,11 @@ final class AudiobookPlayer {
     @ObservationIgnored private var enqueueTask: Task<Void, Never>?
     @ObservationIgnored private var nowPlayingArtwork: MPMediaItemArtwork?
     @ObservationIgnored private var commandsInstalled = false
+    /// Ostatnie „Teraz odtwarzane”: zegar nie odświeża go co pół sekundy — system sam przesuwa
+    /// czas z prędkości, więc wystarczy zmiana stanu, rozdziału albo co `nowPlayingInterval`.
+    @ObservationIgnored private var nowPlayingUpdated: Date?
+    @ObservationIgnored private var nowPlayingChapterID: Int?
+    private static let nowPlayingInterval: TimeInterval = 10
     @ObservationIgnored private var retriedRemote = false
 
     private static let rateKey = "listeningRate"
@@ -251,6 +256,8 @@ final class AudiobookPlayer {
         lastTick = nil
         artwork = nil
         cancelSleepTimer()
+        nowPlayingUpdated = nil
+        nowPlayingChapterID = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
@@ -517,7 +524,7 @@ final class AudiobookPlayer {
         trackIndex = index
         let local = time.seconds.isFinite ? max(0, time.seconds) : 0
         currentTime = min(track.startOffset + local, track.end)
-        syncPlayingState()
+        syncPlayingState(fromClock: true)
 
         let now = Date.now
         if isPlaying {
@@ -538,14 +545,21 @@ final class AudiobookPlayer {
         }
     }
 
-    private func syncPlayingState() {
+    /// `fromClock`: wywołanie z zegara (co pół sekundy) — „Teraz odtwarzane” tylko przy zmianie
+    /// stanu albo rozdziału i co `nowPlayingInterval`; pozostałe wywołania odświeżają zawsze.
+    private func syncPlayingState(fromClock: Bool = false) {
         let playing = player.timeControlStatus != .paused
-        if playing != isPlaying {
+        let changed = playing != isPlaying
+        if changed {
             isPlaying = playing
             if !playing {
                 lastTick = nil
                 onEvent?(.paused)
             }
+        }
+        if fromClock, !changed, currentChapterID == nowPlayingChapterID,
+           let nowPlayingUpdated, Date.now.timeIntervalSince(nowPlayingUpdated) < Self.nowPlayingInterval {
+            return
         }
         updateNowPlaying()
     }
@@ -572,6 +586,8 @@ final class AudiobookPlayer {
             info[MPNowPlayingInfoPropertyChapterCount] = chapters.count
         }
         center.nowPlayingInfo = info
+        nowPlayingUpdated = .now
+        nowPlayingChapterID = currentChapterID
         // Na macOS klawisze multimedialne trafiają do aplikacji, która ma stan „odtwarza”.
         center.playbackState = isPlaying ? .playing : .paused
     }

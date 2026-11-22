@@ -29,8 +29,7 @@ private struct LogView: View {
                 Toggle("Przewijaj automatycznie", isOn: $followTail)
                     .toggleStyle(.checkbox)
                 Button("Kopiuj log") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(supervisor.recentLog.joined(separator: "\n"), forType: .string)
+                    NSPasteboard.copy(supervisor.recentLog.joined(separator: "\n"))
                 }
                 .disabled(text.isEmpty)
                 if let dataRoot {

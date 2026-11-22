@@ -55,38 +55,53 @@ struct SeriesCard: View {
 
     var body: some View {
         let books = series?.items ?? []
-        let finished = books.filter { browser.listening.progress[$0.id]?.isFinished == true }.count
-        VStack(alignment: .leading, spacing: 4) {
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5))
-                ForEach(Array(books.prefix(4).enumerated().reversed()), id: \.offset) { index, book in
-                    AsyncCover(listening: browser.listening, itemID: book.id, path: book.media.coverPath, size: 120)
-                        .frame(width: 120, height: 120)
-                        .shadow(radius: 2)
-                        .offset(x: CGFloat(index) * 26)
+        // Przycisk, nie gest: karta dostaje fokus klawiatury i działa z VoiceOver jak przycisk.
+        Button(action: activate) {
+            VStack(alignment: .leading, spacing: 4) {
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5))
+                    ForEach(Array(books.prefix(4).enumerated().reversed()), id: \.offset) { index, book in
+                        AsyncCover(listening: browser.listening, itemID: book.id, path: book.media.coverPath, size: 120)
+                            .frame(width: 120, height: 120)
+                            .shadow(radius: 2)
+                            .offset(x: CGFloat(index) * 26)
+                    }
+                    .padding(.leading, 6)
                 }
-                .padding(.leading, 6)
+                .frame(width: 210, height: 132)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                Text(series?.name ?? " ").font(.callout).lineLimit(2, reservesSpace: true)
+                SeriesCardProgress(listening: browser.listening, series: series)
             }
-            .frame(width: 210, height: 132)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            Text(series?.name ?? " ").font(.callout).lineLimit(2, reservesSpace: true)
-            HStack(spacing: 6) {
-                Text(series == nil ? " " : "Książki: \(books.count)")
-                if !books.isEmpty, finished > 0 {
-                    Text(finished == books.count ? "· ukończona" : "· ukończone \(finished)")
-                }
-            }
-            .font(.caption).foregroundStyle(.secondary)
+            .frame(width: 210)
+            .contentShape(Rectangle())
         }
-        .frame(width: 210)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if let open { open() } else if let series { browser.open(.series(id: series.id, name: series.name)) }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { if let open { open() } else if let series { browser.open(.series(id: series.id, name: series.name)) } }
+        .buttonStyle(.plain)
+        .disabled(series == nil)
         .accessibilityIdentifier(series.map { "series.\($0.id)" } ?? "series.placeholder")
+    }
+
+    private func activate() {
+        if let open { open() } else if let series { browser.open(.series(id: series.id, name: series.name)) }
+    }
+}
+
+/// Liczba książek i ukończonych w karcie serii. Osobny widok: tylko on czyta słownik postępu,
+/// więc synchronizacja postępu nie przebudowuje okładek wszystkich kart.
+private struct SeriesCardProgress: View {
+    let listening: ListeningController
+    let series: AudiobookshelfClient.Series?
+
+    var body: some View {
+        let books = series?.items ?? []
+        let finished = books.filter { listening.progress[$0.id]?.isFinished == true }.count
+        HStack(spacing: 6) {
+            Text(series == nil ? " " : "Książki: \(books.count)")
+            if !books.isEmpty, finished > 0 {
+                Text(finished == books.count ? "· ukończona" : "· ukończone \(finished)")
+            }
+        }
+        .font(.caption).foregroundStyle(.secondary)
     }
 }
 
@@ -130,13 +145,30 @@ struct SeriesPage: View {
         }
     }
 
+    /// Wszystkie tomy serii (stronami po 500), potem jedno oznaczenie. Błąd trafia do alertu okna.
     private func mark(_ finished: Bool) async {
         guard let libraryID = browser.libraryID else { return }
+        let listening = browser.listening
         let filter = AudiobookshelfClient.filter("series", seriesID)
-        guard let page = try? await browser.listening.api({
-            try await $0.itemsPage(libraryID: libraryID, page: 0, limit: 500, sort: "sequence", descending: false, filter: filter, token: $1)
-        }) else { return }
-        await browser.listening.setFinished(page.results.elements.map { .init(libraryItemId: $0.id, episodeId: nil, isFinished: finished) })
+        let limit = 500
+        var ids: [String] = []
+        do {
+            var page = 0
+            while true {
+                let current = page
+                let result = try await listening.api {
+                    try await $0.itemsPage(libraryID: libraryID, page: current, limit: limit, sort: "sequence", descending: false, filter: filter, token: $1)
+                }
+                let elements = result.results.elements
+                ids += elements.map(\.id)
+                if elements.count < limit || ids.count >= (result.total ?? ids.count) { break }
+                page += 1
+            }
+        } catch {
+            listening.loadError = error.localizedDescription
+            return
+        }
+        await listening.setFinished(ids.map { .init(libraryItemId: $0, episodeId: nil, isFinished: finished) })
     }
 }
 
@@ -190,17 +222,19 @@ struct AuthorCard: View {
     let author: AudiobookshelfClient.Author?
 
     var body: some View {
-        VStack(spacing: 6) {
-            AuthorPhoto(listening: browser.listening, author: author, size: 110)
-            Text(author?.name ?? " ").font(.callout).lineLimit(2, reservesSpace: true).multilineTextAlignment(.center)
-            Text(author?.numBooks.map { "Książki: \($0)" } ?? " ").font(.caption).foregroundStyle(.secondary)
+        Button {
+            if let author { browser.open(.author(id: author.id, name: author.name)) }
+        } label: {
+            VStack(spacing: 6) {
+                AuthorPhoto(listening: browser.listening, author: author, size: 110)
+                Text(author?.name ?? " ").font(.callout).lineLimit(2, reservesSpace: true).multilineTextAlignment(.center)
+                Text(author?.numBooks.map { "Książki: \($0)" } ?? " ").font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(width: 130)
+            .contentShape(Rectangle())
         }
-        .frame(width: 130)
-        .contentShape(Rectangle())
-        .onTapGesture { if let author { browser.open(.author(id: author.id, name: author.name)) } }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { if let author { browser.open(.author(id: author.id, name: author.name)) } }
+        .buttonStyle(.plain)
+        .disabled(author == nil)
         .accessibilityIdentifier(author.map { "author.\($0.id)" } ?? "author.placeholder")
     }
 }
@@ -286,8 +320,7 @@ struct AuthorPage: View {
                 AuthorEditSheet(browser: browser, author: author) { result in changed(result) }
             }
         }
-        .task(id: authorID) { await load() }
-        .onChange(of: browser.revision) { Task { await load() } }
+        .task(id: ReloadKey(id: authorID, revision: browser.revision)) { await load() }
     }
 
     /// Po edycji: inna nazwa albo połączenie z innym autorem podmienia stronę, usunięcie — zamyka ją.
@@ -309,6 +342,7 @@ struct AuthorPage: View {
         do {
             author = try await browser.listening.api { try await $0.author(id: authorID, token: $1) }
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
         }
     }
@@ -321,7 +355,6 @@ struct NarratorsSection: View {
     let libraryID: String
     @State private var narrators: [AudiobookshelfClient.Narrator]?
     @State private var error: String?
-    @State private var selection: String?
     @State private var renaming: AudiobookshelfClient.Narrator?
     @State private var newName = ""
     @State private var deleting: AudiobookshelfClient.Narrator?
@@ -333,26 +366,20 @@ struct NarratorsSection: View {
                 if narrators.isEmpty {
                     ContentUnavailableView("Brak lektorów", systemImage: "waveform")
                 } else {
-                    List(narrators, selection: $selection) { narrator in
-                        HStack {
-                            Text(narrator.name)
-                            Spacer()
-                            Text("Książki: \(narrator.numBooks ?? 0)").foregroundStyle(.secondary)
+                    // Wiersz to przycisk: kliknięcie otwiera listę książek lektora, jak link w web UI
+                    // (zaznaczenie listy nie służy już do nawigacji — strzałki nie przeskakują stron).
+                    List(narrators) { narrator in
+                        Button { browser.open(.filtered(.narrator(narrator.name))) } label: {
+                            HStack {
+                                Text(narrator.name)
+                                Spacer()
+                                Text("Książki: \(narrator.numBooks ?? 0)").foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
                         }
-                        .tag(narrator.id)
-                    }
-                    .contextMenu(forSelectionType: String.self) { ids in
-                        if let narrator = narrators.first(where: { ids.contains($0.id) }) {
+                        .buttonStyle(.plain)
+                        .contextMenu {
                             NarratorManageMenu(browser: browser, libraryID: libraryID, narrator: narrator, renaming: $renaming, deleting: $deleting)
-                        }
-                    } primaryAction: { ids in
-                        if let narrator = narrators.first(where: { ids.contains($0.id) }) { browser.open(.filtered(.narrator(narrator.name))) }
-                    }
-                    .onChange(of: selection) {
-                        // Pojedyncze kliknięcie też otwiera listę książek lektora, jak link w web UI.
-                        if let id = selection, let narrator = narrators.first(where: { $0.id == id }) {
-                            selection = nil
-                            browser.open(.filtered(.narrator(narrator.name)))
                         }
                     }
                 }
@@ -361,25 +388,24 @@ struct NarratorsSection: View {
             }
         }
         .navigationTitle("Lektorzy")
-        .task(id: libraryID) { await load() }
-        .onChange(of: browser.revision) { Task { await load() } }
+        .task(id: ReloadKey(id: libraryID, revision: browser.revision)) { await load() }
         .onChange(of: renaming) { if let renaming { newName = renaming.name } }
-        .alert("Nowa nazwa lektora", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { narrator in
+        .alert("Nowa nazwa lektora", item: $renaming) { narrator in
             TextField("Nazwa", text: $newName)
             Button("Zmień") { Task { await rename(narrator) } }
             Button("Anuluj", role: .cancel) {}
         } message: { narrator in
             Text("„\(narrator.name)” zmieni się we wszystkich książkach tej biblioteki. Istniejąca nazwa połączy obu lektorów.")
         }
-        .confirmationDialog("Usunąć lektora „\(deleting?.name ?? "")”?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { narrator in
+        .confirmationDialog("Usunąć lektora „\(deleting?.name ?? "")”?", item: $deleting) { narrator in
             Button("Usuń ze wszystkich książek", role: .destructive) { Task { await remove(narrator) } }
             Button("Anuluj", role: .cancel) {}
         } message: { narrator in
             Text("Lektor zniknie z \(narrator.numBooks ?? 0) książek tej biblioteki. Książki zostają.")
         }
-        .alert("Nie udało się", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert("Nie udało się", item: $failure) { _ in
             Button("OK") {}
-        } message: { Text(failure ?? "") }
+        } message: { Text($0) }
     }
 
     private func rename(_ narrator: AudiobookshelfClient.Narrator) async {
@@ -408,6 +434,7 @@ struct NarratorsSection: View {
         do {
             narrators = try await browser.listening.api { try await $0.narrators(libraryID: libraryID, token: $1) }
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
         }
     }

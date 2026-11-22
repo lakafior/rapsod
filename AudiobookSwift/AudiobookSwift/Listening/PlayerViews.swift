@@ -19,7 +19,10 @@ struct PlayerPanel: View {
                 CoverView(image: cover, symbol: "headphones")
                     .frame(maxWidth: 220, maxHeight: 220)
                     .shadow(radius: 8, y: 4)
-                    .task(id: book.itemID) { cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 300) }
+                    // Licznik okładki: po edycji okładki odtwarzacz wczytuje nową, jak `AsyncCover`.
+                    .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
+                        cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 300)
+                    }
 
                 VStack(spacing: 3) {
                     Text(book.title).font(.headline).multilineTextAlignment(.center).lineLimit(2)
@@ -180,10 +183,17 @@ struct ChapterScrubber: View {
     }
 }
 
+extension EnvironmentValues {
+    /// Spacja (bez modyfikatorów) przełącza odtwarzanie. Okno biblioteki wyłącza ją, póki pole
+    /// tekstowe ma fokus — skrót przycisku przejąłby spację, zanim trafi do pola.
+    @Entry var playPauseOnSpace = true
+}
+
 /// Poprzedni rozdział, −15 s, odtwarzaj/pauza, +30 s, następny rozdział.
 struct TransportControls: View {
     let player: AudiobookPlayer
     var large = false
+    @Environment(\.playPauseOnSpace) private var playPauseOnSpace
 
     var body: some View {
         HStack(spacing: large ? 22 : 14) {
@@ -204,7 +214,7 @@ struct TransportControls: View {
                     if player.isLoading { ProgressView().controlSize(.small) }
                 }
             }
-            .keyboardShortcut(.space, modifiers: [])
+            .keyboardShortcut(playPauseOnSpace ? KeyboardShortcut(.space, modifiers: []) : nil)
             .accessibilityLabel(player.isPlaying ? "Pauza" : "Odtwarzaj")
             .accessibilityIdentifier("player.playPause")
             Button { player.skip(by: AudiobookPlayer.skipForward) } label: { Image(systemName: "goforward.30") }
@@ -227,7 +237,7 @@ struct SpeedMenu: View {
     let player: AudiobookPlayer
 
     var body: some View {
-        Picker("Prędkość", selection: Binding(get: { player.rate }, set: { player.rate = $0 })) {
+        Picker("Prędkość", selection: Bindable(player).rate) {
             ForEach(AudiobookPlayer.rates, id: \.self) { Text(Self.label($0)).tag($0) }
         }
         .labelsHidden()
@@ -295,6 +305,10 @@ struct ChapterList: View {
             }
             .listStyle(.inset)
             .onAppear { if let current { proxy.scrollTo(current, anchor: .center) } }
+            // Lista idzie za odtwarzaniem: nowy rozdział (także po przewinięciu) jest widoczny.
+            .onChange(of: current) {
+                if let current { withAnimation { proxy.scrollTo(current, anchor: .center) } }
+            }
         }
     }
 }
@@ -311,7 +325,9 @@ struct MiniPlayerBar: View {
             HStack(spacing: 12) {
                 CoverView(image: cover, symbol: "headphones")
                     .frame(width: 36, height: 36)
-                    .task(id: book.itemID) { cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 40) }
+                    .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
+                        cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 40)
+                    }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(book.title).font(.callout.weight(.semibold)).lineLimit(1)
                     Text(player.currentChapter?.title ?? book.author ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -321,6 +337,7 @@ struct MiniPlayerBar: View {
                 Button { showsPlayer.toggle() } label: { Image(systemName: "sidebar.trailing") }
                     .buttonStyle(.borderless)
                     .help(showsPlayer ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz")
+                    .accessibilityLabel(showsPlayer ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

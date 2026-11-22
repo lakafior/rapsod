@@ -31,9 +31,8 @@ struct CollectionsSection: View {
             }
         }
         .navigationTitle("Kolekcje")
-        .task(id: libraryID) { await load() }
         // Zmiana nazwy, pozycji albo usunięcie kolekcji (etap 9i) i zdarzenia z serwera.
-        .onChange(of: browser.revision) { Task { await load() } }
+        .task(id: ReloadKey(id: libraryID, revision: browser.revision)) { await load() }
     }
 
     private func load() async {
@@ -41,6 +40,7 @@ struct CollectionsSection: View {
             collections = try await browser.listening.api { try await $0.collections(libraryID: libraryID, token: $1) }
             error = nil
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
         }
     }
@@ -107,16 +107,17 @@ struct CollectionPage: View {
         } message: {
             Text("Kolekcja zniknie dla wszystkich kont. Książki zostają w bibliotece.")
         }
-        .alert("Nie udało się", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .alert("Nie udało się", item: $failure) { _ in
             Button("OK") {}
-        } message: { Text(failure ?? "") }
-        .task(id: collectionID) { await load() }
-        .onChange(of: browser.revision) { Task { await load() } }
+        } message: { Text($0) }
+        .task(id: ReloadKey(id: collectionID, revision: browser.revision)) { await load() }
     }
 
     private func load() async {
         guard let libraryID = browser.libraryID else { return }
         let all = try? await browser.listening.api { try await $0.collections(libraryID: libraryID, token: $1) }
+        // Wczytanie przerwane przez nowsze nie czyści strony.
+        if Task.isCancelled { return }
         collection = all?.first { $0.id == collectionID }
     }
 
@@ -226,7 +227,6 @@ struct CollectionEditSheet: View {
 struct PlaylistsSection: View {
     let browser: LibraryBrowser
     let libraryID: String
-    @State private var selection: String?
 
     var body: some View {
         Group {
@@ -235,20 +235,19 @@ struct PlaylistsSection: View {
                     ContentUnavailableView("Brak playlist", systemImage: "music.note.list",
                                            description: Text("Dodaj książkę albo odcinek do playlisty z menu „Więcej” na jego stronie albo z menu podręcznego karty."))
                 } else {
-                    List(playlists, selection: $selection) { playlist in
-                        HStack {
-                            Image(systemName: "music.note.list").foregroundStyle(.secondary)
-                            Text(playlist.name)
-                            Spacer()
-                            Text("Pozycje: \(playlist.items.elements.count)").foregroundStyle(.secondary)
+                    // Wiersz to przycisk: kliknięcie otwiera playlistę, jak dotąd, a z klawiatury
+                    // (pełny dostęp z klawiatury) i VoiceOver działa jak każdy przycisk.
+                    List(playlists) { playlist in
+                        Button { browser.open(.playlist(playlist.id)) } label: {
+                            HStack {
+                                Image(systemName: "music.note.list").foregroundStyle(.secondary)
+                                Text(playlist.name)
+                                Spacer()
+                                Text("Pozycje: \(playlist.items.elements.count)").foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
                         }
-                        .tag(playlist.id)
-                    }
-                    .onChange(of: selection) {
-                        if let id = selection {
-                            selection = nil
-                            browser.open(.playlist(id))
-                        }
+                        .buttonStyle(.plain)
                     }
                 }
             } else {
@@ -266,15 +265,31 @@ struct PlaylistPage: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var confirmDelete = false
+    @State private var selection: String?
 
     private var playlist: AudiobookshelfClient.Playlist? { browser.playlists?.first { $0.id == playlistID } }
 
     var body: some View {
         let items = playlist?.items.elements ?? []
-        List {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, entry in
-                row(index: index, entry: entry)
+        // Identyfikator wpisu: pozycja + odcinek (serwer nie przyjmuje dwa razy tego samego),
+        // więc wiersz nie myli się po usunięciu wpisu wyżej. Dwuklik i Return odtwarzają od wiersza.
+        List(selection: $selection) {
+            ForEach(items, id: \.entryKey) { entry in
+                row(entry).tag(entry.entryKey)
             }
+        }
+        .contextMenu(forSelectionType: String.self) { keys in
+            if let key = keys.first, let index = items.firstIndex(where: { $0.entryKey == key }) {
+                let entry = items[index]
+                Button("Odtwarzaj od tej pozycji") { play(from: index) }
+                Button("Otwórz") { browser.open(.item(entry.libraryItemId)) }
+                Divider()
+                Button("Usuń z playlisty") {
+                    Task { await browser.removeFromPlaylist(playlistID, .init(libraryItemId: entry.libraryItemId, episodeId: entry.episodeId)) }
+                }
+            }
+        } primaryAction: { keys in
+            if let key = keys.first, let index = items.firstIndex(where: { $0.entryKey == key }) { play(from: index) }
         }
         .overlay {
             if playlist != nil, items.isEmpty { ContentUnavailableView("Pusta playlista", systemImage: "music.note.list") }
@@ -306,7 +321,7 @@ struct PlaylistPage: View {
         .task { await browser.loadPlaylists() }
     }
 
-    private func row(index: Int, entry: AudiobookshelfClient.Playlist.Item) -> some View {
+    private func row(_ entry: AudiobookshelfClient.Playlist.Item) -> some View {
         let listening = browser.listening
         let key = ListeningController.key(entry.libraryItemId, entry.episodeId)
         let progress = listening.progress[key]
@@ -327,16 +342,7 @@ struct PlaylistPage: View {
                 Image(systemName: listening.player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill").foregroundStyle(.tint)
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { play(from: index) }
-        .contextMenu {
-            Button("Odtwarzaj od tej pozycji") { play(from: index) }
-            Button("Otwórz") { browser.open(.item(entry.libraryItemId)) }
-            Divider()
-            Button("Usuń z playlisty") {
-                Task { await browser.removeFromPlaylist(playlistID, .init(libraryItemId: entry.libraryItemId, episodeId: entry.episodeId)) }
-            }
-        }
+        .accessibilityElement(children: .combine)
     }
 
     /// Kolejka od wybranej pozycji; ukończone są pomijane.
@@ -350,6 +356,11 @@ struct PlaylistPage: View {
         .map { ListeningController.QueueEntry(itemID: $0.libraryItemId, episodeID: $0.episodeId, title: $0.episode?.title ?? $0.libraryItem?.title ?? "") }
         Task { await browser.listening.playQueue(entries) }
     }
+}
+
+private extension AudiobookshelfClient.Playlist.Item {
+    /// Jak `ListeningController.key`: `itemID` albo `itemID/episodeID`.
+    var entryKey: String { episodeId.map { "\(libraryItemId)/\($0)" } ?? libraryItemId }
 }
 
 /// „Dodaj do playlisty” w menu pozycji i odcinka: istniejące playlisty biblioteki albo nowa.
@@ -468,13 +479,16 @@ struct ListeningStatsContent: View {
 
     private var lastDays: [Day] {
         let calendar = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        // Klucze serwera „rrrr-MM-dd” w czasie lokalnym i kalendarzu gregoriańskim — bez tworzenia
+        // `DateFormatter` przy każdym przebiegu `body`.
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
         let today = calendar.startOfDay(for: .now)
         return (0..<30).reversed().compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
-            return Day(date: date, minutes: (stats.days[formatter.string(from: date)] ?? 0) / 60)
+            let day = gregorian.dateComponents([.year, .month, .day], from: date)
+            let key = String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
+            return Day(date: date, minutes: (stats.days[key] ?? 0) / 60)
         }
     }
 }

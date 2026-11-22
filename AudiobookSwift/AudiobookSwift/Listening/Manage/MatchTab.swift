@@ -113,7 +113,8 @@ struct MatchTab: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("match.result")
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .listStyle(.bordered)
+            .alternatingRowBackgrounds()
         }
     }
 

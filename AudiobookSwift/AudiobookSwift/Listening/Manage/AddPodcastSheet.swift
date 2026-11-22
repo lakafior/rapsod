@@ -27,6 +27,7 @@ struct AddPodcastSheet: View {
     @State private var draft: NewPodcastDraft?
     @State private var opmlFeeds: [AudiobookshelfClient.OPMLFeed]?
     @State private var listenerSeesExplicit: Bool?
+    @State private var choosingOPML = false
 
     /// Lista sklepów z dopisanym bieżącym, gdy go na niej nie ma (np. ustawiony w web UI).
     static func countries(including code: String) -> [(String, String)] {
@@ -218,18 +219,18 @@ struct AddPodcastSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Plik OPML to lista subskrypcji wyeksportowana z innej aplikacji do podcastów. Po wczytaniu wybierzesz, które kanały dodać.")
                 .foregroundStyle(.secondary)
-            Button("Wybierz plik OPML…", systemImage: "doc") { chooseOPML() }
+            Button("Wybierz plik OPML…", systemImage: "doc") { choosingOPML = true }
                 .disabled(busy != nil)
                 .accessibilityIdentifier("addPodcast.opml")
+                .fileImporter(isPresented: $choosingOPML, allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml, .plainText]) { result in
+                    // Aplikacja nie jest w piaskownicy — adres z panelu czyta się wprost.
+                    if case .success(let url) = result { readOPML(url) }
+                }
+                .fileDialogMessage("Wybierz plik OPML z subskrypcjami")
         }
     }
 
-    private func chooseOPML() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "opml") ?? .xml, .xml, .plainText]
-        panel.allowsMultipleSelection = false
-        panel.message = "Wybierz plik OPML z subskrypcjami"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func readOPML(_ url: URL) {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             error = "Nie udało się odczytać pliku „\(url.lastPathComponent)”."
             return
@@ -397,7 +398,7 @@ private struct NewPodcastForm: View {
                     }
                 }
                 Section("Opis") {
-                    TextEditor(text: $draft.description).frame(minHeight: 90)
+                    TextEditor(text: $draft.description).frame(minHeight: 90).accessibilityLabel("Opis")
                 }
             }
             .formStyle(.grouped)
@@ -465,7 +466,7 @@ private struct OPMLImportForm: View {
             List(feeds) { feed in
                 Toggle(isOn: Binding(get: { selected.contains(feed.id) }, set: { if $0 { selected.insert(feed.id) } else { selected.remove(feed.id) } })) {
                     VStack(alignment: .leading) {
-                        Text(feed.title?.isEmpty == false ? feed.title! : feed.feedUrl)
+                        Text(feed.title.flatMap { $0.isEmpty ? nil : $0 } ?? feed.feedUrl)
                         Text(feed.feedUrl).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
                 }
@@ -484,11 +485,13 @@ private struct OPMLImportForm: View {
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 Button("Wstecz", action: onBack)
+                    .keyboardShortcut(.cancelAction)
                 if busy { ProgressView().controlSize(.small) }
                 if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(3) }
                 Spacer()
                 Button("Dodaj zaznaczone (\(selected.count))", action: submit)
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(selected.isEmpty || folderID.isEmpty || busy)
             }
             .font(.callout)

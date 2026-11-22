@@ -209,6 +209,7 @@ struct DetailsTab: View {
                     TextEditor(text: $model.details.description)
                         .font(.body)
                         .frame(minHeight: 120)
+                        .accessibilityLabel("Opis")
                         .accessibilityIdentifier("details.description")
                 }
             }

@@ -120,6 +120,15 @@ final class LibraryBrowser {
     var searchText = "" {
         didSet { if !searchText.isEmpty, oldValue.isEmpty, !path.isEmpty { path = [] } }
     }
+    /// Pola tekstowe okna, które mają teraz fokus (wyszukiwanie, filtr odcinków, filtr tagów).
+    /// Póki jakieś ma, spacja pisze spację zamiast przełączać odtwarzanie (skrót bez modyfikatora).
+    private(set) var focusedTextFields: Set<String> = []
+
+    func textField(_ id: String, focused: Bool) {
+        guard focusedTextFields.contains(id) != focused else { return }
+        if focused { focusedTextFields.insert(id) } else { focusedTextFields.remove(id) }
+    }
+
     /// Filtr siatki „Książki” (nie dotyczy stron serii, autora i list z filtrem w ścieżce).
     var filter: ItemFilter? {
         didSet { if filter != oldValue { isSelecting = false } }

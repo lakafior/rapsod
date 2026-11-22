@@ -21,7 +21,8 @@ struct LibraryWindow: View {
     @State private var newPlaylistName = ""
     @State private var dropTargeted = false
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.appearsActive) private var appearsActive
+    @FocusState private var searchFocused: Bool
 
     init(listening: ListeningController, supervisor: ServerSupervisor, account: ServerAccount, settings: SettingsNavigation) {
         self.listening = listening
@@ -93,6 +94,8 @@ struct LibraryWindow: View {
             if let upload = browser.upload { UploadSheet(model: upload) }
         }
         .searchable(text: $browser.searchText, placement: .toolbar, prompt: browser.isPodcastLibrary ? "Szukaj podcastów i odcinków" : "Szukaj książek, autorów, serii")
+        .searchFocused($searchFocused)
+        .onChange(of: searchFocused) { browser.textField("search", focused: searchFocused) }
         .inspector(isPresented: $showsPlayer) {
             PlayerPanel(listening: listening)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 440)
@@ -120,17 +123,16 @@ struct LibraryWindow: View {
             await listening.windowActivated()
             browser.ensureLibrary()
         }
-        .onChange(of: activeState) {
+        .onChange(of: appearsActive) {
             // Powrót do okna: świeży postęp, nawet gdyby zdarzenia serwera coś zgubiły.
-            if activeState == .key { Task { await listening.refreshMe() } }
+            if appearsActive { Task { await listening.refreshMe() } }
         }
         .onChange(of: listening.libraries) { browser.ensureLibrary() }
         // Kolejność, nazwy i foldery bibliotek zmieniane w ustawieniach (etap 9i).
         .onChange(of: account.libraries) { Task { await listening.refresh() } }
         .task(id: browser.libraryID) { await browser.loadPlaylists() }
-        // `presenting:` przekazuje pozycję do akcji — zamknięcie alertu zeruje `newPlaylistEntry` wcześniej.
-        .alert("Nowa playlista", isPresented: Binding(get: { browser.newPlaylistEntry != nil }, set: { if !$0 { browser.newPlaylistEntry = nil } }),
-               presenting: browser.newPlaylistEntry) { entry in
+        // `item:` przekazuje pozycję do akcji — zamknięcie alertu zeruje `newPlaylistEntry` wcześniej.
+        .alert("Nowa playlista", item: $browser.newPlaylistEntry) { entry in
             TextField("Nazwa", text: $newPlaylistName)
             Button("Utwórz") {
                 let name = newPlaylistName
@@ -139,11 +141,13 @@ struct LibraryWindow: View {
             }
             Button("Anuluj", role: .cancel) { newPlaylistName = "" }
         }
-        .alert("Nie udało się", isPresented: Binding(get: { listening.loadError != nil }, set: { if !$0 { listening.loadError = nil } })) {
+        .alert("Nie udało się", item: Bindable(listening).loadError) { _ in
             Button("OK") { listening.loadError = nil }
         } message: {
-            Text(listening.loadError ?? "")
+            Text($0)
         }
+        // Spacja przełącza odtwarzanie tylko wtedy, gdy nie pisze się w polu tekstowym okna.
+        .environment(\.playPauseOnSpace, browser.focusedTextFields.isEmpty)
     }
 
     @ViewBuilder private var root: some View {

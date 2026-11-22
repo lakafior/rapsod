@@ -50,6 +50,7 @@ private struct BackupsContent: View {
     let account: ServerAccount
     @State private var backupToRestore: AudiobookshelfClient.Backup?
     @State private var backupToDelete: AudiobookshelfClient.Backup?
+    @State private var choosingUpload = false
 
     var body: some View {
         Section {
@@ -80,9 +81,14 @@ private struct BackupsContent: View {
                     Text(Self.progressText(operation)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Wgraj z pliku…", action: chooseUpload)
+                Button("Wgraj z pliku…") { choosingUpload = true }
+                    .fileImporter(isPresented: $choosingUpload, allowedContentTypes: [Self.backupType]) { result in
+                        guard case .success(let url) = result else { return }
+                        Task { await model.upload(url) }
+                    }
+                    .fileDialogConfirmationLabel("Wgraj")
+                // Bez skrótu Return: na stronie ustawień Return w dowolnym polu uruchamiałby kopię.
                 Button("Utwórz kopię teraz") { Task { await model.create() } }
-                    .keyboardShortcut(.defaultAction)
             }
             .disabled(model.operation != nil)
         } header: {
@@ -93,8 +99,7 @@ private struct BackupsContent: View {
         }
         .confirmationDialog(
             "Przywrócić stan z \(backupToRestore.map(BackupsModel.dateText) ?? "")?",
-            isPresented: Binding(get: { backupToRestore != nil }, set: { if !$0 { backupToRestore = nil } }),
-            presenting: backupToRestore
+            item: $backupToRestore
         ) { backup in
             Button("Przywróć i nadpisz obecne dane", role: .destructive) {
                 Task { await model.restore(backup) }
@@ -105,8 +110,7 @@ private struct BackupsContent: View {
         }
         .confirmationDialog(
             "Usunąć kopię z \(backupToDelete.map(BackupsModel.dateText) ?? "")?",
-            isPresented: Binding(get: { backupToDelete != nil }, set: { if !$0 { backupToDelete = nil } }),
-            presenting: backupToDelete
+            item: $backupToDelete
         ) { backup in
             Button("Usuń kopię", role: .destructive) { Task { await model.delete(backup) } }
             Button("Anuluj", role: .cancel) {}
@@ -156,19 +160,11 @@ private struct BackupsContent: View {
         }
     }
 
-    private func chooseUpload() {
-        let panel = NSOpenPanel()
-        panel.title = "Wybierz kopię zapasową audiobookshelf"
-        panel.prompt = "Wgraj"
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        if let type = UTType(filenameExtension: "audiobookshelf") {
-            panel.allowedContentTypes = [type]
-        }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await model.upload(url) }
-    }
+    /// Plik kopii zapasowej audiobookshelf (`*.audiobookshelf`).
+    private static let backupType = UTType(filenameExtension: "audiobookshelf") ?? .data
 
+    /// Zostaje przy `NSOpenPanel`: `fileImporter` nie pozwala włączyć tworzenia nowego folderu
+    /// (`canCreateDirectories`), a to tu potrzebne.
     private func chooseLocation() {
         let panel = NSOpenPanel()
         panel.title = "Folder kopii zapasowych"

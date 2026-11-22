@@ -56,18 +56,18 @@ private struct ItemActionsModifier: ViewModifier {
                     scan()
                 }
             }
-            .sheet(isPresented: Binding(get: { action == .rssFeed }, set: { if !$0, action == .rssFeed { action = nil } })) {
+            .sheet(isPresented: isPresented(.rssFeed)) {
                 RSSFeedSheet(manager: manager, target: .item(item))
             }
-            .sheet(isPresented: Binding(get: { action == .shareLink }, set: { if !$0, action == .shareLink { action = nil } })) {
+            .sheet(isPresented: isPresented(.shareLink)) {
                 ShareLinkSheet(manager: manager, item: item)
             }
-            .sheet(isPresented: Binding(get: { action == .sendEbook }, set: { if !$0, action == .sendEbook { action = nil } })) {
+            .sheet(isPresented: isPresented(.sendEbook)) {
                 SendEbookSheet(manager: manager, item: item) {
                     if let navigation { openWindow.openSettings(.notifications, navigation: navigation) }
                 }
             }
-            .confirmationDialog("Usunąć „\(item.title)”?", isPresented: Binding(get: { action == .delete }, set: { if !$0, action == .delete { action = nil } })) {
+            .confirmationDialog("Usunąć „\(item.title)”?", isPresented: isPresented(.delete)) {
                 Button("Usuń i przenieś pliki do Kosza", role: .destructive) { delete(.trash) }
                     .accessibilityIdentifier("delete.trash")
                 Button("Usuń tylko z biblioteki") { delete(.databaseOnly) }
@@ -76,17 +76,23 @@ private struct ItemActionsModifier: ViewModifier {
             } message: {
                 Text(deleteMessage)
             }
-            .alert("Kosz jest niedostępny", isPresented: Binding(get: { confirmPermanent != nil }, set: { if !$0 { confirmPermanent = nil } }), presenting: confirmPermanent) { _ in
+            .alert("Kosz jest niedostępny", item: $confirmPermanent) { _ in
                 Button("Usuń trwale", role: .destructive) { delete(.permanent) }
                 Button("Anuluj", role: .cancel) {}
             } message: { reason in
                 Text("\(reason)\n\n\(what) „\(item.path ?? "")” zostanie usunięty z dysku bez możliwości odzyskania. Możesz też anulować i usunąć książkę tylko z biblioteki.")
             }
-            .alert(result?.title ?? "", isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } }), presenting: result) { _ in
+            .alert(result?.title ?? "", item: $result) { _ in
                 Button("OK") {}
             } message: { result in
                 Text(result.text)
             }
+    }
+
+    /// Arkusz lub okno potwierdzenia dla jednej akcji: zamknięcie czyści `action`,
+    /// o ile w międzyczasie nie wybrano innej.
+    private func isPresented(_ kind: ItemAction) -> Binding<Bool> {
+        Binding(get: { action == kind }, set: { if !$0, action == kind { action = nil } })
     }
 
     private var deleteMessage: String {

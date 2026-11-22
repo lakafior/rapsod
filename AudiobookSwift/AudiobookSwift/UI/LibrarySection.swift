@@ -111,11 +111,7 @@ struct LibrarySection: View {
         }
         .confirmationDialog(
             "Usunąć bibliotekę „\(libraryToRemove?.name ?? "")”?",
-            isPresented: Binding(
-                get: { libraryToRemove != nil },
-                set: { if !$0 { libraryToRemove = nil } }
-            ),
-            presenting: libraryToRemove
+            item: $libraryToRemove
         ) { library in
             Button("Usuń bibliotekę", role: .destructive) { remove(library) }
             Button("Anuluj", role: .cancel) {}
@@ -124,11 +120,7 @@ struct LibrarySection: View {
         }
         .confirmationDialog(
             "Dopasować wszystkie książki w „\(libraryToMatch?.name ?? "")”?",
-            isPresented: Binding(
-                get: { libraryToMatch != nil },
-                set: { if !$0 { libraryToMatch = nil } }
-            ),
-            presenting: libraryToMatch
+            item: $libraryToMatch
         ) { library in
             Button("Dopasuj wszystkie") { tasks?.matchAll(library) }
             Button("Anuluj", role: .cancel) {}

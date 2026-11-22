@@ -69,7 +69,8 @@ struct FilesTab: View {
                 }
                 .onMove { model.files.move(fromOffsets: $0, toOffset: $1) }
             }
-            .listStyle(.inset(alternatesRowBackgrounds: true))
+            .listStyle(.inset)
+            .alternatingRowBackgrounds()
             .accessibilityIdentifier("files.list")
             HStack(spacing: 6) {
                 Button("W górę", systemImage: "arrow.up") { moveSelection(by: -1) }
@@ -266,7 +267,7 @@ struct ToolsTab: View {
             if let channels = audioFiles.compactMap(\.channels).max(), channels == 1 { options.channels = 1 }
         }
         .onDisappear { tasks.disappear() }
-        .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), presenting: confirm) { kind in
+        .confirmationDialog(confirmTitle, item: $confirm) { kind in
             Button(kind == .embed ? "Osadź metadane" : "Scal do M4B") { run(kind) }
             Button("Anuluj", role: .cancel) {}
         } message: { kind in
