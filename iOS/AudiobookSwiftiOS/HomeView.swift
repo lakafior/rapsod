@@ -52,7 +52,7 @@ struct HomeView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Label(address.url.absoluteString, systemImage: attempt?.succeeded == true ? "checkmark.circle.fill" : (attempt == nil ? "circle" : "xmark.circle"))
                                     .font(.callout)
-                                Text(attempt?.detail ?? "nie próbowano (wcześniejszy adres odpowiedział albo próba została przerwana)")
+                                Text(attempt?.detail ?? "nie próbowano (bez Wi-Fi adresy lokalne są pomijane)")
                                     .font(.caption).foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                             }

@@ -173,6 +173,55 @@ private let chapters = [
         #expect(AddressSelection.localTimeout < AddressSelection.remoteTimeout)
     }
 
+    @Test func withoutWiFiOnlyRemoteAddressesAreTried() {
+        let attempts = AddressSelection.attempts(for: [address("http://mac.local", .local), address("https://t.example.com", .remote)])
+        #expect(AddressSelection.usable(attempts, hasLocalNetwork: true).count == 2)
+        #expect(AddressSelection.usable(attempts, hasLocalNetwork: false).map(\.url.host) == ["t.example.com"])
+        // Bez adresu spoza domu nie ma czego pomijać.
+        let localOnly = AddressSelection.attempts(for: [address("http://mac.local", .local)])
+        #expect(AddressSelection.usable(localOnly, hasLocalNetwork: false).count == 1)
+    }
+
+    @Test func localWinsWhenItAnswersWithinGrace() async throws {
+        let attempts = AddressSelection.attempts(for: [address("http://mac.local", .local), address("https://t.example.com", .remote)])
+        // Tunel odpowiada od razu, Mac po 100 ms — w domu ma wygrać adres lokalny.
+        let home = try await AddressSelection.preferringLocal(attempts, grace: .seconds(2)) { attempt -> AddressSelection.Outcome<String> in
+            if attempt.isLocal { try? await Task.sleep(for: .milliseconds(100)) }
+            return .reached(attempt.isLocal ? "lokalny" : "tunel")
+        }
+        #expect(home.value == "lokalny")
+    }
+
+    @Test func remoteIsUsedAfterGraceWithoutWaitingForLocalTimeout() async throws {
+        let attempts = AddressSelection.attempts(for: [address("http://mac.local", .local), address("https://t.example.com", .remote)])
+        let clock = ContinuousClock()
+        let started = clock.now
+        // Obca sieć Wi-Fi: adres lokalny wisi do limitu czasu, tunel odpowiada od razu.
+        let away = try await AddressSelection.preferringLocal(attempts, grace: .milliseconds(200)) { attempt -> AddressSelection.Outcome<String> in
+            if attempt.isLocal {
+                try? await Task.sleep(for: .seconds(5))
+                return .unreachable("limit czasu")
+            }
+            return .reached("tunel")
+        }
+        #expect(away.value == "tunel")
+        #expect(clock.now - started < .seconds(2))
+    }
+
+    @Test func refusalFromOneAddressDoesNotBlockAnother() async throws {
+        struct Rejected: Error {}
+        let attempts = AddressSelection.attempts(for: [address("http://192.168.1.11", .local), address("https://t.example.com", .remote)])
+        // W obcej sieci pod domowym adresem stoi inne urządzenie i odmawia — tunel ma zadziałać.
+        let result = try await AddressSelection.preferringLocal(attempts, grace: .milliseconds(100)) { attempt -> AddressSelection.Outcome<String> in
+            attempt.isLocal ? .stop(Rejected()) : .reached("tunel")
+        }
+        #expect(result.value == "tunel")
+        // Odmowa wszędzie: błąd odmowy, nie „nieosiągalny”.
+        await #expect(throws: Rejected.self) {
+            _ = try await AddressSelection.preferringLocal(attempts, grace: .milliseconds(100)) { _ -> AddressSelection.Outcome<String> in .stop(Rejected()) }
+        }
+    }
+
     @Test func firstReachableWinsInOrder() async throws {
         let attempts = AddressSelection.attempts(for: [address("https://t.example.com", .remote), address("http://mac.local", .local)])
         // Oba działają: wygrywa lokalny, tunel nie jest nawet pytany.

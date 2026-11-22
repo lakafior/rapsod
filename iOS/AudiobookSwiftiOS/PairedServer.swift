@@ -105,7 +105,7 @@ enum Connector {
         lastAttempts = []
         lastAttemptDate = .now
         do {
-            let found = try await AddressSelection.firstReachable(attempts) { attempt -> AddressSelection.Outcome<AudiobookshelfClient.User> in
+            let found = try await AddressSelection.preferringLocal(attempts) { @MainActor attempt -> AddressSelection.Outcome<AudiobookshelfClient.User> in
                 guard isAllowedByATS(attempt.url) else {
                     lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "pominięty — poza siecią lokalną wymagany jest adres https"))
                     return .unreachable("pominięty — poza siecią lokalną wymagany jest adres https.")
@@ -115,7 +115,7 @@ enum Connector {
                 func elapsed() -> String { Date.now.timeIntervalSince(started).formatted(.number.precision(.fractionLength(1))) + " s" }
                 do {
                     let user: AudiobookshelfClient.User = try await client.me(token: key, timeout: attempt.timeout)
-                    lastAttempts.append(.init(url: attempt.url, succeeded: true, detail: "połączono (\(elapsed()))"))
+                    lastAttempts.append(.init(url: attempt.url, succeeded: true, detail: "odpowiada (\(elapsed()))"))
                     return .reached(user)
                 } catch AudiobookshelfClient.APIError.unauthorized {
                     lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "odpowiedź 401 — klucz odrzucony (\(elapsed()))"))
@@ -124,6 +124,10 @@ enum Connector {
                     lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "odpowiedź 403 — odmowa dostępu (\(elapsed()))"))
                     return .stop(ConnectError.keyRejected)
                 } catch {
+                    if Task.isCancelled || (error as? URLError)?.code == .cancelled || error is CancellationError {
+                        lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "przerwano — inny adres odpowiedział wcześniej"))
+                        return .unreachable("przerwano")
+                    }
                     // Kod błędu sieci obok opisu: po nim widać, czy to limit czasu, DNS czy TLS.
                     let code = (error as? URLError).map { " [URLError \($0.code.rawValue)]" } ?? " [\(type(of: error))]"
                     lastAttempts.append(.init(url: attempt.url, succeeded: false, detail: "\(error.localizedDescription)\(code) (\(elapsed()))"))
