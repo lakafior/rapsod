@@ -472,6 +472,174 @@ Oznaczanie i pomijanie reklam, „partnerów odcinka” i autopromocji przy odtw
 - **Długość zakresów z opisu** (683 z przeglądu kanałów): ≤ 30 s — 127, 31–60 s — 209, 61–120 s — 286, 121–180 s — 43, 181–300 s — 12 (tylko znaczniki), > 300 s — 6 (tylko znaczniki). Reklamy czytane w Syntax trwają zwykle 20–60 s, więc część dłuższych zakresów obejmuje też początek treści po reklamie (bez odsłuchu niesprawdzone); w polskich podcastach wstawki mają 1,5–3 min.
 - **Znane braki:** rozdziały z kanału (oś wydawcy) nie są przesuwane o reklamy z Megaphone (rozdziały z pliku są na osi pliku); poprawki z telefonu nie wracają na serwer (iOS nie zapisuje w folderze podcastu); ustawienie per podcast jest osobne na każdym urządzeniu; plik znaczników zostaje po usunięciu odcinka z serwera (osierocony plik w plikach pozycji); polskie podcasty rzadko podają czasy wstawek — na nich 13a daje głównie wzmianki, właściwe wykrywanie to 13b; Megaphone lokalizuje reklamy tylko przy świeżym pobraniu (ten sam zestaw reklam), DAI innych dostawców (Podtrac/Dovetail, Spreaker) — tylko „są, położenie nieznane”.
 
+## Segmenty sponsorowane z transkrypcji i modelu (etap 13b)
+
+Mac transkrybuje pobrane odcinki podcastów i wysyła tekst do zdalnego modelu zgodnego z API OpenAI, na kluczu użytkownika. Wynik to segmenty `model` w tym samym pliku `.skip.json`. iOS i odtwarzacz niczego nowego nie potrzebują: pomijają je jak inne segmenty. Bez konfiguracji aplikacja działa dokładnie jak po 13a i nic nie wysyła.
+
+### Jak włączyć (Mac)
+
+1. **Ustawienia → Ogólne → „Usługa modelu językowego”.**
+   - Adres API, np. `https://api.mistral.ai/v1`, `https://generativelanguage.googleapis.com/v1beta/openai` albo `https://api.openai.com/v1`.
+   - Model, np. `mistral-small-latest`; podpowiedź w polu: „mały model, np. Mistral Small albo Gemini Flash”.
+   - Klucz API, który trafia do pęku kluczy.
+2. **„Sprawdź połączenie”.** Wysyła jedno krótkie zapytanie, bez danych odcinków.
+3. **Zgoda „Zgadzam się na wysyłanie transkrypcji odcinków do <host>”.** Pod polem jest opis, co dokładnie jest wysyłane.
+4. **„Wykrywaj fragmenty sponsorowane”.** Przełącznik jest nieaktywny, dopóki nie ma adresu, modelu i zgody.
+5. **Wybór działania dla kategorii.** „Reklamy i sponsorzy” oraz „Autopromocja”: Pomijaj / Tylko pokazuj / Ignoruj (domyślnie obie: Pomijaj).
+
+Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki analizuje przycisk „Wykryj segmenty sponsorowane” w menu odcinka.
+
+### Przepływ
+
+1. **Wykrywanie z 13a** (opis, rozdziały, Megaphone, różnica długości) — bez zmian. Po nim odcinek trafia do drugiej kolejki w `SkipController` (`SkipController+Model.swift`).
+   - Kolejka obejmuje odcinki pobrane w ostatnich 3 dniach, które model jeszcze nie oceniał. Włączenie wykrywania nie przelicza całej biblioteki.
+   - Odcinek wskazany przyciskiem jest zawsze liczony od nowa.
+2. **Transkrypcja na tym Macu** (`DictationTranscriber`, kod z 11a).
+   - Pamięć podręczna `TranscriptCache` (klucz: język, `ino`, rozmiar): ponowna analiza nie słucha nagrania drugi raz.
+   - Język pochodzi z metadanych podcastu, potem z kanału. Wariant regionalny: rodzimy, potem region tego Maca, potem najczęstszy (`en-US`, poprawione w 13b).
+   - Przy języku bez obsługi pojawia się czytelny błąd.
+3. **Wiersze i okna** (`SponsorClassification` w pakiecie).
+   - Wiersz kończy się przy przerwie ≥ 0,7 s, przy kropce po ≥ 4 s albo po 12 s.
+   - Okna mają 10 min i zachodzą na siebie o 2 min. Bardzo długi odcinek daje po prostu więcej okien.
+4. **Zapytanie `POST <adres>/chat/completions`** (`SponsorAPIClient`).
+   - Parametry: `temperature: 0`, `response_format: json_object`.
+   - Prompt jest po angielsku, z przykładami zwrotów PL i EN; ten sam działa dla obu języków.
+   - Model odpowiada numerami wierszy, nie czasami: `{"segments":[{"first":ID,"last":ID,"category":"sponsor"|"selfpromo","confidence":0–1}]}`.
+5. **Walidacja odpowiedzi.**
+   - Tekst wokół JSON-a (np. blok kodu) jest tolerowany.
+   - Pojedynczy błędny element wypada: numer spoza okna, nieznana kategoria albo brak numerów.
+   - Brak tablicy albo odpowiedź, która nie jest JSON-em, daje jedną ponowną próbę z przypomnieniem formatu. Gdy i ona zawiedzie, odcinek kończy się błędem i nic nie jest zapisywane. Częściowy wynik pominąłby reklamy tylko w części odcinka.
+   - Pusty wynik `{"segments":[]}` jest prawidłowy. Zapisuje przebieg bez segmentów.
+6. **Odporność.**
+   - 429, 5xx, zerwane połączenie i przekroczony czas: do 4 prób z odstępem 2, 4, 8 s albo według `Retry-After`.
+   - 400 daje jedną próbę z minimalnym zapytaniem, bez `response_format`, `temperature` i `max_tokens`, bo nie każda usługa je zna.
+   - 401, 403, 404 i drugi 400 wstrzymują kolejkę z komunikatem w Ustawieniach i przyciskiem „Wznów”. Wstrzymanie mija też samo po zmianie ustawień.
+   - Inne błędy oznaczają odcinek; przegląd nie ponawia go przez 12 h.
+7. **Scalanie i granice.**
+   - Zgłoszenia tej samej kategorii nachodzące na siebie albo oddalone o mniej niż 4 s łączą się. Pewność to maksimum ze zgłoszeń.
+   - Granice wierszy są granicami słów. Docięcie cofa początek w ciszę tuż przed pierwszym słowem i wydłuża koniec w ciszę tuż po ostatnim, najwyżej o 0,5 s.
+   - Ciszę wyznaczają poziomy głośności czytane tylko wokół granic (`AudioLevels` w `AudiobookshelfPlayback`); gdy jej nie ma, liczą się odstępy między słowami.
+8. **Zapis.**
+   - Plik jest czytany od nowa tuż przed zapisem, bez `await` pomiędzy, więc poprawki zrobione w czasie analizy zostają.
+   - Przed zapisem sprawdzany jest odcisk pliku audio.
+   - `SkipMap.replacingSegments(from: .model, …)` i `SkipRun(source: .model, detail: "13b.1 · <model> · N zapyt. · T tokenów")`.
+   - Format pliku bez zmian. Ponowne wykrywanie z 13a zachowuje segmenty modelu tylko dla tego samego pliku: po ponownym pobraniu odcinka model liczy od nowa.
+
+**Kolejka.**
+- Jedno zadanie naraz, w tle.
+- Zadania czekają w `sponsor-queue.json` w folderze danych serwera.
+- Wyniki okien trafiają do punktu kontrolnego w `Caches/…/Sponsor/`. Przerwane zadanie (zamknięcie aplikacji, zatrzymanie serwera) kończy się po ponownym uruchomieniu i nie wysyła drugi raz okien już policzonych. Wysłane jeszcze raz może zostać tylko okno, które było w drodze.
+- Stan w wierszu odcinka: „w kolejce do analizy” / „Transkrypcja 37 %” / „Klasyfikacja 2/4” / „model: 2 segmenty (1 tylko znacznik)” / błąd z przyczyną.
+- W menu odcinka „Przerwij analizę modelem” usuwa zadanie z kolejki.
+- W Ustawieniach widać liczbę odcinków w kolejce i bieżący krok.
+
+**Segmenty modelu a zakresy z opisu (13a).**
+- Liczy się przy odczycie (`SkipMap.effectiveSegments`, więc tak samo na Macu i iOS): segment modelu nachodzący na zakres z opisu albo rozdziałów zastępuje go. Wymagane jest co najmniej 5 s wspólnego czasu albo połowa krótszego z nich.
+- Zastąpienie obejmuje zakresy dłuższe niż 3 min, które w 13a były tylko znacznikiem. Model wyznacza w nich prawdziwe granice, a reszta zakresu przestaje być znacznikiem.
+- Tam, gdzie model nic nie znalazł, zakres z opisu zostaje jak w 13a. Model trafia ok. 7 na 10 segmentów, a opis bywa pewniejszy.
+- Sloty Megaphone (położenie z bajtów pliku) zostają zawsze. Gdy nachodzą na segment modelu, odtwarzacz pomija je jednym skokiem.
+- Odrzucenie segmentu modelu przez użytkownika („Usuń segment”) nie przywraca zakresu z opisu.
+
+**Automatyczne pomijanie segmentów modelu.**
+- Zgodnie z ustaleniem pomijają się automatycznie, z „Cofnij”. Warunki: model podał pewność ≥ 0,6, a segment trwa ≥ 15 s. Pozostałe są znacznikiem z „Pomiń”.
+- Próg długości jest zmierzony na zapisanych odpowiedziach modelu z rozpoznania. Bez progu 3 fałszywe obszary (5, 8 i 13 s) pomijałyby się same; z progiem 15 s — 0, przy tych samych 7/10 trafieniach. Próg 20 s gubi krótką autopromocję (18 s).
+- Progu pewności nie dało się zmierzyć: zapisane odpowiedzi jej nie mają. 0,6 jest tymczasowe; ocena z kluczem drukuje rozkład pewności trafień i fałszywych obszarów.
+
+**Ustawienia a ustawienie per podcast (13a).**
+- Kategorie w Ustawieniach to domyślne działanie dla wszystkich znaczników (z opisu, rozdziałów, Megaphone i modelu).
+- Podcast ma wyjątki: w popoverze ⏭ każda kategoria ma „Jak w ustawieniach (…)” albo jawny wybór (`SkipPreference` w pakiecie). Zapisy z 13a czytają się jako jawny wybór.
+- iOS bez zmian: domyślne „pomijaj” i własne wyjątki per podcast.
+
+**Prywatność.**
+- Klucz jest w pęku kluczy (`net.smigi.abswift.sponsor-api`, konto = folder danych), nigdy w `UserDefaults`, plikach ani logu. Komunikaty błędów usługi są obcinane i maskują klucz.
+- Ustawienia (adres, model, zgoda z hostem i datą) są w `sponsor-detection.json` w folderze danych, więc testowa kopia z `-ABSDataRoot` ma własne.
+- Zgoda jest przypięta do hosta: zmiana adresu na inną usługę wyłącza wykrywanie, dopóki zgoda nie zostanie udzielona od nowa.
+- Wysyłane są: tekst rozpoznany z nagrania (okna po ok. 10 min, z numerem i czasem każdego wiersza) i długość odcinka. Nie są wysyłane: plik audio, tytuły, opis, nazwa i adres podcastu ani dane kont.
+- Konfiguracja zapytań powstaje wyłącznie z `SponsorDetectionSettings.requestConfiguration`, która zwraca `nil` bez włączenia, zgody dla tego hosta, adresu i modelu (test w pakiecie).
+
+### Pomiary
+
+**Transkrypcja** (M4, 16 GB, `DictationTranscriber`, osobny program z tym samym ustawieniem co aplikacja):
+
+| Odcinek | Czas nagrania | Czas transkrypcji | Na godzinę nagrania | Usługa mowy `localspeechrecognition` |
+|---|---|---|---|---|
+| Kryminatorium 453 (PL) | 1:58 h | 84 s | 43 s | śr. ok. 94% CPU (ok. 1 rdzeń), do 317 MB |
+| Darknet Diaries 182 (EN) | 42 min | 64 s | 90 s | śr. ok. 124% CPU, do 389 MB |
+| Syntax 1055 (EN) | 31 min | 83 s | 159 s | śr. ok. 122% CPU, do 430 MB |
+
+- Sam proces programu zużywał 11–32% CPU i ok. 25–30 MB.
+- W aplikacji (testowa kopia): MWF 555 (PL, 28 min) — 13a, transkrypcja i 4 okna w ok. 29 s. Syntax (EN, `en-US`, 31 min) — ok. 85 s.
+- Próbki CPU co 5 s z `ps`, tylko gdy proces był w pierwszej piątce, więc to orientacyjne wartości.
+
+**Klasyfikacja i scalanie na zapisanych odpowiedziach modelu** (Mistral Small z rozpoznania; cała transkrypcja w jednym zapytaniu, 6 odcinków, 10 segmentów, test `SponsorRegressionTests` bez sieci):
+
+| Reguła | Trafione | Fałszywe obszary pomijane | Treść pominięta błędnie | Pokrycie reklam |
+|---|---|---|---|---|
+| bez progu długości | 7/10 | 3 | 53 s | 442/517 s |
+| **≥ 15 s (przyjęte)** | **7/10** | **0** | **27 s** | **442/517 s** |
+| ≥ 20 s | 6/10 | 0 | 27 s | 404/517 s |
+
+- Docinanie granic na tych samych odpowiedziach z prawdziwymi nagraniami (`SponsorBoundaryEvaluation`): mediana błędu granicy 1,46 s dla samych wierszy i 1,47 s po docięciu.
+  - Prawdę w rozpoznaniu wyznaczono z czasów słów, więc ten zestaw nie pokaże zysku poniżej sekundy.
+  - Wcześniejszy wariant, przyciągający do najbliższej przerwy w promieniu 2,5 s, pogarszał wynik do 2,39 s i został odrzucony.
+  - Największe błędy (do 57 s) to części bloku reklam, które model pominął, a nie granice.
+- Wariant z oknami 10 min i krótszymi wierszami (12 zamiast 20 s) **nie był mierzony na prawdziwym modelu**. Zmierzone 7/10 dotyczy całej transkrypcji w jednym zapytaniu.
+
+**Koszt** (wyliczenie tokenów z transkrypcji zestawu, bez wysyłania).
+- Godzina odcinka to ok. 8 zapytań i 17–28 tys. tokenów wejścia: tekst, zakładka okien, prompt i numery wierszy; sam tekst to 7–18 tys. Wyjście to kilkaset tokenów.
+- Przelicznik dla polskiego: 3,1 znaku na token, z pomiaru rozpoznania (28,8 tys. tokenów Mistral dla 2 h Kryminatorium). Dla angielskiego przyjęte 4.
+- Przy cenach małych modeli rzędu 0,1 USD za mln tokenów wejścia i 0,3–0,4 USD wyjścia (Mistral Small, Gemini Flash-Lite) daje to **ok. 0,003 USD za godzinę odcinka**. Gemini Flash to ok. 0,01 USD.
+- Ceny to wartości orientacyjne — sprawdź cennik dostawcy. Darmowe progi części dostawców używają danych do trenowania.
+
+### Sprawdzone uruchomieniem
+
+**Testowa kopia Maca** (port 13581, osobny folder danych). Atrapa usługi i kanału RSS była na 127.0.0.1. Dwa punkty testowe działają tylko w buildzie Debug: serwer dostaje `SSRF_REQUEST_FILTER_WHITELIST` ze środowiska, a `-ABSTestLibraryFolder <ścieżka>` podaje folder biblioteki bez systemowego panelu, którego automatyzacja po PID nie obsłuży.
+
+- **Bez konfiguracji** pobranie odcinka i ponowne wykrywanie dały plik 13a i **0 zapytań do API** (log atrapy).
+- **Z adresem i modelem, bez zgody:** przełącznik jest nieaktywny, ponowne wykrywanie — 0 zapytań.
+- **„Sprawdź połączenie”:** 1 zapytanie, 224 B, bez danych odcinka.
+- **Po zgodzie** pobranie odcinka EN samo uruchomiło kolejkę: transkrypcja, 4 okna z kluczem w nagłówku i zapis.
+- **Zamknięcie aplikacji po 1. oknie:** po ponownym uruchomieniu poszły tylko okna 2–4, kolejka się opróżniła.
+- **Poprawki** (odrzucony fałszywy alarm, dodany segment) przetrwały ponowną analizę.
+- **Błędy usługi:**
+  - 429 ×2 ponowione z `Retry-After`;
+  - zerwane połączenie ×2 ponowione;
+  - 401 wstrzymało kolejkę z komunikatem i „Wznów”;
+  - zły format ×2 dał błąd z przyczyną bez zapisu.
+- **„Przerwij analizę modelem”** w czasie klasyfikacji: stan „Przerwano.”, pusta kolejka, plik bez segmentów z przerwanego przebiegu.
+- **Pomijanie w odtwarzaczu Maca:** 1659 → 1684 s, „Pominięto autopromocję (0:22)”.
+- **Zastąpienie zakresu z opisu:** Syntax miał 216–240 s z opisu, model wyznaczył 219,9–243,1 s; w wierszu odcinka „2 segmenty”, bez dublowania.
+- **Klucz** zapisany i usunięty przyciskiem w aplikacji; nie pojawił się w plikach ani w `UserDefaults`.
+
+**Symulator iOS** (iPhone 17, sparowany z testową kopią):
+- znaczniki segmentów modelu na pasku: pomijany i „tylko znacznik”, bez zakresu z opisu;
+- automatyczne pominięcie „Pominięto reklamę (0:23) · Cofnij”;
+- edytor z „źródło: model językowy” i „tylko znacznik”.
+
+Po testach testowy serwer i atrapa zostały zamknięte, bez osieroconych procesów; `UserDefaults` przywrócone.
+
+**Testy i buildy.**
+- `swift test` w pakiecie: 250 testów.
+- Buildy: Mac Debug i Release, iOS na symulator.
+
+**Ocena z prawdziwym modelem (wymaga klucza użytkownika).** Zestaw z rozpoznania jest w notatkach sesji (`etap13b-zestaw/`: transkrypcje i manifest). W `Packages/AudiobookshelfKit`:
+
+```bash
+read -s "SPONSOR_API_KEY?Klucz API: " && export SPONSOR_API_KEY && SPONSOR_API_BASE=https://api.mistral.ai/v1 SPONSOR_API_MODEL=mistral-small-latest SKIP_EVAL_MODEL_MANIFEST="$HOME/Library/Application Support/Claude/side-session-notes/local_263f2d4b-e6bd-4026-980a-5c1d74778a55/etap13b-zestaw/manifest.json" swift test --filter SkipEvaluation/modelEvaluation
+```
+
+- Wysyła transkrypcje 6 odcinków, razem 6,4 h (ok. 50 zapytań, ok. 0,02 USD przy małym modelu).
+- Drukuje wynik każdego odcinka i rozkład pewności trafień i fałszywych obszarów.
+- `SKIP_EVAL_WINDOW=100000` porównuje z całą transkrypcją w jednym zapytaniu.
+
+### Znane braki
+
+- Klasyfikacja w oknach i prompt nie były sprawdzone na prawdziwym modelu; próg pewności 0,6 jest tymczasowy.
+- Brak wyboru „analizuj tylko przy zasilaniu”. Transkrypcja godziny to ok. 1 min pracy jednego rdzenia.
+- Domyślne kategorie z Ustawień Maca nie przechodzą na iOS (iOS ma własne).
+- Transkrypcja dyktowaniem gubi część słów w swobodnej rozmowie i nazwy marek; lepszą transkrypcją może być Parakeet (później).
+- Okno, które było w drodze przy zamknięciu aplikacji, idzie drugi raz.
+
 ## Wydanie
 
 Wydanie to plik `AudiobookSwift-<wersja>.dmg`: aplikacja podpisana Developer ID z hardened runtime, notaryzowana, z biletem zszytym z aplikacją i z obrazem dysku. Zawiera Node, serwer audiobookshelf z klientem web, ffmpeg, ffprobe i rozszerzenie SQLite — działa bez repozytorium, Homebrew i Node w systemie. Tylko Apple Silicon, macOS 27 lub nowszy (`MACOSX_DEPLOYMENT_TARGET`).
