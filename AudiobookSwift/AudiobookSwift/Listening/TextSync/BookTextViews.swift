@@ -161,6 +161,8 @@ private struct BookTextScroll: View {
                             onTap: play(sentence:),
                             onSentenceTop: { top in sentenceMoved(top, paragraph: index) }
                         )
+                        // Porównanie bez domknięć: przy zmianie zdania przelicza się tylko akapit, którego to dotyczy.
+                        .equatable()
                         // Kolumna z marginesem wewnątrz akapitu, a akapit na całą szerokość: przewijanie
                         // do akapitu (`scrollTo(id:)`) wyrównuje go z krawędzią widoku, więc margines
                         // poza akapitem przesuwał tekst w bok.
@@ -275,6 +277,11 @@ private struct BookTextScroll: View {
         } else {
             metrics.pendingRefine = true
             position.scrollTo(id: target, anchor: .top)
+            // Gdyby akapit zgłosił położenie, zanim przewijanie się ustaliło — druga próba.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                if metrics.sentenceParagraph == target { metrics.pendingRefine = false; scrollToCurrent(animated: false) }
+            }
         }
     }
 }
@@ -451,12 +458,12 @@ struct BookTextAppearanceMenu: View {
             Button("Domyślny rozmiar") { scale = 1 }
                 .keyboardShortcut("0", modifiers: .command)
         } label: {
-            Image(systemName: "textformat.size")
+            Label("Wygląd tekstu", systemImage: "textformat.size")
+                .labelStyle(.iconOnly)
         }
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Wygląd tekstu")
-        .accessibilityLabel("Wygląd tekstu")
     }
 }
 

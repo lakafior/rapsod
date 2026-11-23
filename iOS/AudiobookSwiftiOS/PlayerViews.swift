@@ -251,6 +251,9 @@ struct PlayerScreen: View {
                 }
                 .padding(.horizontal, 24)
                 .frame(maxWidth: 560)
+                // Przy największych rozmiarach pasek z czterema przyciskami rozpychałby ekran;
+                // tekst książki ma własną regulację rozmiaru.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 BookTextView(model: text, player: player, bottomInset: 8)
                     .mask(Self.textFade)
                     .frame(maxHeight: .infinity)
@@ -261,6 +264,7 @@ struct PlayerScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 8)
                 .frame(maxWidth: 560)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
             .frame(maxWidth: .infinity)
         }
@@ -388,6 +392,8 @@ struct PlayerScreen: View {
             .buttonBorderShape(.circle)
         }
         .controlSize(.large)
+        // Cztery okrągłe przyciski w jednym wierszu — bez rozmiarów dostępności, które rozpychały ekran.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     /// Okładka — przy pauzie lekko mniejsza (bez animacji przy „Ogranicz ruch”).

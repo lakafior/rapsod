@@ -72,19 +72,17 @@ struct PlayerPanel: View {
                         Toggle(isOn: Binding(get: { showsText }, set: { value in
                             withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) { showsText = value }
                         })) {
-                            Image(systemName: "quote.bubble")
+                            Label("Tekst książki", systemImage: "quote.bubble")
+                                .labelStyle(.iconOnly)
                         }
                         .toggleStyle(.button)
                         .help(showsText ? "Pokaż okładkę (⌃⌘T)" : "Pokaż tekst książki (⌃⌘T)")
-                        .accessibilityLabel("Tekst książki")
                         .accessibilityIdentifier("player.text")
                         if textMode {
                             BookTextAppearanceMenu()
-                            Button { openWindow(id: BookTextWindow.windowID) } label: {
-                                Image(systemName: "macwindow")
-                            }
-                            .help("Tekst w osobnym oknie (⌃⇧⌘T)")
-                            .accessibilityLabel("Tekst w osobnym oknie")
+                            Button("Tekst w osobnym oknie", systemImage: "macwindow") { openWindow(id: BookTextWindow.windowID) }
+                                .labelStyle(.iconOnly)
+                                .help("Tekst w osobnym oknie (⌃⇧⌘T)")
                         }
                         Spacer()
                     }

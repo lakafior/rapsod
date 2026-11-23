@@ -126,7 +126,9 @@ private struct BookTextScroll: View {
     private static let readingLine: CGFloat = 0.3
 
     var body: some View {
-        let size = baseSize * scale
+        // Zgodny z Dynamic Type, ale z górną granicą — przy rozmiarach dostępności 60-punktowy
+        // tekst mieściłby dwa słowa w wierszu; dalsze powiększenie daje menu „Aa”.
+        let size = min(baseSize, 34) * scale * (sizeClass == .regular ? 1.15 : 1)
         let dimmed = contrast == .increased ? 0.62 : 0.4
         GeometryReader { proxy in
             ScrollView {
@@ -142,6 +144,8 @@ private struct BookTextScroll: View {
                             onTap: play(sentence:),
                             onSentenceTop: { top in sentenceMoved(top, paragraph: index) }
                         )
+                        // Porównanie bez domknięć: przy zmianie zdania przelicza się tylko akapit, którego to dotyczy.
+                        .equatable()
                         // Kolumna z marginesem wewnątrz akapitu, a akapit na całą szerokość: przewijanie
                         // do akapitu (`scrollTo(id:)`) wyrównuje go z krawędzią widoku, więc margines
                         // poza akapitem przesuwał tekst w bok.
@@ -262,6 +266,11 @@ private struct BookTextScroll: View {
             // Akapitu nie ma jeszcze na ekranie (leniwy stos): najpierw do niego, potem do zdania.
             metrics.pendingRefine = true
             position.scrollTo(id: target, anchor: .top)
+            // Gdyby akapit zgłosił położenie, zanim przewijanie się ustaliło — druga próba.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                if metrics.sentenceParagraph == target { metrics.pendingRefine = false; scrollToCurrent(animated: false) }
+            }
         }
     }
 }
