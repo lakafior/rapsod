@@ -130,6 +130,8 @@ final class DownloadsController {
             chapters: [], files: [file]
         )
         try manager.enqueue(entry, cover: await coverData(itemID: itemID, session: session))
+        // Znaczniki segmentów sponsorowanych (etap 13a) — pomijanie działa też bez sieci.
+        await SkipSupport.downloadWithEpisode(itemID: itemID, episodeID: episode.id, session: session)
         let key = PlaybackTimeline.key(itemID, episode.id)
         if let progress = session.library.progress.value(key) { session.journal.recordServer(progress) }
     }
