@@ -189,6 +189,53 @@ private func speech(_ from: Double, _ to: Double, step: Double = 0.4, word: Stri
         return score
     }
 
+    /// Zakresy z opisu, które 13a wyznaczyło na tych odcinkach (`etap13a-zestaw/wyniki.jsonl`).
+    static let descriptionRanges: [String: [(Double, Double, SkipKind)]] = [
+        "pl_kryminatorium": [(105, 225, .selfPromo)],
+        "en_syntax": [(216, 240, .sponsor)],
+    ]
+
+    /// Plik po 13a i 13b razem, przez `effectiveSegments` (to, co pomija odtwarzacz).
+    static func combinedScore(description: Bool, model: Bool) -> Score {
+        var score = Score()
+        for episode in SponsorRecordedAnswers.episodes {
+            var segments: [SkipSegment] = []
+            if description {
+                segments += (descriptionRanges[episode.name] ?? []).map { SkipSegment(start: $0.0, end: $0.1, kind: $0.2, source: .description, confidence: 0.85) }
+            }
+            if model {
+                let findings = episode.answer.map { SC.Finding(first: $0, last: $0, kind: .sponsor, confidence: 0.9, window: 0) }
+                segments += SC.segments(SC.merge(findings, lines: episode.lines), model: "zapis")
+            }
+            let map = SkipMap(episode: .init(), audio: SkipAudioFingerprint(duration: 10_000), segments: segments)
+            let plan = SkipPlan(map: map, actual: nil, settings: .standard).entries.filter { $0.action == .skip }
+            func overlap(_ t: (Double, Double), _ s: SkipPlan.Entry) -> Double { max(0, min(t.1, s.end) - max(t.0, s.start)) }
+            for t in episode.truth {
+                score.truth += 1
+                if plan.contains(where: { overlap(t, $0) >= 0.5 * (t.1 - t.0) }) { score.found += 1 }
+            }
+            score.falseRegions += plan.filter { s in episode.truth.allSatisfy { overlap($0, s) < 0.3 * s.duration } }.count
+            let covered = episode.truth.reduce(0.0) { sum, t in sum + plan.reduce(0.0) { $0 + overlap(t, $1) } }
+            score.covered += covered
+            score.wronglySkipped += plan.reduce(0.0) { $0 + $1.duration } - covered
+        }
+        return score
+    }
+
+    @Test func combinedWithDescriptionRanges() {
+        let only13a = Self.combinedScore(description: true, model: false)
+        let onlyModel = Self.combinedScore(description: false, model: true)
+        let both = Self.combinedScore(description: true, model: true)
+        #expect(only13a.found == 2)
+        #expect(onlyModel.found == 7)
+        // Razem: trafienia modelu i pełny blok z opisu w Kryminatorium (model zgubił jego środek) — 8/10.
+        // Reguła „model zawsze zastępuje opis” dawała tyle co sam model (7/10, 442 s pokrycia).
+        #expect(both.found == 8 && both.falseRegions == 0)
+        #expect(both.covered > onlyModel.covered + 30)
+        #expect(both.wronglySkipped <= onlyModel.wronglySkipped + 6)
+        print("13a: \(only13a), model: \(onlyModel), razem: \(both)")
+    }
+
     @Test func recordedAnswersWithStandardPolicy() {
         let standard = Self.score(policy: .standard)
         #expect(standard.truth == 10)
@@ -505,28 +552,32 @@ private actor Sleeps {
         SkipSegment(id: "\(source.rawValue)-\(Int(start))", start: start, end: end, kind: kind, source: source, confidence: 0.9, autoSkip: autoSkip)
     }
 
-    @Test func modelReplacesOverlappingDescriptionAndChapters() {
+    @Test func modelAndDescriptionAreNotDoubled() {
         let map = SkipMap(episode: .init(), audio: audio, segments: [
-            segment(105, 225, .description, kind: .selfPromo),              // opis 1:45–3:45
+            segment(105, 225, .description, kind: .selfPromo),              // pewny zakres z opisu (pomija się)
             segment(600, 1100, .description, autoSkip: false),              // długi zakres z opisu (tylko znacznik)
+            segment(1200, 1500, .description, autoSkip: false),             // długi, a model niepewny
             segment(2000, 2060, .description),                              // model tu nic nie znalazł
             segment(3000, 3030, .chapters),
-            segment(1500, 1560, .megaphone),
-            segment(104.9, 219.4, .model, kind: .selfPromo),
+            segment(1600, 1660, .megaphone),
+            segment(105, 125, .model, kind: .selfPromo),                    // model zgubił środek bloku
+            segment(164, 218, .model, kind: .selfPromo),
             segment(640, 700, .model),
+            segment(1300, 1310, .model, autoSkip: false),
             segment(3005, 3028, .model),
-            segment(1490, 1565, .model),
+            segment(1590, 1665, .model),
         ])
-        let effective = map.effectiveSegments
-        #expect(effective.map(\.source) == [.model, .model, .model, .megaphone, .description, .model])
-        #expect(effective.filter { $0.source == .description }.map(\.start) == [2000])
-        // Nowe wykrywanie z opisu nie przywraca zastąpionych zakresów.
-        let redone = map.replacingSegments(from: .description, with: [segment(106, 224, .description)])
-        #expect(!redone.effectiveSegments.contains { $0.source == .description && $0.start == 106 })
+        let effective = map.effectiveSegments.map { "\($0.source.rawValue) \(Int($0.start))" }
+        #expect(effective == ["description 105", "model 640", "description 1200", "model 1300", "model 1590", "megaphone 1600",
+                              "description 2000", "chapters 3000"])
+        // Nowe wykrywanie z opisu niczego nie dubluje.
+        let redone = map.replacingSegments(from: .description, with: [segment(106, 224, .description), segment(600, 1100, .description, autoSkip: false)])
+        #expect(redone.effectiveSegments.filter { $0.start < 1200 }.map(\.start) == [106, 640])
     }
 
-    @Test func userRejectionOfModelSegmentKeepsDescriptionHidden() {
-        var map = SkipMap(episode: .init(), audio: audio, segments: [segment(100, 200, .description), segment(110, 190, .model)])
+    @Test func userRejectionOfModelSegmentKeepsLongDescriptionHidden() {
+        var map = SkipMap(episode: .init(), audio: audio, segments: [segment(100, 400, .description, autoSkip: false), segment(110, 190, .model)])
+        #expect(map.effectiveSegments.map(\.source) == [.model])
         map.remove(map.effectiveSegments[0])
         #expect(map.effectiveSegments.isEmpty)
     }

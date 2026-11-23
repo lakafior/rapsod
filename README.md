@@ -513,7 +513,7 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
 6. **Odporność.**
    - 429, 5xx, zerwane połączenie i przekroczony czas: do 4 prób z odstępem 2, 4, 8 s albo według `Retry-After`.
    - 400 daje jedną próbę z minimalnym zapytaniem, bez `response_format`, `temperature` i `max_tokens`, bo nie każda usługa je zna.
-   - 401, 403, 404 i drugi 400 wstrzymują kolejkę z komunikatem w Ustawieniach i przyciskiem „Wznów”. Wstrzymanie mija też samo po zmianie ustawień.
+   - 401, 403, 404 i drugi 400 wstrzymują kolejkę z komunikatem w Ustawieniach i przyciskiem „Wznów”. Kolejka rusza też sama po zmianie ustawień albo klucza.
    - Inne błędy oznaczają odcinek; przegląd nie ponawia go przez 12 h.
 7. **Scalanie i granice.**
    - Zgłoszenia tej samej kategorii nachodzące na siebie albo oddalone o mniej niż 4 s łączą się. Pewność to maksimum ze zgłoszeń.
@@ -533,12 +533,21 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
 - W menu odcinka „Przerwij analizę modelem” usuwa zadanie z kolejki.
 - W Ustawieniach widać liczbę odcinków w kolejce i bieżący krok.
 
-**Segmenty modelu a zakresy z opisu (13a).**
-- Liczy się przy odczycie (`SkipMap.effectiveSegments`, więc tak samo na Macu i iOS): segment modelu nachodzący na zakres z opisu albo rozdziałów zastępuje go. Wymagane jest co najmniej 5 s wspólnego czasu albo połowa krótszego z nich.
-- Zastąpienie obejmuje zakresy dłuższe niż 3 min, które w 13a były tylko znacznikiem. Model wyznacza w nich prawdziwe granice, a reszta zakresu przestaje być znacznikiem.
-- Tam, gdzie model nic nie znalazł, zakres z opisu zostaje jak w 13a. Model trafia ok. 7 na 10 segmentów, a opis bywa pewniejszy.
-- Sloty Megaphone (położenie z bajtów pliku) zostają zawsze. Gdy nachodzą na segment modelu, odtwarzacz pomija je jednym skokiem.
-- Odrzucenie segmentu modelu przez użytkownika („Usuń segment”) nie przywraca zakresu z opisu.
+**Segmenty modelu a zakresy z opisu (13a).** Ten sam fragment nie jest ani pokazywany, ani pomijany dwa razy. Liczy się przy odczycie (`SkipMap.effectiveSegments`), więc tak samo na Macu i iOS. Za „ten sam fragment” uznaję co najmniej 5 s wspólnego czasu albo połowę krótszego z segmentów.
+- **Pewny zakres z opisu albo rozdziałów** (pomija się sam: do 3 min, bez reklam w nieznanych miejscach) wygrywa z nachodzącym segmentem modelu, który znika.
+- **Niepewny zakres** (tylko znacznik: dłuższy niż 3 min albo z czasami przesuniętymi przez wstawione reklamy) zastępuje pewny segment modelu: model wyznacza w nim prawdziwe granice. Niepewny segment modelu go nie zastępuje, więc zostają oba znaczniki.
+- **Gdzie model nic nie znalazł**, zakres z opisu zostaje jak w 13a.
+- **Sloty Megaphone** zostają zawsze. Gdy nachodzą na segment modelu, odtwarzacz pomija je jednym skokiem.
+- **Odrzucenie segmentu modelu** przez użytkownika nie przywraca zastąpionego niepewnego zakresu.
+- **Pomiar** (`combinedWithDescriptionRanges`: 13a i zapisane odpowiedzi modelu razem, przez plan odtwarzacza):
+
+  | | Trafione | Fałszywe obszary | Pominięte błędnie | Pokrycie reklam |
+  |---|---|---|---|---|
+  | samo 13a | 2/10 | 0 | 8 s | 136/517 s |
+  | sam model | 7/10 | 0 | 27 s | 442/517 s |
+  | razem | **8/10** | 0 | 30 s | 483/517 s |
+
+  Reguła „model zawsze zastępuje opis” dawała tyle co sam model. W Kryminatorium opis 105–225 s (prawda 104,9–219,4 s) był lepszy niż model, który zgubił środek bloku (105–125 i 164–218 s).
 
 **Automatyczne pomijanie segmentów modelu.**
 - Zgodnie z ustaleniem pomijają się automatycznie, z „Cofnij”. Warunki: model podał pewność ≥ 0,6, a segment trwa ≥ 15 s. Pozostałe są znacznikiem z „Pomiń”.
@@ -580,16 +589,20 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
 | ≥ 20 s | 6/10 | 0 | 27 s | 404/517 s |
 
 - Docinanie granic na tych samych odpowiedziach z prawdziwymi nagraniami (`SponsorBoundaryEvaluation`): mediana błędu granicy 1,46 s dla samych wierszy i 1,47 s po docięciu.
-  - Prawdę w rozpoznaniu wyznaczono z czasów słów, więc ten zestaw nie pokaże zysku poniżej sekundy.
+  - **Na tym zestawie docinanie do ciszy praktycznie nic nie zmienia:** przesuwa granice o najwyżej 0,5 s w ciszę.
+  - Prawdę w rozpoznaniu wyznaczono z czasów słów, więc zestaw i tak nie pokaże zysku poniżej sekundy.
+  - Zostawiłem je jako zabezpieczenie przed ucięciem słowa przy przesuniętych czasach rozpoznawania mowy.
   - Wcześniejszy wariant, przyciągający do najbliższej przerwy w promieniu 2,5 s, pogarszał wynik do 2,39 s i został odrzucony.
+  - Granice realnie poprawiają krótsze wiersze (12 zamiast 20 s), ale tego nie da się zmierzyć na zapisanych odpowiedziach — dotyczą wierszy 20 s.
   - Największe błędy (do 57 s) to części bloku reklam, które model pominął, a nie granice.
 - Wariant z oknami 10 min i krótszymi wierszami (12 zamiast 20 s) **nie był mierzony na prawdziwym modelu**. Zmierzone 7/10 dotyczy całej transkrypcji w jednym zapytaniu.
 
 **Koszt** (wyliczenie tokenów z transkrypcji zestawu, bez wysyłania).
 - Godzina odcinka to ok. 8 zapytań i 17–28 tys. tokenów wejścia: tekst, zakładka okien, prompt i numery wierszy; sam tekst to 7–18 tys. Wyjście to kilkaset tokenów.
 - Przelicznik dla polskiego: 3,1 znaku na token, z pomiaru rozpoznania (28,8 tys. tokenów Mistral dla 2 h Kryminatorium). Dla angielskiego przyjęte 4.
-- Przy cenach małych modeli rzędu 0,1 USD za mln tokenów wejścia i 0,3–0,4 USD wyjścia (Mistral Small, Gemini Flash-Lite) daje to **ok. 0,003 USD za godzinę odcinka**. Gemini Flash to ok. 0,01 USD.
-- Ceny to wartości orientacyjne — sprawdź cennik dostawcy. Darmowe progi części dostawców używają danych do trenowania.
+- To ok. 1,6 razy więcej niż cała transkrypcja w jednym zapytaniu, którą wycenia rozpoznanie (0,001–0,007 USD/h według cenników z 2026-11).
+- Daje to **ok. 0,002–0,011 USD za godzinę odcinka**: gpt-5-nano ok. 0,002, Haiku 5.5 ok. 0,005, Gemini Flash-Lite ok. 0,008.
+- Mistral Small na darmowym progu kosztuje 0 USD, ale darmowe progi części dostawców używają danych do trenowania. Ceny się zmieniają — sprawdź cennik dostawcy.
 
 ### Sprawdzone uruchomieniem
 
@@ -600,7 +613,9 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
 - **„Sprawdź połączenie”:** 1 zapytanie, 224 B, bez danych odcinka.
 - **Po zgodzie** pobranie odcinka EN samo uruchomiło kolejkę: transkrypcja, 4 okna z kluczem w nagłówku i zapis.
 - **Zamknięcie aplikacji po 1. oknie:** po ponownym uruchomieniu poszły tylko okna 2–4, kolejka się opróżniła.
-- **Poprawki** (odrzucony fałszywy alarm, dodany segment) przetrwały ponowną analizę.
+- **Poprawki przetrwały ponowną analizę:**
+  - zapisane do pliku przy zamkniętej aplikacji (odrzucony fałszywy alarm, dodany segment);
+  - dopisane do pliku w trakcie klasyfikacji (atrapa odpowiadała wolno) — tak, jak zapisuje edytor; sam edytor w tym przebiegu nie był klikany.
 - **Błędy usługi:**
   - 429 ×2 ponowione z `Retry-After`;
   - zerwane połączenie ×2 ponowione;
@@ -608,10 +623,11 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
   - zły format ×2 dał błąd z przyczyną bez zapisu.
 - **„Przerwij analizę modelem”** w czasie klasyfikacji: stan „Przerwano.”, pusta kolejka, plik bez segmentów z przerwanego przebiegu.
 - **Pomijanie w odtwarzaczu Maca:** 1659 → 1684 s, „Pominięto autopromocję (0:22)”.
-- **Zastąpienie zakresu z opisu:** Syntax miał 216–240 s z opisu, model wyznaczył 219,9–243,1 s; w wierszu odcinka „2 segmenty”, bez dublowania.
+- **Bez dublowania:** w Syntax pewny zakres z opisu 216–240 s ukrywa nachodzący segment modelu. W wierszu odcinka są segmenty z opisu, krótki znacznik modelu i segment użytkownika, bez podwójnych.
+- Czasy segmentów z przebiegów sprzed ostatniej zmiany docinania (MWF 1660,8–1683,3 s) pochodzą ze starszej reguły. Ostatni przebieg Syntax był już na końcowym kodzie.
 - **Klucz** zapisany i usunięty przyciskiem w aplikacji; nie pojawił się w plikach ani w `UserDefaults`.
 
-**Symulator iOS** (iPhone 17, sparowany z testową kopią):
+**Symulator iOS** (iPhone 17, sparowany z testową kopią; przebieg na wcześniejszej regule, gdy segment modelu zastępował każdy zakres z opisu):
 - znaczniki segmentów modelu na pasku: pomijany i „tylko znacznik”, bez zakresu z opisu;
 - automatyczne pominięcie „Pominięto reklamę (0:23) · Cofnij”;
 - edytor z „źródło: model językowy” i „tylko znacznik”.
@@ -639,6 +655,8 @@ read -s "SPONSOR_API_KEY?Klucz API: " && export SPONSOR_API_KEY && SPONSOR_API_B
 - Domyślne kategorie z Ustawień Maca nie przechodzą na iOS (iOS ma własne).
 - Transkrypcja dyktowaniem gubi część słów w swobodnej rozmowie i nazwy marek; lepszą transkrypcją może być Parakeet (później).
 - Okno, które było w drodze przy zamknięciu aplikacji, idzie drugi raz.
+- „Wykryj w pobranych odcinkach” wysyła do modelu wszystkie pobrane odcinki podcastu, których model nie oceniał; ich liczba jest w podpisie przycisku, ale bez osobnego potwierdzenia.
+- Wybór `en-US` zamiast `en-ZA` zmienia też klucz pamięci podręcznej transkrypcji 11a dla angielskich książek: pierwsza synchronizacja po zmianie słucha nagrania od nowa.
 
 ## Wydanie
 

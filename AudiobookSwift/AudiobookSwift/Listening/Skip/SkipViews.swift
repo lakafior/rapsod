@@ -309,6 +309,7 @@ struct PodcastSkipSettingsView: View {
     let listening: ListeningController
     let item: AudiobookshelfClient.ItemDetail
     @State private var preference = SkipPreference.inherit
+    @State private var withoutModel = 0
 
     private var defaults: SkipSettings { listening.skipSettings.categoryDefaults }
 
@@ -342,11 +343,14 @@ struct PodcastSkipSettingsView: View {
                 if listening.skip.isBusy { ProgressView().controlSize(.small) }
             }
             Text(listening.skip.modelEnabled
-                 ? "Liczy się samo po pobraniu nowego odcinka na serwer. Model analizuje odcinki, których jeszcze nie oceniał; ponownie — przyciskiem w menu odcinka. Ręczne poprawki zostają przy ponownym wykrywaniu."
+                 ? "Liczy się samo po pobraniu nowego odcinka na serwer. Ten przycisk wyśle do modelu także pobrane odcinki, których jeszcze nie oceniał (teraz: \(withoutModel)); ponownie jeden odcinek — z menu odcinka. Ręczne poprawki zostają przy ponownym wykrywaniu."
                  : "Liczy się samo po pobraniu nowego odcinka na serwer. Ręczne poprawki zostają przy ponownym wykrywaniu.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .onAppear { preference = listening.skipSettings.preference(podcastID: item.id) }
+        .onAppear {
+            preference = listening.skipSettings.preference(podcastID: item.id)
+            withoutModel = listening.skip.episodesWithoutModel(item)
+        }
         .onChange(of: preference) { listening.setSkipPreference(preference, podcastID: item.id) }
     }
 

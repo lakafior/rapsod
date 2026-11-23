@@ -94,6 +94,12 @@ extension SkipController {
             publishModelStatus()
             startWorker()
         }
+        // Wstrzymanie (np. odrzucony klucz) mija po poprawce ustawień — `nextModelJob` porównuje rewizję.
+        store.settingsChanged = { [weak self] in
+            guard let self, !modelJobs.isEmpty else { return }
+            if modelPause != nil, modelPauseRevision != store.revision { modelPause = nil; publishModelStatus() }
+            startWorker()
+        }
     }
 
     private func saveQueueFile() {
@@ -140,6 +146,15 @@ extension SkipController {
     /// Analiza z modelem na żądanie (przycisk w wierszu odcinka).
     func analyzeWithModel(itemID: String, episodeID: String) {
         enqueueModel(ModelJob(itemID: itemID, episodeID: episodeID, requested: true))
+    }
+
+    /// Pobrane odcinki podcastu, które model jeszcze nie oceniał (do podpisu przycisku).
+    func episodesWithoutModel(_ item: AudiobookshelfClient.ItemDetail) -> Int {
+        guard modelEnabled else { return 0 }
+        return (item.media.episodes?.elements ?? []).filter { episode in
+            guard let audio = Self.audioURL(episode) else { return false }
+            return Self.map(forAudio: audio)?.modelRun == nil
+        }.count
     }
 
     func isModelQueued(itemID: String, episodeID: String) -> Bool {

@@ -26,6 +26,8 @@ final class SponsorDetectionStore {
     var queueActivity: String?
     var queuePause: String?
     @ObservationIgnored var resumeQueue: (() -> Void)?
+    /// Po zmianie ustawień albo klucza kolejka wstrzymana błędem usługi rusza sama (ustawia `SkipController`).
+    @ObservationIgnored var settingsChanged: (() -> Void)?
 
     @ObservationIgnored private var keyStore: CredentialStore<String>?
 
@@ -54,8 +56,8 @@ final class SponsorDetectionStore {
         guard next != settings else { return }
         settings = next
         revision += 1
-        guard let dataRoot else { return }
-        try? settings.save(to: dataRoot.appending(path: SponsorDetectionSettings.fileName))
+        if let dataRoot { try? settings.save(to: dataRoot.appending(path: SponsorDetectionSettings.fileName)) }
+        settingsChanged?()
     }
 
     func saveKey(_ key: String) {
@@ -70,6 +72,7 @@ final class SponsorDetectionStore {
             }
             keyError = nil
             revision += 1
+            settingsChanged?()
         } catch {
             keyError = error.localizedDescription
         }
