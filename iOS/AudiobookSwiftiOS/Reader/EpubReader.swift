@@ -7,6 +7,7 @@
 import SwiftUI
 import WebKit
 import OSLog
+import AudiobookshelfKit
 
 private let logger = Logger(subsystem: "net.smigi.abswift.ios", category: "Reader")
 
@@ -211,6 +212,22 @@ final class EpubController: NSObject, WKScriptMessageHandler, WKNavigationDelega
     func go(_ item: ReaderTocItem) { call("book.go(\(Self.json(item.href)))") }
     func go(cfi: String) { call("book.go(\(Self.json(cfi)))") }
     func seek(_ fraction: Double) { call("book.seek(\(fraction))") }
+
+    /// Etap 11c: rozdział i tekst od początku bieżącej strony.
+    func pageText() async -> (href: String, text: String)? {
+        let result = try? await webView.callAsyncJavaScript("return book.here()", contentWorld: .page)
+        guard let body = result as? [String: Any], let href = body["href"] as? String, let text = body["text"] as? String else { return nil }
+        return (href, text)
+    }
+
+    /// Etap 11c: przejście do fragmentu rozdziału; `false` — nie ma go w e-booku.
+    func show(_ passage: EbookAudioSync.Passage) async -> Bool {
+        let result = try? await webView.callAsyncJavaScript("return await book.find(href, key, occurrence)",
+                                                            arguments: ["href": passage.href, "key": passage.key, "occurrence": passage.occurrence],
+                                                            contentWorld: .page)
+        logger.debug("Fragment \(passage.href, privacy: .public) zdanie \(passage.sentence) → \(String(describing: result), privacy: .public)")
+        return result is String
+    }
 
     func setLook(_ look: [String: Any]) {
         self.look = look

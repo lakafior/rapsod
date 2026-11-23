@@ -81,3 +81,8 @@ czytania w tym samym zapisie co czytnik Maca i web UI (CFI epub.js / numer stron
 też na telefonie do czytania bez sieci; e-book pobiera się razem z książką. Treść książki bez
 skryptów i bez sieci. MOBI i inne formaty — komunikat o braku obsługi. Szczegóły w głównym
 `README.md` („Czytnik e-booków na iOS”).
+
+Etap 11c (przejścia): w czytniku EPUB dla książek z mapą tekstu — „Słuchaj od tego miejsca”,
+„Czytaj od miejsca słuchania” i propozycja przejścia przy otwarciu, gdy czytanie i słuchanie się
+rozjechały. Przeliczanie we wspólnym pakiecie (`EbookAudioSync`). Szczegóły w głównym `README.md`
+(„Czytnik i nagranie: przejścia”).

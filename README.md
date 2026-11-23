@@ -500,6 +500,18 @@ Na prawdziwej książce tryb „Tekst” z 11b był nie do czytania: przewijanie
 - **Tylko Debug:** `xcrun simctl launch booted net.smigi.abswift.ios -OpenReader <id pozycji>` otwiera czytnik od razu (testy).
 - **Znane braki:** plik e-booka nie wlicza się do „Zajętego miejsca”; książka z samym e-bookiem nie ma „Pobierz na telefon” (czyta się z pamięci podręcznej, którą system może wyczyścić); brak zakładek i zaznaczeń; zewnętrzne linki z książki nie działają; zgodność pozycji z czytnikiem Maca wynika z tej samej wersji epub.js i formatu CFI — nie sprawdzona jeszcze na żywo w obie strony.
 
+## Czytnik i nagranie: przejścia (etap 11c, iOS)
+
+Dla książek z mapą tekstu (`.sync.json` z „Synchronizuj e-book” na Macu) czytnik EPUB ma w pasku przycisk ze słuchawkami:
+
+- **„Słuchaj od tego miejsca”** — tekst od początku bieżącej strony (epub.js, `book.here()`) dopasowany do zdania mapy, odtwarzanie od początku tego zdania (zdanie bez czasu, np. przypis — od następnego z czasem). Strona zaczęta w środku zdania → początek tego zdania.
+- **„Czytaj od miejsca słuchania”** — zdanie, które brzmi w chwili słuchania (bieżące odtwarzanie albo zapisana pozycja), szukane w rozdziale e-booka i pokazane na jego stronie.
+- **Propozycja przy otwarciu:** gdy miejsce czytania i słuchania różnią się o więcej niż minutę nagrania — pasek „Słuchanie jest w innym miejscu (m:ss)” z „Przejdź” i „Zostań”.
+
+Przeliczanie jest w pakiecie (`EbookAudioSync`, testy), żeby Mac mógł z niego skorzystać: rozdział po końcówce ścieżki (mapa ma ścieżkę w archiwum, epub.js — względem OPF), zdanie po treści bez białych znaków i wielkości liter (granice bloków w DOM nie mają spacji), a w drugą stronę klucz z 40 znaków zdania z numerem wystąpienia w rozdziale. W czytniku zostaje tylko odczyt tekstu strony i zamiana znalezionego miejsca na CFI (`book.find`). epub.js 0.3.93 w WebKit pokazywał przy `display(cfi)` stronę o jedną za wcześnie (prostokąty zakresów w tekście łamanym na kolumny są przesunięte, a z nich liczy położenie i koniec strony) — czytnik poprawia to, porównując cel z początkami kolejnych stron (te są wiarygodne).
+
+**Dokładność:** zdanie (na „W pustyni i w puszczy” I–IV: 7:00 → strona z tym zdaniem, strona zaczęta w środku zdania 70 → 6:22, czyli jego początek). **Gdy mapa nie pasuje** (inne wydanie e-booka, strona spoza mapy, za mało tekstu): komunikat „Tej strony nie ma w mapie tekstu…” i brak skoku; gdy pliki zmieniły się od synchronizacji (odciski w mapie), menu pokazuje ostrzeżenie, ale przejścia działają, dopóki tekst się zgadza. Powtarzające się krótkie zdania (np. „— Dlaczego?”) rozróżnia numer wystąpienia; dopasowanie strony bierze pierwsze pasujące zdanie rozdziału.
+
 ## Segmenty sponsorowane w podcastach (etap 13a)
 
 Oznaczanie i pomijanie reklam, „partnerów odcinka” i autopromocji przy odtwarzaniu, na Macu i iOS — bez transkrypcji i bez modelu (to 13b). Pliku audio nie wycinamy.

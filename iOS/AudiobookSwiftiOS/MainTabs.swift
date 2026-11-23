@@ -62,7 +62,7 @@ struct MainTabs: View {
         // Biblioteki, postęp i gniazdo zdarzeń żyją tyle, co to połączenie.
         #if DEBUG
         .fullScreenCover(item: $debugReader) { target in
-            ReaderScreen(target: target, session: session, isOffline: model.isOffline)
+            ReaderScreen(target: target, session: session, playback: model.playback, isOffline: model.isOffline)
         }
         #endif
         .task(id: session.id) { await session.library.run() }

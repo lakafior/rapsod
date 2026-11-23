@@ -194,6 +194,87 @@
       const cfi = epub.locations.cfiFromPercentage(Math.min(1, Math.max(0, fraction)))
       if (cfi) return rendition.display(cfi)
     },
+    // Etap 11c: tekst od początku bieżącej strony (do dopasowania ze zdaniem mapy w Swifcie).
+    here() {
+      if (!shown || !rendition || !rendition.manager) return null
+      const location = rendition.currentLocation()
+      if (!location || !location.start) return null
+      const range = rendition.getRange(location.start.cfi)
+      if (!range) return null
+      const doc = range.startContainer.ownerDocument
+      const tail = doc.createRange()
+      tail.setStart(range.startContainer, range.startOffset)
+      tail.setEndAfter(doc.body.lastChild || doc.body)
+      return { href: location.start.href, text: tail.toString().slice(0, 1200) }
+    },
+    // Etap 11c: odszukanie fragmentu (`key` — tekst bez odstępów, małymi literami) w rozdziale
+    // i przejście do niego; `occurrence` — które wystąpienie. Zwraca CFI albo null.
+    async find(href, key, occurrence) {
+      if (!rendition || !rendition.manager) return null
+      const item = spineItemFor(href)
+      if (!item) return null
+      const root = await item.load(epub.load.bind(epub))
+      const doc = root.ownerDocument || root
+      const body = doc.body || doc.querySelector('body') || root
+      const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+      const chars = []
+      const where = []
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const value = node.nodeValue
+        for (let i = 0; i < value.length; i++) {
+          const c = value[i]
+          if (/\s/.test(c) || c === '\u00AD' || c === '\u200B') continue
+          const lower = c.toLowerCase()
+          for (const l of lower) {
+            chars.push(l)
+            where.push([node, i])
+          }
+        }
+      }
+      const text = chars.join('')
+      let at = -1
+      for (let n = 0; n <= occurrence; n++) {
+        at = text.indexOf(key, at + 1)
+        if (at < 0) break
+      }
+      if (at < 0) at = text.indexOf(key)
+      if (at < 0) return null
+      const range = doc.createRange()
+      // Zakres z pierwszym znakiem, nie zwinięty: zwinięty zakres na początku akapitu WebKit
+      // mierzy na końcu poprzedniej linii, więc epub.js pokazywał stronę wcześniej.
+      const [node, offset] = where[at]
+      range.setStart(node, offset)
+      range.setEnd(node, Math.min(node.nodeValue.length, offset + 1))
+      const cfi = item.cfiFromRange(range)
+      item.unload()
+      await rendition.display(cfi)
+      // epub.js potrafi pokazać stronę przed celem (prostokąty zakresów WebKit w tekście
+      // łamanym na kolumny bywają przesunięte, a z nich epub.js liczy położenie i koniec strony).
+      // Pewny jest tylko początek widocznej strony, więc: cel przed początkiem → kartka wstecz;
+      // inaczej kartka dalej, dopóki następna strona nie zaczyna się za celem (wtedy wracamy).
+      const order = new ePub.CFI()
+      const start = () => {
+        const location = rendition.currentLocation()
+        return location && location.start ? location.start.cfi : null
+      }
+      for (let i = 0; i < 3; i++) {
+        const here = start()
+        if (!here) break
+        if (order.compare(cfi, here) < 0) {
+          await rendition.prev()
+          continue
+        }
+        await rendition.next()
+        const next = start()
+        if (!next || next === here) break
+        if (order.compare(next, cfi) > 0) {
+          await rendition.prev()
+          break
+        }
+      }
+      repaint()
+      return cfi
+    },
     setLook(next) {
       look = Object.assign(look, next || {})
       applyLook()
@@ -209,6 +290,15 @@
       const box = size()
       if (rendition && rendition.manager && box.width > 0 && box.height > 0) rendition.resize(box.width, box.height)
     }
+  }
+
+  // WebKit nie zawsze odmalowuje ramkę rozdziału po przewinięciu kontenera w kodzie (ekran
+  // zostaje na poprzedniej stronie, choć DOM jest już na nowej) — zmiana krycia w następnej
+  // klatce wymusza odmalowanie.
+  function repaint() {
+    const box = document.getElementById('book')
+    box.style.opacity = '0.99'
+    requestAnimationFrame(() => requestAnimationFrame(() => { box.style.opacity = '' }))
   }
 
   // Marginesy strony (boczne) i miejsce na paski aplikacji (górny i dolny), w punktach.

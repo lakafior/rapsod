@@ -356,7 +356,7 @@ private struct DownloadRow: View {
             DownloadMenuItems(target: target, session: session) { error = $0 }
         }
         .fullScreenCover(item: $reader) { target in
-            ReaderScreen(target: target, session: session, isOffline: model.isOffline)
+            ReaderScreen(target: target, session: session, playback: model.playback, isOffline: model.isOffline)
         }
         .swipeActions(edge: .trailing) {
             Button("Usuń", systemImage: "trash", role: .destructive) {

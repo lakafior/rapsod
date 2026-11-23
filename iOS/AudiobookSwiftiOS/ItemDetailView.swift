@@ -162,7 +162,7 @@ struct ItemDetailView: View {
             PlayErrorText(model: model, key: item.id)
         }
         .fullScreenCover(item: $reader) { target in
-            ReaderScreen(target: target, session: session, isOffline: model.isOffline)
+            ReaderScreen(target: target, session: session, playback: model.playback, isOffline: model.isOffline)
         }
     }
 

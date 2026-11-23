@@ -55,14 +55,24 @@ final class ReaderModel {
     private(set) var pdfCount = 0
     private(set) var saveError: String?
 
+    /// Mapa tekstu książki z nagraniem (etap 11c) — „Słuchaj od tego miejsca” i odwrotnie.
+    private(set) var textMap: TextSyncMap?
+    /// Uwaga o mapie (nieaktualna po zmianie plików).
+    private(set) var textMapNote: String?
+    /// Propozycja przy otwarciu: słuchanie jest gdzie indziej niż czytanie (czas w nagraniu).
+    var listeningSuggestion: Double?
+
     @ObservationIgnored private let session: ServerSession
+    @ObservationIgnored private let playback: PlaybackCoordinator
     @ObservationIgnored private let isOffline: Bool
+    @ObservationIgnored private var checkedSuggestion = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var positions: EbookPositionStore { ReaderPositions.store(scope: session.scope) }
 
-    init(target: ReaderTarget, session: ServerSession, isOffline: Bool) {
+    init(target: ReaderTarget, session: ServerSession, playback: PlaybackCoordinator, isOffline: Bool) {
         self.target = target
         self.session = session
+        self.playback = playback
         self.isOffline = isOffline
         title = target.title
     }
@@ -78,8 +88,12 @@ final class ReaderModel {
             switch format {
             case .epub:
                 let controller = EpubController(book: file, cacheKey: cacheKey, startLocation: EbookLocationValue.epubCFI(saved), look: look, layout: layout, spread: spread)
-                controller.onMove = { [weak self] place in self?.record(location: place.cfi, progress: place.progress) }
+                controller.onMove = { [weak self] place in
+                    self?.record(location: place.cfi, progress: place.progress)
+                    Task { await self?.suggestListeningPlace(controller) }
+                }
                 phase = .ready(.epub(controller))
+                Task { await loadTextMap() }
             case .pdf:
                 guard let document = PDFDocument(url: file) else { throw Failure(errorDescription: "Nie udało się otworzyć tego PDF-a.") }
                 pdfCount = document.pageCount
@@ -163,6 +177,66 @@ final class ReaderModel {
         return positions.startLocation(itemID: target.itemID, server: server, serverReachable: reachable)
     }
 
+    // MARK: - Tekst i nagranie (etap 11c)
+
+    /// Mapa tekstu tak jak w trybie „Tekst” odtwarzacza: pobrana z książką albo z serwera.
+    private func loadTextMap() async {
+        let itemID = target.itemID
+        let auth = session.auth
+        let downloads = session.downloads.manager
+        let source = TextSyncSource(
+            itemID: itemID,
+            fetchItem: { try await auth.perform { try await $0.item(id: itemID, token: $1) } },
+            fetchFile: { ino in try await auth.perform { try await $0.libraryFile(itemID: itemID, ino: ino, token: $1) } },
+            downloadedCopy: { downloads.textSyncData(itemID: itemID) },
+            updateDownloadedCopy: { downloads.storeTextSync($0, itemID: itemID) }
+        )
+        if case .ready(let document, let isStale, _) = await TextSyncLoader.load(source, cache: .standard()) {
+            textMap = document.map
+            textMapNote = isStale ? "Pliki książki zmieniły się od synchronizacji — przejścia między tekstem a nagraniem mogą chybiać. Zsynchronizuj e-book na Macu jeszcze raz." : nil
+        }
+    }
+
+    /// Miejsce słuchania: bieżące odtwarzanie tej książki albo zapisana pozycja.
+    func listeningTime() -> Double? {
+        if playback.nowPlayingKey == PlaybackTimeline.key(target.itemID, nil) { return playback.player.currentTime }
+        let local = session.journal.position(itemID: target.itemID, episodeID: nil)?.currentTime
+        let server = session.library.progress.value(target.itemID)?.currentTime
+        return [local, server].compactMap { $0 }.max().flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    static let mismatch = "Tej strony nie ma w mapie tekstu (inne wydanie e-booka albo fragment, którego lektor nie czyta). Zsynchronizuj e-book na Macu jeszcze raz albo spróbuj na innej stronie."
+
+    /// „Słuchaj od tego miejsca”: początek zdania na górze strony → odtwarzanie od tego czasu.
+    func listenHere(_ controller: EpubController) async -> String {
+        guard let map = textMap, let page = await controller.pageText() else { return Self.mismatch }
+        guard let time = EbookAudioSync.time(in: map, href: page.href, passage: page.text) else { return Self.mismatch }
+        await playback.play(itemID: target.itemID, from: time)
+        listeningSuggestion = nil
+        return "Odtwarzanie od \(Self.clock(time))"
+    }
+
+    /// „Czytaj od miejsca, gdzie skończyłem słuchać”: zdanie z chwili słuchania → jego strona.
+    func readFromListening(_ controller: EpubController, time: Double? = nil) async -> String? {
+        guard let map = textMap, let time = time ?? listeningTime() else { return "Nie ma jeszcze miejsca słuchania tej książki." }
+        guard let passage = EbookAudioSync.passage(in: map, time: time), await controller.show(passage) else { return Self.mismatch }
+        listeningSuggestion = nil
+        return nil
+    }
+
+    /// Przy otwarciu: jeśli słuchanie poszło dalej (albo zostało w tyle) niż czytanie o ponad
+    /// minutę nagrania — propozycja przejścia. Raz na otwarcie.
+    private func suggestListeningPlace(_ controller: EpubController) async {
+        guard !checkedSuggestion, let map = textMap, let listening = listeningTime() else { return }
+        checkedSuggestion = true
+        guard let page = await controller.pageText(), let reading = EbookAudioSync.time(in: map, href: page.href, passage: page.text) else { return }
+        if abs(reading - listening) > 60 { listeningSuggestion = listening }
+    }
+
+    static func clock(_ time: Double) -> String {
+        Duration.seconds(max(0, time)).formatted(.time(pattern: time >= 3600 ? .hourMinuteSecond : .minuteSecond))
+    }
+
     // MARK: - Zapis pozycji
 
     func pdfPageChanged(_ page: Int) {
@@ -213,6 +287,7 @@ final class ReaderModel {
 struct ReaderScreen: View {
     let target: ReaderTarget
     let session: ServerSession
+    let playback: PlaybackCoordinator
     let isOffline: Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -225,13 +300,14 @@ struct ReaderScreen: View {
     @State private var showsContents = false
     @State private var showsSettings = false
     @State private var sliderValue: Double?
+    @State private var notice: String?
 
     var body: some View {
         GeometryReader { geometry in
             content(width: geometry.size.width)
                 .task {
                     guard model == nil else { return }
-                    let model = ReaderModel(target: target, session: session, isOffline: isOffline)
+                    let model = ReaderModel(target: target, session: session, playback: playback, isOffline: isOffline)
                     self.model = model
                     await model.load(look: look.javaScript(dynamicType: contentSize), layout: layout, spread: spread(width: geometry.size.width))
                 }
@@ -312,7 +388,19 @@ struct ReaderScreen: View {
                 }
             }
             .overlay(alignment: .top) {
-                if showsChrome { topBar(controller).transition(.opacity) }
+                VStack(spacing: 8) {
+                    if showsChrome { topBar(controller).transition(.opacity) }
+                    if let model, let time = model.listeningSuggestion { suggestion(controller, model: model, time: time) }
+                    if let notice {
+                        Text(notice)
+                            .font(.callout)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(.regularMaterial, in: .rect(cornerRadius: 14))
+                            .padding(.horizontal)
+                            .transition(.opacity)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
+                }
             }
             .overlay(alignment: .bottom) {
                 if showsChrome {
@@ -337,6 +425,52 @@ struct ReaderScreen: View {
             }
     }
 
+    // MARK: - Tekst i nagranie (etap 11c)
+
+    private func listeningMenu(_ controller: EpubController, model: ReaderModel) -> some View {
+        Menu {
+            Button("Słuchaj od tego miejsca", systemImage: "play") {
+                Task { show(await model.listenHere(controller)) }
+            }
+            Button("Czytaj od miejsca słuchania", systemImage: "headphones") {
+                Task { if let message = await model.readFromListening(controller) { show(message) } }
+            }
+            .disabled(model.listeningTime() == nil)
+            if let note = model.textMapNote { Text(note) }
+        } label: {
+            Label("Tekst i nagranie", systemImage: "headphones")
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.circle)
+    }
+
+    private func suggestion(_ controller: EpubController, model: ReaderModel, time: Double) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "headphones").accessibilityHidden(true)
+            Text("Słuchanie jest w innym miejscu (\(ReaderModel.clock(time))).").font(.callout)
+            Spacer(minLength: 0)
+            Button("Przejdź") {
+                Task { if let message = await model.readFromListening(controller, time: time) { show(message) } }
+            }
+            .buttonStyle(.borderedProminent)
+            Button("Zostań", systemImage: "xmark") { model.listeningSuggestion = nil }
+                .labelStyle(.iconOnly)
+        }
+        .padding(12)
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+        .padding(.horizontal)
+    }
+
+    private func show(_ message: String) {
+        withAnimation(reduceMotion ? nil : .default) { notice = message }
+        UIAccessibility.post(notification: .announcement, argument: message)
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            if notice == message { withAnimation(reduceMotion ? nil : .default) { notice = nil } }
+        }
+    }
+
     private func toggleChrome() {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { showsChrome.toggle() }
     }
@@ -356,6 +490,7 @@ struct ReaderScreen: View {
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.circle)
                 .disabled(controller.toc.isEmpty)
+            if let model, model.textMap != nil { listeningMenu(controller, model: model) }
             Button("Wygląd", systemImage: "textformat.size") { showsSettings = true }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.bordered)
