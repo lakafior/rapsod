@@ -166,6 +166,26 @@ struct SkipDetectionTests {
         #expect(described.autoSkip)
     }
 
+    @Test func redetectionKeepsLocatedMegaphoneForTheSameFile() throws {
+        let payload = try #require(MegaphonePayload.parse(MegaphoneFixtures.filled))
+        let audio = SkipAudioFingerprint(size: MegaphoneFixtures.filledSize, duration: MegaphoneFixtures.filledDuration, headSHA256: "a", tailSHA256: "b")
+        let located = SkipDetection.analyze(.init(description: "10:00 Sponsor: X\n11:00 Dalej", fileDuration: MegaphoneFixtures.filledDuration,
+                                                  fileAudioBytes: MegaphoneFixtures.filledSize - 17_593, megaphone: payload,
+                                                  megaphoneTotalSize: MegaphoneFixtures.filledSize))
+        var first = SkipDetection.map(result: located, episode: .init(), audio: audio, previous: nil)
+        first.add(start: 1500, end: 1510, kind: .selfPromo)
+        // Kilka minut później wydawca składa inny zestaw reklam — odpowiedź nie opisuje już pliku.
+        let other = SkipDetection.analyze(.init(description: "10:00 Sponsor: X\n11:00 Dalej", fileDuration: MegaphoneFixtures.filledDuration,
+                                                fileAudioBytes: MegaphoneFixtures.filledSize - 17_593, megaphone: payload,
+                                                megaphoneTotalSize: 39_047_145))
+        #expect(other.insertedAds?.located == false)
+        let second = SkipDetection.map(result: other, episode: .init(), audio: audio, previous: first)
+        #expect(second.insertedAds?.located == true)
+        #expect(second.segments.filter { $0.source == .megaphone }.count == 4)
+        #expect(second.segments.first { $0.source == .description }?.autoSkip == true)
+        #expect(second.corrections.added.count == 1)
+    }
+
     @Test func megaphoneFromAnotherDownloadIsNotLocated() throws {
         let payload = try #require(MegaphonePayload.parse(MegaphoneFixtures.filled))
         let input = SkipDetection.Input(description: nil, fileDuration: 1951.5, fileSize: 39_047_145, fileAudioBytes: 39_047_145 - 17_593, megaphone: payload,

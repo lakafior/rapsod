@@ -119,9 +119,11 @@ public final class AudiobookPlayer {
     @ObservationIgnored private var skipAnchor: Double = 0
     @ObservationIgnored private var skipBoundary: Any?
     @ObservationIgnored private var lastSkipExpiry: Task<Void, Never>?
-    /// Przewinięcia w toku: zegar do ich końca podaje jeszcze starą pozycję (pominięcie albo „Cofnij”
-    /// liczyłyby się od niej), więc wtedy go nie czytamy.
-    @ObservationIgnored private var seeksInFlight = 0
+    /// Ostatnie przewinięcie w toku: zegar do jego końca podaje jeszcze starą pozycję (pominięcie albo
+    /// „Cofnij” liczyłyby się od niej), więc wtedy go nie czytamy. Tylko ostatnie (wcześniejsze kończą
+    /// się razem z nim), zerowane przy ładowaniu pliku i zamknięciu — zawieszone przewinięcie nie
+    /// zatrzyma zegara na stałe.
+    @ObservationIgnored private var pendingSeek: UUID?
 
     private static let rateKey = "listeningRate"
     public static let rates: [Float] = [0.8, 1, 1.1, 1.2, 1.3, 1.5, 1.75, 2, 2.5, 3]
@@ -245,6 +247,7 @@ public final class AudiobookPlayer {
         error = nil
         cancelSleepTimer()
         resetSkips()
+        pendingSeek = nil
         nowPlayingUpdated = nil
         nowPlayingChapterID = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -281,10 +284,11 @@ public final class AudiobookPlayer {
         if !isStream, index == trackIndex, let item = player.currentItem, itemTracks[ObjectIdentifier(item)] == index, item.status == .readyToPlay {
             currentTime = target
             let local = PlaybackTimeline.localTime(target, in: book.tracks[index])
-            seeksInFlight += 1
+            let token = UUID()
+            pendingSeek = token
             Task {
                 await player.seek(to: CMTime(seconds: local, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-                seeksInFlight -= 1
+                if pendingSeek == token { pendingSeek = nil }
                 updateNowPlaying()
             }
         } else {
@@ -374,6 +378,7 @@ public final class AudiobookPlayer {
         currentTime = time
         isLoading = true
         lastTick = nil
+        pendingSeek = nil
         markSkipAnchor(time)
         updateItemEndAction()
         loadTask = Task {
@@ -541,7 +546,7 @@ public final class AudiobookPlayer {
     // MARK: - Zegar
 
     private func tick(_ time: CMTime) {
-        guard let book, !isLoading, seeksInFlight == 0, let item = player.currentItem,
+        guard let book, !isLoading, pendingSeek == nil, let item = player.currentItem,
               let index = itemTracks[ObjectIdentifier(item)], book.tracks.indices.contains(index)
         else { return }
         trackIndex = index
@@ -693,7 +698,7 @@ public final class AudiobookPlayer {
     }
 
     private func skipBoundaryReached() {
-        guard seeksInFlight == 0, let book, let item = player.currentItem, let index = itemTracks[ObjectIdentifier(item)], book.tracks.indices.contains(index) else { return }
+        guard pendingSeek == nil, let book, let item = player.currentItem, let index = itemTracks[ObjectIdentifier(item)], book.tracks.indices.contains(index) else { return }
         checkSkip(at: PlaybackTimeline.bookTime(local: player.currentTime().seconds, in: book.tracks[index]))
     }
 

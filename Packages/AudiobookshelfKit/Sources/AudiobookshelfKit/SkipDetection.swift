@@ -155,6 +155,18 @@ public enum SkipDetection {
     /// Nowa mapa z wyniku wykrywania; z poprzedniej wersji przechodzą poprawki użytkownika i segmenty
     /// źródeł, które tym razem nie liczyły (np. model z 13b).
     public static func map(result: Result, episode: SkipMap.EpisodeRef, audio: SkipAudioFingerprint, previous: SkipMap?, now: Date = .now) -> SkipMap {
+        var result = result
+        // Ten sam plik, wcześniej reklamy wstawione miały położenie (nagłówek opisywał właśnie ten plik),
+        // a teraz wydawca składa inny zestaw reklam: zostaje poprzedni wynik Megaphone i przeliczonych
+        // z nim czasów z opisu — nowy nic o tym pliku nie wie.
+        if let previous, previous.insertedAds?.located == true, result.insertedAds?.located != true,
+           previous.audio.match(audio) == .exact {
+            let keep: Set<SkipSource> = [.megaphone, .description]
+            result.segments = result.segments.filter { !keep.contains($0.source) } + previous.segments.filter { keep.contains($0.source) }
+            result.insertedAds = previous.insertedAds
+            result.notices = previous.notices
+            result.runs = result.runs.filter { !keep.contains($0.source) } + previous.runs.filter { keep.contains($0.source) }
+        }
         let fresh = SkipMap(episode: episode, audio: audio, segments: result.segments, insertedAds: result.insertedAds,
                             notices: result.notices, runs: result.runs, generatedAt: now)
         guard let previous else { return fresh }
