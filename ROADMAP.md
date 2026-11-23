@@ -87,6 +87,20 @@ Audiobook z dołączonym EPUB-em (plik obok audio w folderze pozycji, serwer bie
 - **11b. Tekst w odtwarzaczu — zrobione.** Mac (panel odtwarzacza i osobne okno) i iOS (tryb „Tekst” w pełnym odtwarzaczu), wspólny model w pakiecie: bieżące zdanie podświetlone i przewijane, dotknięcie zdania przewija audio, ręczne przewinięcie z powrotem do bieżącego miejsca, krój i rozmiar, mapa pobierana z książką na telefon. Mapa w wersji 2 (rodzaje bloków), stare mapy działają bez przeliczania. Przy okazji poprawki iOS: lista „Audiobooki” nie wraca na górę po zdarzeniu serwera, strona pozycji nie przerysowuje się przy synchronizacji postępu. Szczegóły w README. Zostało: sprawdzenie na prawdziwej książce i telefonie, VoiceOver i ustawienia dostępności w działaniu, liczenie pliku mapy w „Zajętym miejscu”.
 - **11c. Czytnik:** podświetlanie zdania w EPUB-ie i przeliczanie pozycji audio ↔ `ebookLocation` („czytaj od miejsca, gdzie skończyłem słuchać”); na iOS razem z 10g.
 
+### Segmenty sponsorowane w podcastach (etap 13)
+
+Oznaczanie i pomijanie reklam, „partner odcinka” i autopromocji przy odtwarzaniu (Mac i iOS). Pliku nie wycinamy. Rozpoznanie z 2026-11-23 (6 publicznych odcinków PL/EN, pomiary i raport w notatkach sesji): kanały polskich podcastów nie mają rozdziałów ani znaczników reklam; adres pliku mówi tylko, że reklamy mogą być wstawiane dynamicznie. Klasyfikacja z transkrypcji przez zdalny model trafiła 7/10 segmentów przy 57 s błędnie pominiętej treści na 6,4 h. Model Apple nie obsługuje polskiego (4/10, 35 fałszywych obszarów). Lokalny LLM odrzucony (16 GB RAM).
+
+Decyzja użytkownika: 13a i 13b od razu.
+
+- **13a. Znaczniki bez modelu.** Czasy z opisu odcinka ze słowami („autopromocja”, „partner”, „sponsor”, „reklama”, „brought to you by”). Wykrywanie reklam wstawianych dynamicznie: `itunes:duration` z kanału kontra długość pliku, sloty z nagłówka Megaphone `x-megaphone-payload-2` (format nieudokumentowany, parser własny — istniejące są na AGPL/GPL). Plik `<odcinek>.skip.json` w folderze podcastu, jak `.sync.json` (do sprawdzenia: `PodcastScanner` a pliki `.json`). Format: wersja, odcisk pliku audio (rozmiar, czas, skrót fragmentów), segmenty `start/end/kind/source/confidence`, poprawki użytkownika. W pakiecie (MPL): model pliku, wczytywanie, sprawdzenie dopasowania do odtwarzanego pliku (tolerancja ok. 1 s, przy niezgodności bez automatu), pomijanie w `AudiobookshelfPlayback` z „Cofnij” i znaczniki na pasku postępu; ustawienie per podcast.
+- **13b. Transkrypcja i zdalny klasyfikator na Macu.** Kolejka po pobraniu odcinka na serwer (jedno zadanie naraz, `DictationTranscriber` i `TranscriptCache` z 11a) oraz przyciskiem. Endpoint i klucz API zgodnego z OpenAI w ustawieniach, ze zgodą na wysyłanie transkrypcji. Okna z zakładką, docinanie granic do słowa i ciszy. Zestaw testowy z rozpoznania jako test regresji.
+- **Później:** odcinki tylko z RSS na iOS (analiza na Macu na żądanie albo transkrypcja na telefonie), Parakeet v3 przez FluidAudio (lepsza transkrypcja rozmów), ręczna korekta granic, odciski powtarzających się reklam.
+- **Ustalenia z użytkownikiem (2026-11-23):**
+  - Domyślnie automatyczne pomijanie: kto podał API i włączył „Wykrywaj fragmenty sponsorowane”, oczekuje działania. „Cofnij” i znaczniki zostają.
+  - Kategorie osobno z wyborem działania dla każdej (jak w SponsorBlock: pomijaj / tylko pokaż / ignoruj): sponsor (reklama czytana i wstawiana), autopromocja (własne produkty, książki, gry, newsletter, Patronite prowadzącego). Sloty dynamiczne to źródło, nie kategoria.
+  - Przykład w ustawieniach API: „mały model, np. Mistral Small albo Gemini Flash”. Użytkownik używa `mistral-small`.
+
 ### Bardziej natywna aplikacja
 
 - Angielska wersja językowa (dziś interfejs jest tylko po polsku).
