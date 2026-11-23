@@ -854,6 +854,10 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - Kopia zapasowa audiobookshelf awatarów nie obejmie, bo serwer tworzy kopie z własnej bazy i metadanych. Trzeba to napisać przy wyborze awatara albo dopisać folder do kopii po stronie aplikacji.
   - Telefony nie zobaczą awatara, chyba że później dodamy go do kodu parowania albo do lekkiego zapytania o profil. To osobna, opcjonalna praca.
 - **Koszt:** mały, niezależny od reszty, można dodać po etapie 2.
+- **iOS (decyzja 2026-11-23): później, po Macu, tylko kosmetycznie.** Telefon nie przełącza użytkowników, więc awatar pokazuje się np. w ekranie ustawień aplikacji jako „to konto”. Telefon rozmawia tylko z serwerem audiobookshelf, który awatarów nie ma, więc trzeba wybrać drogę:
+  - **symbol lub emoji z kolorem w kodzie parowania i w „Kodzie z adresami”**: kilka bajtów, bez zmian w serwerze; zdjęcie się nie zmieści w kodzie QR;
+  - **zdjęcie**: wymaga osobnego kanału, np. małego pliku, który Mac wystawia obok serwera, albo przesłania przy parowaniu po sieci lokalnej. To większa praca, do decyzji przy etapie iOS.
+  - Pole w `PairingPayload` musi być opcjonalne, żeby starsze wersje iOS czytały nowe kody, a nowe iOS stare kody.
 
 **Zmiany w planie (część 6)**
 
