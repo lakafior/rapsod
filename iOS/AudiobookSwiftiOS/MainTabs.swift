@@ -18,6 +18,10 @@ struct MainTabs: View {
 
     @State private var tab: AppTab = .home
     @State private var showsPlayer = false
+    #if DEBUG
+    /// Tylko Debug: `-OpenReader <id pozycji>` otwiera czytnik od razu (testy w symulatorze).
+    @State private var debugReader: ReaderTarget? = UserDefaults.standard.string(forKey: "OpenReader").flatMap { $0.isEmpty ? nil : $0 }.map { ReaderTarget(itemID: $0, title: "") }
+    #endif
     @Namespace private var playerTransition
 
     var body: some View {
@@ -56,6 +60,11 @@ struct MainTabs: View {
                 .navigationTransition(.zoom(sourceID: "player", in: playerTransition))
         }
         // Biblioteki, postęp i gniazdo zdarzeń żyją tyle, co to połączenie.
+        #if DEBUG
+        .fullScreenCover(item: $debugReader) { target in
+            ReaderScreen(target: target, session: session, playback: model.playback, isOffline: model.isOffline)
+        }
+        #endif
         .task(id: session.id) { await session.library.run() }
     }
 }

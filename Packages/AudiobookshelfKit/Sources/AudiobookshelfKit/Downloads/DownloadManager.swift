@@ -186,6 +186,27 @@ public final class DownloadManager: NSObject {
         }
     }
 
+    /// E-book pobrany z książką (etap 10g); `nil`, gdy go nie ma.
+    public func ebookURL(itemID: String) -> URL? {
+        guard let item = items[ProgressJournal.key(itemID, nil)] else { return nil }
+        let folder = directory.appending(path: item.folder)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        return names.sorted().first(where: DownloadedItem.isEbookFileName).map { folder.appending(path: $0) }
+    }
+
+    /// Zapisuje (albo podmienia) e-book pobranej książki. Pozycja spoza pobranych — nic.
+    public func storeEbook(_ data: Data, ext: String, itemID: String) {
+        guard let item = items[ProgressJournal.key(itemID, nil)] else { return }
+        let folder = directory.appending(path: item.folder)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            if let old = ebookURL(itemID: itemID), old.lastPathComponent != DownloadedItem.ebookFileName(ext: ext) { try? FileManager.default.removeItem(at: old) }
+            try data.write(to: folder.appending(path: DownloadedItem.ebookFileName(ext: ext)), options: .atomic)
+        } catch {
+            logger.error("Zapis e-booka pobranej książki: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Znaczniki segmentów sponsorowanych pobrane z odcinkiem (etap 13a); `nil`, gdy ich nie ma.
     public func skipData(itemID: String, episodeID: String) -> Data? {
         guard let item = items[ProgressJournal.key(itemID, episodeID)] else { return nil }
@@ -223,7 +244,8 @@ public final class DownloadManager: NSObject {
 
     /// Dodaje pozycję do kolejki (albo zostawia już pobieraną). Sprawdza wolne miejsce.
     /// `textSync` — mapa tekstu książki (jeśli jest), zapisana obok plików audio.
-    public func enqueue(_ item: DownloadedItem, cover: Data? = nil, textSync: Data? = nil) throws {
+    /// `ebook` — plik e-booka (etap 10g) z rozszerzeniem.
+    public func enqueue(_ item: DownloadedItem, cover: Data? = nil, textSync: Data? = nil, ebook: (data: Data, ext: String)? = nil) throws {
         if let existing = items[item.id] {
             if existing.failure != nil { retry(key: item.id) }
             return
@@ -239,6 +261,7 @@ public final class DownloadManager: NSObject {
             item.hasCover = true
         }
         if let textSync { try? textSync.write(to: folder.appending(path: DownloadedItem.textSyncFileName), options: .atomic) }
+        if let ebook { try? ebook.data.write(to: folder.appending(path: DownloadedItem.ebookFileName(ext: ebook.ext)), options: .atomic) }
         items[item.id] = item
         changed(item.id)
         pump()

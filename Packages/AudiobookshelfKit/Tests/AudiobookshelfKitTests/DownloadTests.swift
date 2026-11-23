@@ -61,7 +61,7 @@ private func book(_ files: [DownloadedFile]) -> DownloadedItem {
         let disk: [String: [String: Int64]] = [
             // Plik 1 jest, plik 2 ma zły rozmiar (urwany zapis), do tego śmieć i katalog bez wpisu.
             // Mapa tekstu (etap 11b) i znaczniki segmentów (etap 13a) to nie śmieci.
-            item.folder: [names[0]: 100, names[1]: 40, "obcy.tmp": 5, DownloadedItem.textSyncFileName: 30, DownloadedItem.skipFileName: 2],
+            item.folder: [names[0]: 100, names[1]: 40, "obcy.tmp": 5, DownloadedItem.textSyncFileName: 30, DownloadedItem.skipFileName: 2, "ebook.epub": 7],
             "deadbeef": ["x.m4a": 10],
         ]
         let result = DownloadIndex.reconcile([item], disk: disk)

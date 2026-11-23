@@ -91,7 +91,8 @@ final class DownloadsController {
             chapters: (item.media.chapters ?? []).map { DownloadedChapter(start: $0.start, end: $0.end, title: $0.title) },
             files: files
         )
-        try manager.enqueue(entry, cover: await coverData(itemID: item.id, session: session), textSync: await textSyncData(item: item, session: session))
+        try manager.enqueue(entry, cover: await coverData(itemID: item.id, session: session), textSync: await textSyncData(item: item, session: session),
+                            ebook: await ebookData(item: item, session: session))
         if let progress = session.library.progress.value(item.id) { session.journal.recordServer(progress) }
     }
 
@@ -106,6 +107,19 @@ final class DownloadsController {
             return nil
         }
         return data
+    }
+
+    /// E-book książki (etap 10g), żeby czytnik działał bez sieci. Jak mapa tekstu: pobiera się od razu
+    /// (zwykle kilka MB); format spoza EPUB i PDF, brak albo błąd nie blokuje pobrania audio.
+    private func ebookData(item: Client.ItemDetail, session: ServerSession) async -> (data: Data, ext: String)? {
+        guard let ebook = item.media.ebookFile, let ino = ebook.ino,
+              let ext = EbookFormat(format: ebook.ebookFormat, filename: ebook.metadata?.filename).fileExtension
+        else { return nil }
+        guard let data = try? await session.auth.perform({ try await $0.libraryFile(itemID: item.id, ino: ino, token: $1) }) else {
+            logger.error("E-book \(item.id, privacy: .public) nie pobrał się z książką")
+            return nil
+        }
+        return (data, ext)
     }
 
     /// Odcinek podcastu, który jest na serwerze.

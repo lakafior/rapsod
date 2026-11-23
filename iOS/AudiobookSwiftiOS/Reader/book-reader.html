@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<!-- Czytnik EPUB klienta iOS (etap 10g). Ładowany ze schematu abook:, który podaje tylko pliki
+     czytnika i e-book; reguły treści WKWebView blokują wszystko inne, więc strona nie ma sieci. -->
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' abook: blob: data:; script-src 'self' abook:; style-src 'self' abook: blob: 'unsafe-inline'; img-src 'self' abook: blob: data:; font-src 'self' abook: blob: data:; connect-src abook:">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--page, #fff); -webkit-text-size-adjust: 100%; }
+  #book { position: absolute; top: var(--top, 0px); bottom: var(--bottom, 0px); left: var(--side, 20px); right: var(--side, 20px); }
+</style>
+<script src="jszip.min.js"></script>
+<script src="epub.min.js"></script>
+</head>
+<body>
+<div id="book"></div>
+<script src="book-reader.js"></script>
+</body>
+</html>

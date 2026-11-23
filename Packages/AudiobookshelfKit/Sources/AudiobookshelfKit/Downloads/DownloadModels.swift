@@ -100,6 +100,10 @@ public struct DownloadedItem: Codable, Sendable, Equatable, Identifiable {
     public static let textSyncFileName = "textsync.json"
     /// Znaczniki segmentów sponsorowanych odcinka (etap 13a) — pomijanie bez sieci.
     public static let skipFileName = "skip.json"
+    /// E-book książki (etap 10g) — `ebook.epub` albo `ebook.pdf`; czytnik działa bez sieci.
+    public static let ebookFileStem = "ebook"
+    public static func ebookFileName(ext: String) -> String { "\(ebookFileStem).\(ext)" }
+    static func isEbookFileName(_ name: String) -> Bool { name.hasPrefix(ebookFileStem + ".") && !name.dropFirst(ebookFileStem.count + 1).contains("/") }
 
     public var isEpisode: Bool { episodeID != nil }
     public var isComplete: Bool { !files.isEmpty && files.allSatisfy { $0.state == .done } }
@@ -282,7 +286,7 @@ public enum DownloadIndex {
                 }
             }
             let expected = Set(item.files.map(\.fileName) + ["cover.jpg", DownloadedItem.textSyncFileName, DownloadedItem.skipFileName])
-            for name in present.keys.sorted() where !expected.contains(name) { orphans.append(item.folder + "/" + name) }
+            for name in present.keys.sorted() where !expected.contains(name) && !DownloadedItem.isEbookFileName(name) { orphans.append(item.folder + "/" + name) }
             if item.hasCover, present["cover.jpg"] == nil { item.hasCover = false }
             fixed.append(item)
         }

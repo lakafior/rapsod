@@ -73,3 +73,16 @@ ustawienie per podcast w pasku strony podcastu. Znaczniki: z serwera (liczy je M
 odcinka), pobrane razem z odcinkiem (działają bez sieci), a dla odcinków prosto z kanału —
 liczone na telefonie z opisu odcinka (`SkipSupport.swift`, `SkipViews.swift`). Szczegóły w
 głównym `README.md` („Segmenty sponsorowane w podcastach”).
+
+Etap 10g: czytnik e-booków — „Czytaj” na stronie pozycji (i „Czytaj e-book” na liście „Pobrane”),
+EPUB w WKWebView z epub.js 0.3.93 (BSD-2-Clause) i JSZip 3.10.1 (MIT; noty w
+`AudiobookSwiftiOS/Reader/THIRD-PARTY-NOTICES.txt`, dołączone do aplikacji), PDF w PDFKit. Pozycja
+czytania w tym samym zapisie co czytnik Maca i web UI (CFI epub.js / numer strony), zapamiętywana
+też na telefonie do czytania bez sieci; e-book pobiera się razem z książką. Treść książki bez
+skryptów i bez sieci. MOBI i inne formaty — komunikat o braku obsługi. Szczegóły w głównym
+`README.md` („Czytnik e-booków na iOS”).
+
+Etap 11c (przejścia): w czytniku EPUB dla książek z mapą tekstu — „Słuchaj od tego miejsca”,
+„Czytaj od miejsca słuchania” i propozycja przejścia przy otwarciu, gdy czytanie i słuchanie się
+rozjechały. Przeliczanie we wspólnym pakiecie (`EbookAudioSync`). Szczegóły w głównym `README.md`
+(„Czytnik i nagranie: przejścia”).

@@ -21,6 +21,7 @@ struct ItemDetailView: View {
     @State private var isWorking = false
     @Environment(\.displayScale) private var displayScale
     @State private var cover: UIImage?
+    @State private var reader: ReaderTarget?
     @ScaledMetric(relativeTo: .title) private var coverSize: CGFloat = 220
 
     private var playback: PlaybackCoordinator { model.playback }
@@ -152,7 +153,16 @@ struct ItemDetailView: View {
                 }
                 .frame(maxWidth: 360)
             }
+            if item.media.ebookFile != nil {
+                // Czytnik e-booka (etap 10g): sam e-book albo audiobook z plikiem e-booka.
+                Button("Czytaj", systemImage: "book") { reader = ReaderTarget(itemID: item.id, title: item.title) }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Otwiera e-book tej książki")
+            }
             PlayErrorText(model: model, key: item.id)
+        }
+        .fullScreenCover(item: $reader) { target in
+            ReaderScreen(target: target, session: session, playback: model.playback, isOffline: model.isOffline)
         }
     }
 
