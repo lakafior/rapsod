@@ -103,7 +103,7 @@ struct DescriptionMarkerTests {
         #expect(found.ranges.isEmpty)
         #expect(found.notices.count == 1)
         #expect(found.notices.first?.kind == .sponsor)
-        #expect(found.notices.first?.text == "Partnerem odcinka jest Komputronik dla Firm")
+        #expect(found.notices.first?.text.contains("Partnerem odcinka jest Komputronik dla Firm") == true)
         #expect(found.notices.first?.time == nil)
     }
 
@@ -119,11 +119,19 @@ struct DescriptionMarkerTests {
     @Test func ignoresTopicsAndClockTimes() {
         let text = "0:00 Intro\n5:00 Rozmowa o finansach\n10:00 Pytania\nNagrywamy co tydzień o 20:00."
         #expect(DescriptionMarkers.find(in: text, duration: 1800).ranges.isEmpty)
-        #expect(SponsorKeywords.kind(of: "Advertising in open source") == .sponsor)
-        #expect(SponsorKeywords.kind(of: "Ads") == .sponsor)
-        #expect(SponsorKeywords.kind(of: "Downloads and uploads") == nil)
-        #expect(SponsorKeywords.kind(of: "Partnerzy odcinka") == .sponsor)
-        #expect(SponsorKeywords.kind(of: "Wsparcie na Patronite") == nil)
+        // Tematy rozmowy — nie segmenty.
+        for topic in ["Advertising in open source", "Downloads and uploads", "Wsparcie na Patronite", "Jak ustawić skuteczną reklamę Google Ads?",
+                      "Wybór partnera logistycznego", "Jak przygotować skuteczną ofertę dla sponsora?", "What exactly is a “venture partner?”",
+                      "Sponsorzy i pieniądze są ważniejsze, niż sport?", "Political advertising and Russian media manipulation"] {
+            #expect(SponsorKeywords.kind(of: topic) == nil, "\(topic)")
+        }
+        // Nagłówki wstawek.
+        for heading in ["Ads", "Sponsor: Sentry", "Sponsor odcinka", "BookBeat [partner odcinka]", "Partner odcinka - Polsat Box Go",
+                        "Segment partnera", "Brought to you by Sentry!", "Sonos Sponsor Break", "Partnerzy odcinka", "Reklama",
+                        "[współpraca reklamowa] Partnerem Imponderabiliów jest Trade Republic", "Support for this show comes from Drata"] {
+            #expect(SponsorKeywords.kind(of: heading) == .sponsor, "\(heading)")
+        }
+        #expect(SponsorKeywords.kind(of: "1:45 – [autopromocja] Akta tajemnic") == .selfPromo)
     }
 
     @Test func timestamps() {

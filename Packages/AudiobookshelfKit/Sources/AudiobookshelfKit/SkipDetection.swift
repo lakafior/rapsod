@@ -61,8 +61,10 @@ public enum SkipDetection {
 
     /// Wersja reguł (zapisywana w `runs`, żeby wiedzieć, kiedy warto liczyć od nowa).
     public static let rulesVersion = "13a.1"
-    /// Dłuższy segment z opisu albo rozdziałów to raczej cały temat niż reklama — tylko znacznik.
-    public static let longSegment: Double = 300
+    /// Dłuższy zakres z opisu albo rozdziałów to zwykle wstawka plus część rozmowy (koniec = następny
+    /// czas w opisie, np. „10:28 Brought to you by…”, a następny wpis dopiero w 18:37) — tylko znacznik.
+    /// Reklamy czytane w zestawie testowym trwały 20–190 s.
+    public static let longSegment: Double = 180
     /// Ile sekund nadwyżki pliku nad `itunes:duration` uznajemy za wstawione reklamy.
     public static func insertionThreshold(feedDuration: Double) -> Double { max(20, feedDuration * 0.02) }
 
@@ -161,6 +163,12 @@ public enum SkipDetection {
 // MARK: - Słowa kluczowe
 
 /// Słowa, po których rozpoznajemy fragment sponsorowany w opisie albo tytule rozdziału (PL i EN).
+///
+/// Reguły są celowo wąskie: samo „reklama” czy „partner” w temacie rozmowy („Jak ustawić reklamę
+/// Google Ads”, „Wybór partnera biznesowego”) to nie segment sponsorowany. Liczą się typowe nagłówki
+/// wstawek: „Sponsor odcinka”, „[partner odcinka]”, „Partnerem X jest…”, „[współpraca reklamowa]”,
+/// „Brought to you by…”, „Sponsor: …”, samo „Reklama” albo „Ads”. Przegląd ok. 9 tys. opisów
+/// z 10 kanałów (2026-11-23) — szczegóły w README.
 public enum SponsorKeywords {
     /// Autopromocja: własne produkty i zbiórki prowadzącego.
     static let selfPromo: [String] = [
@@ -168,13 +176,24 @@ public enum SponsorKeywords {
     ]
     /// Reklama i sponsor (czytane przez prowadzącego albo wstawiane).
     static let sponsor: [String] = [
-        #"\bsponsor"#, #"\breklam"#, #"\bpartner(em|a|zy|ów|ami|s)?\b"#, #"\bbrought to you by\b"#,
-        #"\bmateriał sponsorowany\b"#, #"\bwspółprac[aąy] reklamow"#, #"\blokowanie produktu\b"#,
-        #"\badvertis"#, #"\bad[- ]?break\b"#, #"\bthis episode is supported by\b"#, #"\bsupported by\b"#,
-        #"\bpaid promotion\b"#, #"\bcommercial break\b"#,
+        // Nagłówek w nawiasie: [sponsor], [partner odcinka], [reklama], [ad].
+        #"\[\s*(sponsor|partner|reklam|współpraca reklamow|materiał sponsorowan|ad\b|ads\b|advert)[^\]]*\]"#,
+        #"\bsponsor(em|zy|zem|s)?\s+(tego\s+)?(odcinka|podcastu|programu|audycji)\b"#,
+        #"\bpartner(em|zy|ami|a)?\s+(tego\s+)?(odcinka|podcastu|programu|audycji)\b"#,
+        #"\bsegment\s+(partnera|sponsora|sponsorski|reklamowy)\b"#,
+        #"\bpartnerem\s+\S+(\s+\S+)?\s+(jest|są|została|został)\b"#,
+        #"\bodcinek\s+(powstał|powstaje|realizowany)\s+(we\s+)?współpracy\b"#,
+        #"\bwspółprac[aąy]\s+reklamow"#, #"\bmateriał\s+(sponsorowany|reklamowy|partnerski)\b"#, #"\blokowanie\s+produktu\b"#,
+        #"\bbrought to you by\b"#, #"\b(this|today's) (episode|show) is (sponsored|supported|brought to you|presented) by\b"#,
+        #"\bsupport for (this|the|today's) (show|podcast|episode) comes from\b"#, #"\bsponsored by\b"#,
+        #"\bsponsor (break|message|read|segment|spot)\b"#, #"\b(ad|commercial) break\b"#, #"\bpaid promotion\b"#,
+        #"\bthanks to our sponsors?\b"#,
     ]
-    /// Krótkie wpisy typu „Ad” / „Ads” (dłuższe zdanie z „ad” to zwykle temat).
-    static let shortSponsor: [String] = [#"^\W*ads?\W*$"#, #"^\W*(mid|pre|post)[- ]?roll\W*$"#]
+    /// Wpis, który zaczyna się nagłówkiem („Sponsor: Sentry”, „Reklama – X”, „Partner odcinka”)
+    /// albo jest samym nagłówkiem („Ads”, „Sponsors”, „Reklama”, „Mid-roll”).
+    static let heading: [String] = [
+        #"^\W*(sponsor(s|zy)?|reklama|partner(zy)?|ads?|advert(isement)?|(mid|pre|post)[- ]?roll)\s*([:\-–—|]|$)"#,
+    ]
 
     private static func matches(_ text: String, _ patterns: [String]) -> Bool {
         patterns.contains { text.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil }
@@ -182,10 +201,9 @@ public enum SponsorKeywords {
 
     /// Rodzaj fragmentu według tekstu albo `nil`, gdy to nie fragment sponsorowany.
     public static func kind(of text: String) -> SkipKind? {
-        let lower = text.lowercased()
+        let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if matches(lower, selfPromo) { return .selfPromo }
-        if matches(lower, sponsor) { return .sponsor }
-        if lower.count <= 24, matches(lower, shortSponsor) { return .sponsor }
+        if matches(lower, sponsor) || matches(lower, heading) { return .sponsor }
         return nil
     }
 }
@@ -304,9 +322,11 @@ public enum DescriptionMarkers {
         return Found(ranges: ranges, notices: notices)
     }
 
-    /// Zdanie z wzmianką (opis bywa jednym długim akapitem).
+    /// Wiersz z wzmianką, a w długim akapicie — zdanie z nią.
     private static func sentence(around line: String, kind: SkipKind) -> String {
-        let sentences = line.split(omittingEmptySubsequences: true) { ".!?\u{2026}".contains($0) }.map(String.init)
+        guard line.count > 160 else { return line }
+        // Zdania kończą się kropką i spacją (kropka w adresie „strona.pl/” nie dzieli).
+        let sentences = line.components(separatedBy: try! NSRegularExpression(pattern: #"(?<=[.!?…])\s+"#))
         return sentences.first { SponsorKeywords.kind(of: $0) == kind } ?? line
     }
 
@@ -422,5 +442,19 @@ public struct MegaphonePayload: Sendable, Equatable {
     public static func totalSize(contentRange: String?) -> Int64? {
         guard let contentRange, let slash = contentRange.lastIndex(of: "/") else { return nil }
         return Int64(contentRange[contentRange.index(after: slash)...].trimmingCharacters(in: .whitespaces))
+    }
+}
+
+private extension String {
+    func components(separatedBy regex: NSRegularExpression) -> [String] {
+        let ns = self as NSString
+        var parts: [String] = []
+        var location = 0
+        for match in regex.matches(in: self, range: NSRange(location: 0, length: ns.length)) {
+            parts.append(ns.substring(with: NSRange(location: location, length: match.range.location - location)))
+            location = match.range.location + match.range.length
+        }
+        parts.append(ns.substring(from: location))
+        return parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 }
