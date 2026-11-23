@@ -49,6 +49,13 @@ final class ServerSupervisor {
     @ObservationIgnored private var exitWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var partialLine = Data()
 
+    /// Serwera nie wolno uruchomić (np. baza po nieudanym przywróceniu kopii): blokada startu
+    /// i czytelny błąd na stronie „Ogólne”.
+    func blockStart(_ reason: String) {
+        isMaintenanceLocked = true
+        state = .failed(reason)
+    }
+
     func start() {
         guard process == nil, !isMaintenanceLocked else { return }
 

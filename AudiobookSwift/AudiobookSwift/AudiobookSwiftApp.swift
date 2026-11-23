@@ -179,8 +179,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         listening.activate()
         Task {
             // Reset hasła roota przerwany zamknięciem aplikacji: dokończ albo cofnij, zanim ruszy serwer.
-            await RootPasswordReset.recoverIfNeeded()
-            supervisor.start()
+            if let problem = await RootPasswordReset.recoverIfNeeded() {
+                supervisor.blockStart(problem)
+            } else {
+                supervisor.start()
+            }
         }
     }
 

@@ -940,7 +940,7 @@ Gałąź `claude/ustawienia-etap-3-reset-roota` (z `main` po scaleniu etapów 1�
   - Baza (`config/absdatabase.sqlite` i jej ewentualne pliki pomocnicze) trafia do kopii `root-password-reset/<data>/` z prawami 0600. Obok powstaje znacznik `in-progress.json`.
   - Skrypt uruchamiany **dołączonym Node** zmienia `pash` w tabeli `users` dla `type = 'root'`, w jednej transakcji i ze sprawdzeniem zapisu. Używa bibliotek serwera: `dist-server/server/libs/bcryptjs` (koszt 8, prefiks `$2a$08$`, jak `LocalAuthStrategy.hashPassword` w `vendor/audiobookshelf`) i `node_modules/sqlite3`.
   - Hasło jest losowe i trafia do skryptu przez stdin. Potem zapis w pęku kluczy, usunięcie znacznika (punkt zatwierdzenia), start serwera i logowanie.
-- **Przy błędzie** przed zatwierdzeniem baza wraca z kopii, a serwer startuje jak wcześniej.
+- **Przy błędzie** przed zatwierdzeniem baza wraca z kopii, a serwer startuje jak wcześniej. Przywracanie kopiuje każdy plik obok bazy i atomowo podmienia bieżący (`replaceItemAt`). Jeśli samo przywrócenie się nie uda, serwer **nie** startuje, bo założyłby pustą bazę i nowego roota (`ServerSupervisor.blockStart`). Znacznik zostaje, a strona „Ogólne” podaje miejsce kopii. Tak samo działa przywracanie przy starcie aplikacji.
 - **Po przerwaniu:** `RootPasswordReset.recoverIfNeeded()` przy następnym starcie, zanim ruszy serwer, sprawdza tym samym skryptem, czy hasło z pęku kluczy pasuje do bazy. Pasuje — reset był skończony. Nie pasuje — baza wraca z kopii.
 - **Co zostaje bez zmian:** inne konta, ich sesje i klucze API (telefony). Zmienia się jedna kolumna jednego wiersza, a `tokenSecret` serwera zostaje ten sam.
 
@@ -978,12 +978,31 @@ Gałąź `claude/ustawienia-etap-3-reset-roota` (z `main` po scaleniu etapów 1�
 
 ### Zrzuty
 
-W `ustawienia-nowy-uklad/wdrozenie-png/`:
+W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 
-- `dostep-zdalny`, `dostep-zdalny-zaawansowane`, `arkusz-logowania` — jasne i ciemne;
-- `dostep-zdalny-baner`, `root-reset`, `root-reset-wynik` — tylko ciemne.
+- `dostep-zdalny`
+- `dostep-zdalny-zaawansowane`
+- `dostep-zdalny-baner`
+- `arkusz-logowania`
+- `root-reset` (strona roota przy nieznanym haśle)
+- `root-reset-wynik` (hasło zakryte)
 
-Zrzuty resetu powstały przed przebudową strony „Dostęp”, dlatego na ich pasku bocznym widać jeszcze „Dostęp”.
+### Sprawdzone uruchomieniem (testowa kopia)
+
+- **Reset przy nieznanym haśle.** Skrót roota w bazie testowej nadpisany przy zamkniętej aplikacji. Wynik:
+  - aplikacja zalogowała się nowym hasłem także po ponownym uruchomieniu;
+  - konto tego Maca działa;
+  - testowy klucz telefonu innej osoby odpowiada 200 przed resetem i po nim;
+  - przetrwanie zalogowanych sesji wynika z niezmienionego `tokenSecret`, nie było osobno sprawdzane.
+- **Przerwanie (SIGKILL aplikacji) przed zapisem w bazie i po nim.** Przy kolejnym starcie baza wróciła z kopii (skrót jak przed resetem), znacznik zniknął, serwer wstał, nie zostały osierocone procesy.
+- **Błąd w trakcie** (`-ABSRootResetFail after`, po rzeczywistym zapisie w bazie): baza wróciła z kopii, serwer działa, znacznik usunięty, arkusz mówi o przywróceniu.
+- **Dokończenie przy starcie:** znacznik wskazujący starą kopię przy pasującym haśle w pęku kluczy. Znacznik został usunięty, a baza nie została cofnięta.
+- **Klucze API:** klucz telefonu wyłączony z ostrzeżeniem daje 401, po ponownym włączeniu 200. Usunięcie ostrzega. „Profil…” prowadzi do profilu.
+- **Logowanie:** zapis wiadomości przetrwał ponowne otwarcie arkusza. „Anuluj” odrzuciło włączenie OpenID. Formularz OpenID się rysuje.
+- **Sieć domowa:** włączenie i wyłączenie (restart serwera; nasłuch `*` / `127.0.0.1`).
+- **Baner:** pojawia się po zmianie adresu spoza domu (także znak przy „Dostępie zdalnym”) i znika po pokazaniu „Kodu z adresami”.
+- **Tunel bez tokenu** z atrapą `cloudflared`.
+- **Tryb sprawdzający** z rozwiniętym „Zaawansowane” i zrzut drzewa dostępności rozwiniętej strony: bez awarii.
 
 ### Odstępstwa
 
@@ -993,8 +1012,11 @@ Zrzuty resetu powstały przed przebudową strony „Dostęp”, dlatego na ich p
 
 ### Znane braki
 
-- **Na zablokowanym ekranie** testowej kopii nie dało się wpisywać tekstu z klawiatury. Dlatego:
+- **Tekstu z klawiatury nie wpisywałem.** Najpierw ekran był zablokowany, potem ktoś pracował przy Macu, a testy wymagały przejęcia klawiatury i myszy. Dlatego:
   - zapis tokenu tunelu i arkusz „Zmień…” tokenu są tylko skompilowane;
   - tryb tunelu sprawdzony jest bez tokenu, z atrapą `cloudflared` (`-ABSCloudflared`);
   - własny adres ustawiłem w `sharing.json` testowej kopii, a nie polem.
 - **Pierwsza wersja banera** może raz pokazać fałszywy alarm, np. przy zmianie adresu tam i z powrotem przed pokazaniem kodu.
+- **Punkt odniesienia banera** w instalacji sprzed etapu 3 ustala się dopiero przy pierwszym otwarciu „Dostępu zdalnego” po wczytaniu telefonów. Zmiana adresu przed tą chwilą zostanie przyjęta bez alarmu.
+- **Reset w układzie wydania** (`Contents/Resources/Server`): ścieżki do `bcryptjs` i `sqlite3` w paczce sprawdzone tylko listingiem, reset nie był uruchamiany na zainstalowanej aplikacji.
+- **„Zakończ” z menu** nie zamyka aplikacji, gdy w oknie ustawień jest otwarty arkusz. Nie sprawdzałem, czy tak było przed tymi zmianami.

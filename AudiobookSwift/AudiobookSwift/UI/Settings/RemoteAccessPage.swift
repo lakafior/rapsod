@@ -42,6 +42,14 @@ struct RemoteAccessPage: View {
                     ) { showAddressesCode() }
                 }
             }
+            // Błąd sieci domowej albo adresu spoza domu — jedno miejsce nad oboma sekcjami.
+            if let error = sharing.lastError {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             homeNetwork
             outsideHome
             phones
@@ -144,9 +152,6 @@ struct RemoteAccessPage: View {
             }
             if sharing.isBusy {
                 ProgressView("Ponowne uruchamianie serwera…").controlSize(.small)
-            }
-            if let error = sharing.lastError {
-                Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
         } header: {
             Text("Sieć domowa")

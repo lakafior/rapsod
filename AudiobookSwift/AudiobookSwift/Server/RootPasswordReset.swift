@@ -112,10 +112,16 @@ final class RootPasswordReset {
                 do {
                     try files.restore(from: backup)
                     logger.notice("Reset hasła roota: baza przywrócona z kopii")
+                    files.removeMarker()
                 } catch {
+                    // Baza mogła zostać w nieznanym stanie: serwer nie startuje (założyłby pustą bazę
+                    // i nowego roota), znacznik zostaje, żeby następny start aplikacji spróbował znowu.
                     logger.fault("Reset hasła roota: przywrócenie kopii nie powiodło się: \(error.localizedDescription, privacy: .public)")
+                    let message = Self.restoreFailedMessage(backup: backup, error: error)
+                    supervisor.blockStart(message)
+                    phase = .failed(message, backup: backup)
+                    return
                 }
-                files.removeMarker()
             }
             supervisor.isMaintenanceLocked = false
             if !supervisor.hasProcess { supervisor.start() }
@@ -126,12 +132,17 @@ final class RootPasswordReset {
         }
     }
 
+    private static func restoreFailedMessage(backup: URL, error: Error) -> String {
+        "Nie udało się przywrócić bazy z kopii (\(error.localizedDescription)). Serwer zostaje zatrzymany, żeby nie założył pustej bazy. Kopia leży w \(backup.path) — zamknij aplikację i skopiuj z niej plik absdatabase.sqlite do folderu config w folderze danych albo uruchom aplikację ponownie, żeby spróbowała jeszcze raz."
+    }
+
     /// Wywoływane przy starcie aplikacji, zanim ruszy serwer: dokańcza albo cofa reset
-    /// przerwany przez zamknięcie aplikacji.
-    static func recoverIfNeeded() async {
-        guard let environment = try? ServerEnvironment.resolve() else { return }
+    /// przerwany przez zamknięcie aplikacji. Zwraca komunikat, gdy serwera nie wolno uruchomić
+    /// (przywrócenie kopii się nie udało).
+    static func recoverIfNeeded() async -> String? {
+        guard let environment = try? ServerEnvironment.resolve() else { return nil }
         let files = Files(dataRoot: environment.dataRoot)
-        guard let backup = files.markerBackup() else { return }
+        guard let backup = files.markerBackup() else { return nil }
         logger.notice("Reset hasła roota: znaleziono przerwaną operację")
         var matches = false
         if let stored = try? ServerAccount.rootStore(dataRoot: environment.dataRoot).load() {
@@ -145,10 +156,11 @@ final class RootPasswordReset {
                 logger.notice("Reset hasła roota: baza przywrócona z kopii po przerwaniu")
             } catch {
                 logger.fault("Reset hasła roota: przywrócenie po przerwaniu nie powiodło się: \(error.localizedDescription, privacy: .public)")
-                return
+                return restoreFailedMessage(backup: backup, error: error)
             }
         }
         files.removeMarker()
+        return nil
     }
 
     // MARK: - Pliki
@@ -195,7 +207,9 @@ final class RootPasswordReset {
             try? FileManager.default.removeItem(at: marker)
         }
 
-        /// Kładzie z powrotem pliki bazy z kopii; pliki pomocnicze, których w kopii nie było, usuwa.
+        /// Kładzie z powrotem pliki bazy z kopii. Każdy plik trafia najpierw obok (`.restore`),
+        /// a potem atomowo zastępuje bieżący, więc nieudane kopiowanie nie zostawia bazy w połowie
+        /// ani bez pliku. Pliki pomocnicze, których w kopii nie było, są usuwane na końcu.
         func restore(from backup: URL) throws {
             let fm = FileManager.default
             guard fm.fileExists(atPath: backup.appending(path: database.lastPathComponent).path) else {
@@ -203,8 +217,18 @@ final class RootPasswordReset {
             }
             for file in databaseFiles {
                 let copy = backup.appending(path: file.lastPathComponent)
+                guard fm.fileExists(atPath: copy.path) else { continue }
+                let staged = URL(filePath: file.path + ".restore")
+                if fm.fileExists(atPath: staged.path) { try fm.removeItem(at: staged) }
+                try fm.copyItem(at: copy, to: staged)
+                if fm.fileExists(atPath: file.path) {
+                    _ = try fm.replaceItemAt(file, withItemAt: staged)
+                } else {
+                    try fm.moveItem(at: staged, to: file)
+                }
+            }
+            for file in databaseFiles where !fm.fileExists(atPath: backup.appending(path: file.lastPathComponent).path) {
                 if fm.fileExists(atPath: file.path) { try fm.removeItem(at: file) }
-                if fm.fileExists(atPath: copy.path) { try fm.copyItem(at: copy, to: file) }
             }
         }
     }
@@ -305,9 +329,13 @@ final class RootPasswordReset {
         }
     }
 
-    /// Tylko do testów przerwania na testowej kopii: `-ABSRootResetPause before|after` zatrzymuje
+    /// Tylko do testów na testowej kopii: `-ABSRootResetPause before|after` zatrzymuje
     /// reset na 30 s przed albo po zapisie w bazie, żeby można było zabić aplikację.
+    /// `-ABSRootResetFail after` udaje błąd po zapisie w bazie (sprawdzenie przywracania z kopii).
     private static func pause(_ point: String) async throws {
+        if UserDefaults.standard.string(forKey: "ABSRootResetFail") == point {
+            throw ResetError.database("błąd wymuszony do testu (-ABSRootResetFail)")
+        }
         guard UserDefaults.standard.string(forKey: "ABSRootResetPause") == point else { return }
         logger.notice("Reset hasła roota: pauza testowa (\(point, privacy: .public))")
         print("RESET PAUSE \(point)")
