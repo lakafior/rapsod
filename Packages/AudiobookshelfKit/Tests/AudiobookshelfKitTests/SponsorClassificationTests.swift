@@ -82,6 +82,29 @@ private func speech(_ from: Double, _ to: Double, step: Double = 0.4, word: Stri
         #expect(findings == [.init(first: 12, last: 12, kind: .sponsor, confidence: 0.5, window: 3)])
     }
 
+    @Test func twoListsAnswer() throws {
+        let findings = try SC.parse(#"{"sponsor_line_ids": [12, 13, 14, 99], "selfpromo_line_ids": [18, 19]}"#, window: window)
+        #expect(findings == [.init(first: 12, last: 14, kind: .sponsor, confidence: 0.7, window: 3),
+                             .init(first: 18, last: 19, kind: .selfPromo, confidence: 0.7, window: 3)])
+        #expect(try SC.parse(#"{"sponsor_line_ids": [], "selfpromo_line_ids": []}"#, window: window).isEmpty)
+        #expect(throws: SC.InvalidResponse.self) { try SC.parse(#"{"sponsor_line_ids": "brak"}"#, window: window) }
+    }
+
+    @Test func lineListAnswerFromReconPrompt() throws {
+        let findings = try SC.parse(#"{"ad_line_ids": [11, 12, 13, 17, 2, 13]}"#, window: window)
+        #expect(findings == [.init(first: 11, last: 13, kind: .sponsor, confidence: 0.7, window: 3),
+                             .init(first: 17, last: 17, kind: .sponsor, confidence: 0.7, window: 3)])
+        #expect(try SC.parse(#"{"ad_line_ids": []}"#, window: window).isEmpty)
+    }
+
+    @Test func categoryAnswer() {
+        #expect(SC.parseCategory(#"{"category": "selfpromo"}"#) == .selfPromo)
+        #expect(SC.parseCategory("```json\n{\"category\":\"sponsor\"}\n```") == .sponsor)
+        #expect(SC.parseCategory("autopromocja") == nil)
+        let lines = [SC.Line(id: 0, start: 0, end: 5, text: "dzień dobry"), SC.Line(id: 1, start: 5, end: 10, text: "moja gra"), SC.Line(id: 2, start: 10, end: 15, text: "dalej")]
+        #expect(SC.blockText(SC.Candidate(start: 5, end: 10, kind: .sponsor, confidence: 0.7, windows: 1), lines: lines) == "moja gra")
+    }
+
     @Test func rejectsNonJSONAndMissingArray() {
         #expect(throws: SC.InvalidResponse.self) { try SC.parse("Nie znalazłem reklam.", window: window) }
         #expect(throws: SC.InvalidResponse.self) { try SC.parse(#"{"ads": "none"}"#, window: window) }
@@ -534,6 +557,18 @@ private actor Sleeps {
         await #expect(throws: SponsorAPIError.invalidFormat("to nie jest JSON")) {
             _ = try await SponsorClassifier(client: client()).classify(lines: all, duration: 300)
         }
+    }
+
+    @Test func categorizeAsksPerBlockAndKeepsSponsorOnError() async throws {
+        let all = lines(300)
+        let blocks = [SC.Candidate(start: 10, end: 40, kind: .sponsor, confidence: 0.7, windows: 1),
+                      SC.Candidate(start: 100, end: 130, kind: .sponsor, confidence: 0.7, windows: 1)]
+        ChatStub.reset([ChatStub.answer(#"{"category":"selfpromo"}"#)] + Array(repeating: .http(500, "{}"), count: 4))
+        let result = try await SponsorClassifier(client: client()).categorize(blocks, lines: all)
+        #expect(result.candidates.map(\.kind) == [.selfPromo, .sponsor])
+        #expect((ChatStub.bodies[0]["messages"] as? [[String: String]])?[0]["content"] == SC.categoryPrompt)
+        ChatStub.reset([.http(401, "{}")])
+        await #expect(throws: SponsorAPIError.unauthorized(status: 401)) { _ = try await SponsorClassifier(client: client()).categorize(blocks, lines: all) }
     }
 
     @Test func classifierEmptyTranscript() async throws {

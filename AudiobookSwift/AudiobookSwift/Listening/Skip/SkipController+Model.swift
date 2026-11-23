@@ -289,7 +289,7 @@ extension SkipController {
 
         // 2. Klasyfikacja okno po oknie, z punktem kontrolnym.
         let lines = SponsorClassification.lines(from: words)
-        var findings: [SponsorClassification.Finding] = []
+        var merged: [SponsorClassification.Candidate] = []
         var detail = "\(SponsorClassification.version) · \(configuration.model)"
         if lines.count >= 3 {
             let checkpointURL = Self.checkpointURL(episodeID: job.episodeID)
@@ -304,16 +304,18 @@ extension SkipController {
                     self?.setPhase(key, .classifying(checkpoint.value.windows.count, total))
                 }
             }
-            findings = result.findings
-            let tokens = result.promptTokens + result.completionTokens
-            detail += " · \(result.requests) zapyt." + (tokens > 0 ? " · \(tokens) tokenów" : "")
+            // Drugi krok: kategoria każdego znalezionego bloku (sponsor / autopromocja).
+            let categorized = try await classifier.categorize(SponsorClassification.merge(result.findings, lines: lines), lines: lines)
+            merged = categorized.candidates
+            let tokens = result.promptTokens + result.completionTokens + categorized.promptTokens + categorized.completionTokens
+            detail += " · \(result.requests + categorized.requests) zapyt." + (tokens > 0 ? " · \(tokens) tokenów" : "")
             try? FileManager.default.removeItem(at: checkpointURL)
         } else {
             detail += " · bez mowy"
         }
 
         // 3. Scalenie i docięcie granic do przerw (cisza w nagraniu, odstępy między słowami).
-        let candidates = SponsorClassification.merge(findings, lines: lines)
+        let candidates = merged
         let times = candidates.flatMap { [$0.start, $0.end] }
         let silences = times.isEmpty ? [] : ((try? await Task.detached(priority: .utility) { try AudioLevels.silences(in: audio, around: times) }.value) ?? [])
         let gaps = SponsorClassification.wordGaps(words)

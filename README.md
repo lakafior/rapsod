@@ -519,26 +519,27 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
    - Okna mają 10 min i zachodzą na siebie o 2 min. Bardzo długi odcinek daje po prostu więcej okien.
 4. **Zapytanie `POST <adres>/chat/completions`** (`SponsorAPIClient`).
    - Parametry: `temperature: 0`, `response_format: json_object`.
-   - Prompt jest po angielsku, z przykładami zwrotów PL i EN; ten sam działa dla obu języków.
-   - Model odpowiada numerami wierszy, nie czasami: `{"segments":[{"first":ID,"last":ID,"category":"sponsor"|"selfpromo","confidence":0–1}]}`.
+   - **Wykrywanie:** instrukcja z rozpoznania bez zmian, po angielsku z przykładami zwrotów PL i EN; ten sam prompt działa dla obu języków. Model odpowiada numerami wierszy, nie czasami: `{"ad_line_ids":[…]}`. Kolejne numery to jeden blok.
+   - **Kategoria:** dla każdego znalezionego bloku osobne krótkie pytanie z tekstem bloku: `{"category":"sponsor"|"selfpromo"}`. Gdy pytanie się nie uda, blok zostaje jako „sponsor”, a wykrycie się nie traci.
+   - Dlaczego tak: inne prompty wypadły gorzej w ocenie z kluczem (tabela w „Pomiarach”).
 5. **Walidacja odpowiedzi.**
    - Tekst wokół JSON-a (np. blok kodu) jest tolerowany.
-   - Pojedynczy błędny element wypada: numer spoza okna, nieznana kategoria albo brak numerów.
-   - Brak tablicy albo odpowiedź, która nie jest JSON-em, daje jedną ponowną próbę z przypomnieniem formatu. Gdy i ona zawiedzie, odcinek kończy się błędem i nic nie jest zapisywane. Częściowy wynik pominąłby reklamy tylko w części odcinka.
-   - Pusty wynik `{"segments":[]}` jest prawidłowy. Zapisuje przebieg bez segmentów.
+   - Numery spoza okna i powtórzenia wypadają.
+   - Brak listy albo odpowiedź, która nie jest JSON-em, daje jedną ponowną próbę z przypomnieniem formatu. Gdy i ona zawiedzie, odcinek kończy się błędem i nic nie jest zapisywane. Częściowy wynik pominąłby reklamy tylko w części odcinka.
+   - Pusty wynik `{"ad_line_ids":[]}` jest prawidłowy. Zapisuje przebieg bez segmentów.
 6. **Odporność.**
    - 429, 5xx, zerwane połączenie i przekroczony czas: do 4 prób z odstępem 2, 4, 8 s albo według `Retry-After`.
    - 400 daje jedną próbę z minimalnym zapytaniem, bez `response_format`, `temperature` i `max_tokens`, bo nie każda usługa je zna.
    - 401, 403, 404 i drugi 400 wstrzymują kolejkę z komunikatem w Ustawieniach i przyciskiem „Wznów”. Kolejka rusza też sama po zmianie ustawień albo klucza.
    - Inne błędy oznaczają odcinek; przegląd nie ponawia go przez 12 h.
 7. **Scalanie i granice.**
-   - Zgłoszenia tej samej kategorii nachodzące na siebie albo oddalone o mniej niż 4 s łączą się. Pewność to maksimum ze zgłoszeń.
+   - Zgłoszenia tej samej kategorii nachodzące na siebie albo oddalone o mniej niż 4 s łączą się. Model nie podaje pewności, więc segment z listy ma stałą pewność 0,7.
    - Granice wierszy są granicami słów. Docięcie cofa początek w ciszę tuż przed pierwszym słowem i wydłuża koniec w ciszę tuż po ostatnim, najwyżej o 0,5 s.
    - Ciszę wyznaczają poziomy głośności czytane tylko wokół granic (`AudioLevels` w `AudiobookshelfPlayback`); gdy jej nie ma, liczą się odstępy między słowami.
 8. **Zapis.**
    - Plik jest czytany od nowa tuż przed zapisem, bez `await` pomiędzy, więc poprawki zrobione w czasie analizy zostają.
    - Przed zapisem sprawdzany jest odcisk pliku audio.
-   - `SkipMap.replacingSegments(from: .model, …)` i `SkipRun(source: .model, detail: "13b.1 · <model> · N zapyt. · T tokenów")`.
+   - `SkipMap.replacingSegments(from: .model, …)` i `SkipRun(source: .model, detail: "13b.3 · <model> · N zapyt. · T tokenów")`.
    - Format pliku bez zmian. Ponowne wykrywanie z 13a zachowuje segmenty modelu tylko dla tego samego pliku: po ponownym pobraniu odcinka model liczy od nowa.
 
 **Kolejka.**
@@ -566,9 +567,9 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
   Reguła „model zawsze zastępuje opis” dawała tyle co sam model. W Kryminatorium opis 105–225 s (prawda 104,9–219,4 s) był lepszy niż model, który zgubił środek bloku (105–125 i 164–218 s).
 
 **Automatyczne pomijanie segmentów modelu.**
-- Zgodnie z ustaleniem pomijają się automatycznie, z „Cofnij”. Warunki: model podał pewność ≥ 0,6, a segment trwa ≥ 15 s. Pozostałe są znacznikiem z „Pomiń”.
+- Zgodnie z ustaleniem pomijają się automatycznie, z „Cofnij”, gdy trwają ≥ 15 s. Krótsze są znacznikiem z „Pomiń”.
 - Próg długości jest zmierzony na zapisanych odpowiedziach modelu z rozpoznania. Bez progu 3 fałszywe obszary (5, 8 i 13 s) pomijałyby się same; z progiem 15 s — 0, przy tych samych 7/10 trafieniach. Próg 20 s gubi krótką autopromocję (18 s).
-- Progu pewności nie dało się zmierzyć: zapisane odpowiedzi jej nie mają. 0,6 jest tymczasowe; ocena z kluczem drukuje rozkład pewności trafień i fałszywych obszarów.
+- Próg potwierdziła ocena z kluczem: wszystkie krótkie fałszywe alarmy (11–12 s) zostały znacznikami. Progu pewności w praktyce nie ma: model jej nie podaje (`AutoSkipPolicy` ma 0,6 przy stałej 0,7 dla list).
 
 **Ustawienia a ustawienie per podcast (13a).**
 - Kategorie w Ustawieniach to domyślne działanie dla wszystkich znaczników (z opisu, rozdziałów, Megaphone i modelu).
@@ -611,13 +612,28 @@ Od tej chwili analizowany jest każdy odcinek pobrany na serwer. Starsze odcinki
   - Wcześniejszy wariant, przyciągający do najbliższej przerwy w promieniu 2,5 s, pogarszał wynik do 2,39 s i został odrzucony.
   - Granice realnie poprawiają krótsze wiersze (12 zamiast 20 s), ale tego nie da się zmierzyć na zapisanych odpowiedziach — dotyczą wierszy 20 s.
   - Największe błędy (do 57 s) to części bloku reklam, które model pominął, a nie granice.
-- Wariant z oknami 10 min i krótszymi wierszami (12 zamiast 20 s) **nie był mierzony na prawdziwym modelu**. Zmierzone 7/10 dotyczy całej transkrypcji w jednym zapytaniu.
+**Ocena z prawdziwym modelem** (Twój klucz, `mistral-small-latest`, 2026-11-23; 6 odcinków, 6,4 h, 10 segmentów; wiersze do 12 s; liczy się to, co pomija się samo):
 
-**Koszt** (wyliczenie tokenów z transkrypcji zestawu, bez wysyłania).
-- Godzina odcinka to ok. 8 zapytań i 17–28 tys. tokenów wejścia: tekst, zakładka okien, prompt i numery wierszy; sam tekst to 7–18 tys. Wyjście to kilkaset tokenów.
-- Przelicznik dla polskiego: 3,1 znaku na token, z pomiaru rozpoznania (28,8 tys. tokenów Mistral dla 2 h Kryminatorium). Dla angielskiego przyjęte 4.
-- To ok. 1,6 razy więcej niż cała transkrypcja w jednym zapytaniu, którą wycenia rozpoznanie (0,001–0,007 USD/h według cenników z 2026-11).
-- Daje to **ok. 0,002–0,011 USD za godzinę odcinka**: gpt-5-nano ok. 0,002, Haiku 5.5 ok. 0,005, Gemini Flash-Lite ok. 0,008.
+| Wariant | Trafione | Fałszywe obszary pomijane | Pominięte błędnie | Pokrycie reklam |
+|---|---|---|---|---|
+| 13b.1: segmenty z kategorią i pewnością, okna | 0/10 | 0 | 0 s | 0/517 s |
+| 13b.1, cała transkrypcja naraz | 0/10 | 0 | 0 s | 0/517 s |
+| instrukcja z rozpoznania, okna | 7/10 | 0 | 45 s | 447/517 s |
+| instrukcja z rozpoznania, cała transkrypcja | 7/10 | 0 | 29 s | 447/517 s |
+| 13b.2: dwie listy (sponsor, autopromocja), okna | 7/10 | 2 | 185 s | 400/517 s |
+| 13b.2, cała transkrypcja | 7/10 | 1 | 129 s | 407/517 s |
+| **13b.3 (w aplikacji): instrukcja z rozpoznania + pytanie o kategorię, okna** | **8/10** | **0** | **53 s** | **450/517 s** |
+
+- **13b.1:** model w każdym oknie odpowiadał pustą listą.
+- **13b.2:** model brał prezentację firmy gościa (koniec Przygód) za autopromocję i rozbijał blok gry prowadzącego (Kryminatorium).
+- **13b.3:** kategoria zgodna z prawdą we wszystkich 8 trafieniach (4× autopromocja, 4× sponsor).
+- **Nietrafione** (oba w Przygodach): wspólny blok sponsora i autopromocji 27,9–74,2 s oraz 7-sekundowa autopromocja. Model zaznaczył z nich tylko krótki znacznik 24–35 s.
+- **Okna zamiast całej transkrypcji:** okna znalazły autopromocję na końcu Darknet Diaries, a cała transkrypcja pominęła ją raz. Okna obsługują też bardzo długie odcinki.
+- **Granice** trafień: mediana ok. 1 s, największe odchyłki (10–17 s) to początki bloków, w których model zaznaczył o jeden–dwa wiersze za dużo.
+
+**Koszt** (z ocen z kluczem; liczniki tokenów podane przez Mistral).
+- Cały zestaw (6,4 h) to 61 zapytań, 155,6 tys. tokenów wejścia i 0,7 tys. wyjścia. Godzina odcinka to więc ok. 10 zapytań i **ok. 24 tys. tokenów wejścia** (tekst, zakładka okien, prompt, numery wierszy, pytania o kategorię).
+- To ok. 1,6 razy więcej niż cała transkrypcja w jednym zapytaniu, którą wycenia rozpoznanie (0,001–0,007 USD/h według cenników z 2026-11). Daje to **ok. 0,002–0,011 USD za godzinę odcinka**: gpt-5-nano ok. 0,002, Haiku 5.5 ok. 0,005, Gemini Flash-Lite ok. 0,008.
 - Mistral Small na darmowym progu kosztuje 0 USD, ale darmowe progi części dostawców używają danych do trenowania. Ceny się zmieniają — sprawdź cennik dostawcy.
 
 ### Sprawdzone uruchomieniem
@@ -660,13 +676,16 @@ Po testach testowy serwer i atrapa zostały zamknięte, bez osieroconych proces�
 read -s "SPONSOR_API_KEY?Klucz API: " && export SPONSOR_API_KEY && SPONSOR_API_BASE=https://api.mistral.ai/v1 SPONSOR_API_MODEL=mistral-small-latest SKIP_EVAL_MODEL_MANIFEST="$HOME/Library/Application Support/Claude/side-session-notes/local_263f2d4b-e6bd-4026-980a-5c1d74778a55/etap13b-zestaw/manifest.json" swift test --filter SkipEvaluation/modelEvaluation
 ```
 
-- Wysyła transkrypcje 6 odcinków, razem 6,4 h (ok. 50 zapytań, ok. 0,02 USD przy małym modelu).
-- Drukuje wynik każdego odcinka i rozkład pewności trafień i fałszywych obszarów.
-- `SKIP_EVAL_WINDOW=100000` porównuje z całą transkrypcją w jednym zapytaniu.
+- Wysyła transkrypcje 6 odcinków, razem 6,4 h: ok. 60 zapytań i 156 tys. tokenów, ok. 0,02 USD przy małym modelu.
+- Drukuje wynik każdego odcinka i zgodność kategorii z prawdą.
+- `SKIP_EVAL_VARIANTS=okna,calosc` porównuje okna z całą transkrypcją w jednym zapytaniu.
+- `SKIP_EVAL_RAW=<plik>` zapisuje surowe odpowiedzi modelu.
+- Klucz najlepiej wpisać w osobnej karcie terminala. W polu wiadomości `read -s` nie czyta z klawiatury.
 
 ### Znane braki
 
-- Klasyfikacja w oknach i prompt nie były sprawdzone na prawdziwym modelu; próg pewności 0,6 jest tymczasowy.
+- Ocena z kluczem objęła jeden model (Mistral Small) i 6 odcinków. Przebiegi w aplikacji szły na atrapie, więc pytanie o kategorię w aplikacji sprawdziły tylko testy pakietu i ocena.
+- Przygody Przedsiębiorców (wspólny blok sponsora i autopromocji na początku) model nadal pomija.
 - Brak wyboru „analizuj tylko przy zasilaniu”. Transkrypcja godziny to ok. 1 min pracy jednego rdzenia.
 - Domyślne kategorie z Ustawień Maca nie przechodzą na iOS (iOS ma własne).
 - Transkrypcja dyktowaniem gubi część słów w swobodnej rozmowie i nazwy marek; lepszą transkrypcją może być Parakeet (później).
