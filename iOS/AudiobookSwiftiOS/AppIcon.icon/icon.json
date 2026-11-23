@@ -3,8 +3,8 @@
     {
       "layers": [
         {
-          "image-name": "foreground.svg",
-          "name": "glyph",
+          "image-name": "sluchawki.svg",
+          "name": "sluchawki",
           "glass": true,
           "position": {
             "scale": 1,
@@ -15,7 +15,30 @@
           }
         }
       ],
-      "name": "Foreground",
+      "name": "sluchawki",
+      "specular": true,
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.4
+      },
+      "blur-material": null
+    },
+    {
+      "layers": [
+        {
+          "image-name": "ksiazka.svg",
+          "name": "ksiazka",
+          "glass": true,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "name": "ksiazka",
       "specular": true,
       "shadow": {
         "kind": "layer-color",

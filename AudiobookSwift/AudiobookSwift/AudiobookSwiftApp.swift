@@ -104,8 +104,18 @@ private struct MenuBarLabel: View {
         account.state == .ready && account.libraries.isEmpty
     }
 
+    /// Ten sam znak co ikona aplikacji (książka ze słuchawkami): pełny, gdy serwer działa,
+    /// obrysowy, gdy nie działa; przy błędzie trójkąt ostrzegawczy.
+    private var icon: Image {
+        switch supervisor.state {
+        case .running: Image("MenuBarIcon")
+        case .failed: Image(systemName: "exclamationmark.triangle")
+        case .stopped, .starting, .stopping: Image("MenuBarIconOutline")
+        }
+    }
+
     var body: some View {
-        Image(systemName: supervisor.state.symbolName)
+        icon
             .accessibilityLabel("AudiobookSwift")
             .onChange(of: needsLibrary, initial: true) {
                 // Raz na uruchomienie aplikacji — zamknięte okno nie wraca samo.
