@@ -20,12 +20,11 @@ struct AppModels {
 /// symbolem i widokiem w `content(models:)`. Surowa wartość jest zapisywana jako ostatnia
 /// strona, więc przy usuwaniu strony trzeba dopisać ją do `init(storedValue:)`.
 enum SettingsPage: String, CaseIterable, Identifiable {
-    // Aplikacja
+    // Kolejność z wariantu B planu: obiekty od najczęściej używanych.
     case general
-    case sharing
-    // Serwer
-    case libraries
     case users
+    case libraries
+    case sharing
     case notifications
     case backups
 
@@ -54,15 +53,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "Użytkownicy"
         case .backups: "Kopie zapasowe"
         case .sharing: "Dostęp zdalny"
-        case .notifications: "Powiadomienia i e-mail"
-        }
-    }
-
-    /// Grupa na pasku bocznym.
-    var isServerPage: Bool {
-        switch self {
-        case .general, .sharing: false
-        default: true
+        case .notifications: "Powiadomienia"
         }
     }
 
@@ -181,6 +172,8 @@ final class SettingsNavigation {
         case changePassword
     }
     var pendingProfileAction: ProfileAction?
+    /// Skrót „Podłącz telefon…” z paska menu: „Użytkownicy” otworzą profil konta tego Maca z arkuszem parowania.
+    var pendingMacPairing = false
     /// Strona, która ma się otworzyć z rozwiniętym „Zaawansowane” (np. „Dostęp zdalny” z profilu osoby).
     var pendingAdvanced: SettingsPage?
 
@@ -239,12 +232,8 @@ struct SettingsWindow: View {
                 // Klik w bieżącą stronę wraca z podstrony (np. z dziennika do „Ogólnych”).
                 set: { if let page = $0 { navigation.page = page; navigation.path = [] } }
             )) {
-                Section("Aplikacja") {
-                    ForEach(SettingsPage.allCases.filter { !$0.isServerPage }) { row($0) }
-                }
-                Section("Serwer audiobookshelf") {
-                    ForEach(SettingsPage.allCases.filter(\.isServerPage)) { row($0) }
-                }
+                // Jedna lista bez podziału na aplikację i serwer (etap 6 planu, pytanie 10).
+                ForEach(SettingsPage.allCases) { row($0) }
             }
             // Sama szerokość kolumny nie wystarcza: podział pamięta poprzednią szerokość.
             .frame(minWidth: 215)

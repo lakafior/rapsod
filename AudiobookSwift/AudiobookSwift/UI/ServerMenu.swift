@@ -9,6 +9,7 @@ struct ServerMenu: View {
     let settings: SettingsNavigation
     let player: AudiobookPlayer
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(MenuOptions.showsPairPhoneKey) private var showsPairPhone = false
 
     var body: some View {
         Text(supervisor.state.title)
@@ -39,6 +40,15 @@ struct ServerMenu: View {
             Button("Zarządzanie serwerem (web UI)…") {
                 webMode.isManagement = true
                 openWindow.bringToFront(id: WebUIWindow.windowID)
+            }
+            .disabled(account.state != .ready)
+        }
+
+        // Opcja z Ogólne › Aplikacja (decyzja z części 9 planu): domyślnie wyłączona.
+        if showsPairPhone {
+            Button("Podłącz telefon…") {
+                settings.pendingMacPairing = true
+                openWindow.openSettings(.users, navigation: settings)
             }
             .disabled(account.state != .ready)
         }
@@ -118,4 +128,9 @@ extension ServerState {
         case .stopped, .stopping, .failed: false
         }
     }
+}
+
+/// Opcje menu na pasku menu ustawiane w Ogólne › Aplikacja.
+enum MenuOptions {
+    static let showsPairPhoneKey = "menu.showsPairPhone"
 }

@@ -6,6 +6,8 @@ import SwiftUI
 struct GeneralSettingsPage: View {
     let models: AppModels
 
+    @AppStorage(MenuOptions.showsPairPhoneKey) private var showsPairPhone = false
+
     private var supervisor: ServerSupervisor { models.supervisor }
     private var loginItem: LoginItem { models.loginItem }
 
@@ -93,6 +95,10 @@ struct GeneralSettingsPage: View {
             }
             if let error = loginItem.lastError {
                 Text(error).foregroundStyle(.red)
+            }
+            Toggle(isOn: $showsPairPhone) {
+                Text("„Podłącz telefon…” w menu na pasku menu")
+                Text("Skrót do arkusza „Podłącz telefon” konta tego Maca.")
             }
         }
     }

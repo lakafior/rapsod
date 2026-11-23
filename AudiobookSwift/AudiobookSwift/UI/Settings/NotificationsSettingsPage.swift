@@ -1,56 +1,49 @@
 import AudiobookshelfKit
 import SwiftUI
 
-/// Powiadomienia (Apprise, `client/pages/config/notifications.vue`) i e-mail (SMTP oraz czytniki
-/// e-booków, `client/pages/config/email.vue`), przełączane u góry strony. Hasła trzyma serwer;
-/// pola haseł są zamaskowane, a wartości nie trafiają do logów.
+/// Powiadomienia (etap 6 planu, dawne „Powiadomienia i e-mail” z dwiema kartami): serwer Apprise
+/// i lista powiadomień (`client/pages/config/notifications.vue`), e-mail na czytniki e-booków, a pod
+/// „Zaawansowane” limity Apprise i serwer poczty SMTP w arkuszu (`client/pages/config/email.vue`).
+/// Hasła trzyma serwer; pola haseł są zamaskowane, a wartości nie trafiają do logów.
 struct NotificationsSettingsPage: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case notifications = "Powiadomienia"
-        case email = "E-mail i czytniki"
-        var id: Self { self }
-    }
-
     let models: AppModels
-    @State private var tab: Tab = .notifications
-    // Modele kart trzymane tutaj, żeby przełączenie karty nie wyrzucało ich (i stanu filtrów) — wracając, karta tylko się odświeża.
     @State private var notificationsModel: NotificationsModel?
     @State private var emailModel: EmailModel?
+    @State private var editingSmtp = false
+
+    private var account: ServerAccount { models.account }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("Widok", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .padding(.top, 12)
-            switch tab {
-            case .notifications:
-                AdminPage(account: models.account, title: "Powiadomienia", make: { cachedNotificationsModel() }, load: { await $0.load() }) { model in
-                    NotificationsContent(model: model)
+        SettingsForm {
+            if account.state == .ready, let notificationsModel, let emailModel {
+                NotificationsContent(model: notificationsModel)
+                EreaderDevicesSection(model: emailModel)
+                AdvancedSection(summary: "Limity Apprise, serwer poczty (SMTP) do wysyłki na czytniki") {
+                    AppriseLimitsRows(model: notificationsModel)
+                    LabeledContent("Serwer poczty (SMTP)") {
+                        HStack {
+                            Text(emailModel.isConfigured ? (emailModel.settings?.host ?? "ustawiony") : "nieustawiony")
+                                .foregroundStyle(.secondary)
+                            Button("Ustaw…") { editingSmtp = true }
+                        }
+                    }
                 }
-            case .email:
-                AdminPage(account: models.account, title: "E-mail", make: { cachedEmailModel() }, load: { await $0.load() }) { model in
-                    EmailContent(model: model)
-                }
+            } else {
+                Section("Powiadomienia") { AdminUnavailableRow(account: account) }
             }
         }
-    }
-
-    private func cachedNotificationsModel() -> NotificationsModel {
-        if let notificationsModel { return notificationsModel }
-        let made = NotificationsModel(account: models.account)
-        notificationsModel = made
-        return made
-    }
-
-    private func cachedEmailModel() -> EmailModel {
-        if let emailModel { return emailModel }
-        let made = EmailModel(account: models.account)
-        emailModel = made
-        return made
+        .sheet(isPresented: $editingSmtp) {
+            if let emailModel { SmtpSheet(model: emailModel) }
+        }
+        .task(id: account.state) {
+            guard account.state == .ready else { return }
+            let notifications = notificationsModel ?? NotificationsModel(account: account)
+            let email = emailModel ?? EmailModel(account: account)
+            notificationsModel = notifications
+            emailModel = email
+            await notifications.load()
+            await email.load()
+        }
     }
 }
 
@@ -59,20 +52,16 @@ struct NotificationsSettingsPage: View {
 private struct NotificationsContent: View {
     let model: NotificationsModel
     @State private var url = ""
-    @State private var maxFailed = 5
-    @State private var maxQueue = 20
     @State private var editing: NotificationDraft?
     @State private var toDelete: AudiobookshelfClient.AppNotification?
 
     var body: some View {
         Section {
             AdminStatusRows(status: model.status)
-            TextField("Adres API Apprise", text: $url, prompt: Text(verbatim: "http://192.168.1.10:8000/notify"))
-            Stepper("Wyłącz po nieudanych próbach: \(maxFailed)", value: $maxFailed, in: 1...100)
-            Stepper("Najwięcej powiadomień w kolejce: \(maxQueue)", value: $maxQueue, in: 1...1000)
             HStack {
-                Spacer()
-                Button("Zapisz") { Task { await model.saveServer(url: url, maxFailedAttempts: maxFailed, maxQueue: maxQueue) } }
+                TextField("Adres API Apprise", text: $url, prompt: Text(verbatim: "http://192.168.1.10:8000/notify"))
+                    .onSubmit(save)
+                Button("Zapisz", action: save)
                     .disabled(model.status.isBusy || !serverChanged)
             }
         } header: {
@@ -116,12 +105,48 @@ private struct NotificationsContent: View {
     private var serverChanged: Bool {
         guard let settings = model.settings else { return false }
         return url.trimmingCharacters(in: .whitespaces) != (settings.appriseApiUrl ?? "")
-            || maxFailed != settings.maxFailedAttempts || maxQueue != settings.maxNotificationQueue
+    }
+
+    private func save() {
+        guard serverChanged, let settings = model.settings else { return }
+        Task { await model.saveServer(url: url, maxFailedAttempts: settings.maxFailedAttempts, maxQueue: settings.maxNotificationQueue) }
     }
 
     private func resetServer() {
         guard let settings = model.settings else { return }
         url = settings.appriseApiUrl ?? ""
+    }
+}
+
+/// Limity Apprise (Powiadomienia › Zaawansowane): po ilu nieudanych próbach serwer wyłącza
+/// powiadomienie i ile czeka w kolejce. Zapis przyciskiem, z adresem Apprise bez zmian.
+private struct AppriseLimitsRows: View {
+    let model: NotificationsModel
+    @State private var maxFailed = 5
+    @State private var maxQueue = 20
+
+    var body: some View {
+        Stepper("Wyłącz powiadomienie po nieudanych próbach: \(maxFailed)", value: $maxFailed, in: 1...100)
+        Stepper("Najwięcej powiadomień w kolejce: \(maxQueue)", value: $maxQueue, in: 1...1000)
+        HStack {
+            Spacer()
+            Button("Zapisz limity") {
+                guard let settings = model.settings else { return }
+                Task { await model.saveServer(url: settings.appriseApiUrl ?? "", maxFailedAttempts: maxFailed, maxQueue: maxQueue) }
+            }
+            .disabled(model.status.isBusy || !changed)
+        }
+        .onAppear(perform: reset)
+        .onChange(of: model.settings) { reset() }
+    }
+
+    private var changed: Bool {
+        guard let settings = model.settings else { return false }
+        return maxFailed != settings.maxFailedAttempts || maxQueue != settings.maxNotificationQueue
+    }
+
+    private func reset() {
+        guard let settings = model.settings else { return }
         maxFailed = settings.maxFailedAttempts
         maxQueue = settings.maxNotificationQueue
     }
@@ -306,61 +331,71 @@ private struct NotificationEditor: View {
 
 // MARK: - E-mail
 
-private struct EmailContent: View {
+/// Serwer poczty wychodzącej (Powiadomienia › Zaawansowane › „Serwer poczty (SMTP)…”): arkusz
+/// z „Wyślij próbny e-mail”, Anuluj i Zapisz.
+private struct SmtpSheet: View {
     let model: EmailModel
     @State private var draft: AudiobookshelfClient.EmailSettings?
-    @State private var editingDevice: DeviceDraft?
-    @State private var deviceToDelete: AudiobookshelfClient.EreaderDevice?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        if let draft = Binding($draft) {
-            Section {
-                AdminStatusRows(status: model.status)
-                TextField("Serwer SMTP", text: optional(draft.host), prompt: Text(verbatim: "smtp.example.com"))
-                TextField("Port", value: draft.port, format: .number.grouping(.never))
-                Toggle(isOn: draft.secure) {
-                    Text("Szyfrowane połączenie (TLS)")
-                    Text("Włącz dla portu 465. Dla 587 i 25 wyłącz — połączenie i tak przejdzie na STARTTLS, jeśli serwer je oferuje.")
-                }
-                Toggle(isOn: draft.rejectUnauthorized) {
-                    Text("Odrzucaj nieważne certyfikaty")
-                    Text("Wyłącz tylko dla własnego serwera poczty z certyfikatem bez podpisu zaufanego urzędu.")
-                }
-                TextField("Użytkownik", text: optional(draft.user))
-                SecureField("Hasło", text: optional(draft.pass))
-                TextField("Nadawca (From)", text: optional(draft.fromAddress), prompt: Text(verbatim: "Audiobookshelf <ksiazki@example.com>"))
-                TextField("Adres do próbnej wiadomości", text: optional(draft.testAddress))
-                HStack {
-                    Button("Wyślij próbny e-mail") { Task { await model.sendTest() } }
-                        .disabled(model.status.isBusy || !model.isConfigured || hasChanges)
-                        .help(hasChanges ? "Najpierw zapisz zmiany." : "Serwer wyśle wiadomość na zapisany adres do próby.")
-                    Spacer()
-                    Button("Przywróć") {
-                        model.status.error = nil
-                        self.draft = model.settings
+        Form {
+            if let draft = Binding($draft) {
+                Section {
+                    AdminStatusRows(status: model.status)
+                    TextField("Serwer SMTP", text: optional(draft.host), prompt: Text(verbatim: "smtp.example.com"))
+                    TextField("Port", value: draft.port, format: .number.grouping(.never))
+                    Toggle(isOn: draft.secure) {
+                        Text("Szyfrowane połączenie (TLS)")
+                        Text("Włącz dla portu 465. Dla 587 i 25 wyłącz — połączenie i tak przejdzie na STARTTLS, jeśli serwer je oferuje.")
                     }
-                        .disabled(!hasChanges || model.status.isBusy)
-                    Button("Zapisz") {
-                        Task {
-                            await model.save(draft.wrappedValue)
-                            if model.status.error == nil { self.draft = model.settings }
-                        }
+                    Toggle(isOn: draft.rejectUnauthorized) {
+                        Text("Odrzucaj nieważne certyfikaty")
+                        Text("Wyłącz tylko dla własnego serwera poczty z certyfikatem bez podpisu zaufanego urzędu.")
                     }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(!hasChanges || model.status.isBusy)
+                    TextField("Użytkownik", text: optional(draft.user))
+                    SecureField("Hasło", text: optional(draft.pass))
+                    TextField("Nadawca (From)", text: optional(draft.fromAddress), prompt: Text(verbatim: "Audiobookshelf <ksiazki@example.com>"))
+                    TextField("Adres do próbnej wiadomości", text: optional(draft.testAddress))
+                    HStack {
+                        Spacer()
+                        Button("Wyślij próbny e-mail") { Task { await model.sendTest() } }
+                            .disabled(model.status.isBusy || !model.isConfigured || hasChanges)
+                            .help(hasChanges ? "Najpierw zapisz zmiany." : "Serwer wyśle wiadomość na zapisany adres do próby.")
+                    }
+                } header: {
+                    Text("Poczta wychodząca (SMTP)")
+                } footer: {
+                    Text("Serwer wysyła e-maile tylko z e-bookami na czytniki (np. Kindle) i próbne wiadomości. Hasło zapisuje serwer w swojej bazie, nie w pęku kluczy.")
                 }
-            } header: {
-                Text("Poczta wychodząca (SMTP)")
-            } footer: {
-                Text("Serwer wysyła e-maile tylko z e-bookami na czytniki (np. Kindle) i próbne wiadomości. Hasło zapisuje serwer w swojej bazie, nie w pęku kluczy.")
-                    .foregroundStyle(.secondary)
+            } else {
+                Section { AdminStatusRows(status: model.status) }
             }
-            devicesSection
-        } else {
-            Section("E-mail") { AdminStatusRows(status: model.status) }
-                .onAppear { draft = model.settings }
-                .onChange(of: model.settings) { draft = model.settings }
         }
+        .formStyle(.grouped)
+        .frame(width: 560, height: 600)
+        .onAppear {
+            model.status.error = nil
+            model.status.notice = nil
+            draft = model.settings
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Anuluj") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Zapisz") {
+                    guard let draft else { return }
+                    Task {
+                        await model.save(draft)
+                        if model.status.error == nil { dismiss() }
+                    }
+                }
+                .disabled(!hasChanges || model.status.isBusy)
+            }
+        }
+    }
+
+    private func optional(_ binding: Binding<String?>) -> Binding<String> {
+        Binding(get: { binding.wrappedValue ?? "" }, set: { binding.wrappedValue = $0.isEmpty ? nil : $0 })
     }
 
     private var hasChanges: Bool {
@@ -369,10 +404,21 @@ private struct EmailContent: View {
         return draft != settings
     }
 
+}
+
+/// E-mail na czytniki e-booków (Powiadomienia › E-mail na czytniki): lista, edycja, usuwanie, dodawanie.
+private struct EreaderDevicesSection: View {
+    let model: EmailModel
+    @State private var editingDevice: DeviceDraft?
+    @State private var deviceToDelete: AudiobookshelfClient.EreaderDevice?
+
+    var body: some View { devicesSection }
+
     private var devices: [AudiobookshelfClient.EreaderDevice] { model.settings?.ereaderDevices ?? [] }
 
     private var devicesSection: some View {
         Section {
+            AdminStatusRows(status: model.status)
             if devices.isEmpty {
                 Text("Brak czytników.").foregroundStyle(.secondary)
             }
@@ -397,9 +443,9 @@ private struct EmailContent: View {
                     .disabled(model.status.isBusy)
             }
         } header: {
-            Text("Czytniki e-booków")
+            Text("E-mail na czytniki")
         } footer: {
-            Text("E-book pozycji wyślesz na czytnik z menu „Więcej” na jej stronie w oknie „Biblioteka”. Adres nadawcy musi być dopuszczony po stronie czytnika (np. na liście zatwierdzonych adresów Kindle).")
+            Text((model.isConfigured ? "" : "Najpierw ustaw serwer poczty (Zaawansowane › Serwer poczty). ") + "E-book pozycji wyślesz na czytnik z menu „Więcej” na jej stronie w oknie „Biblioteka”. Adres nadawcy musi być dopuszczony po stronie czytnika (np. na liście zatwierdzonych adresów Kindle).")
                 .foregroundStyle(.secondary)
         }
         .sheet(item: $editingDevice) { draft in

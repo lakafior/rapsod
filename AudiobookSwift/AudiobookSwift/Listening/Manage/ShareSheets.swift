@@ -198,7 +198,7 @@ struct SendEbookSheet: View {
                 AdminStatusRows(status: status)
                 if settings?.host?.isEmpty ?? true || settings?.ereaderDevices.isEmpty ?? false {
                     if settings != nil {
-                        Button("Otwórz Ustawienia → Powiadomienia i e-mail") { openSettings(); dismiss() }
+                        Button("Otwórz Ustawienia → Powiadomienia") { openSettings(); dismiss() }
                     }
                 }
             } header: {

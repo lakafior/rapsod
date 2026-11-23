@@ -83,18 +83,29 @@ struct UsersPage: View {
             guard account.state == .ready else { return }
             await model.load()
             await models.pairing.refresh()
+            openMacPairingIfPending()
             // „Słucha teraz” na kaflach, odświeżane, dopóki strona jest widoczna.
             while !Task.isCancelled {
                 await model.refreshListeningNow()
                 try? await Task.sleep(for: .seconds(20))
             }
         }
+        .onChange(of: navigation.pendingMacPairing) { openMacPairingIfPending() }
         // Konto tego Maca założone (kafel „Utwórz konto tego Maca”) albo zapomniane — nowa lista.
         .onChange(of: account.userState) {
             guard account.state == .ready else { return }
             if case .ready = account.userState { model.notice = nil }
             Task { await model.load() }
         }
+    }
+
+    /// Skrót z paska menu: profil konta tego Maca z arkuszem „Podłącz telefon”.
+    private func openMacPairingIfPending() {
+        guard navigation.pendingMacPairing, model.hasLoaded else { return }
+        navigation.pendingMacPairing = false
+        guard let mac = model.people.first(where: model.isListener) else { return }
+        navigation.pendingProfileAction = .pairPhone
+        navigation.path = [.user(id: mac.id)]
     }
 
     private var needsRootPassword: Bool {

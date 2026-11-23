@@ -98,7 +98,7 @@ private struct BackupsContent: View {
         } header: {
             Text("Kopie zapasowe")
         } footer: {
-            Text("Kopia zawiera bazę serwera (konta, biblioteki, postęp słuchania, kolekcje) oraz okładki i metadane pozycji i autorów — bez plików audio. Gdy kopii jest więcej, niż każe trzymać ustawienie poniżej, nowa kopia usuwa najstarszą.")
+            Text("Kopia zawiera bazę serwera (konta, biblioteki, postęp słuchania, kolekcje) oraz okładki i metadane pozycji i autorów — bez plików audio. Gdy kopii jest więcej, niż każe trzymać ustawienie w „Zaawansowane”, nowa kopia usuwa najstarszą.")
                 .foregroundStyle(.secondary)
         }
         .confirmationDialog(
@@ -123,33 +123,7 @@ private struct BackupsContent: View {
         }
 
         if let settings = model.settings {
-            BackupScheduleSection(model: model, settings: settings)
-        }
-
-        Section("Folder kopii") {
-            if let location = model.location {
-                LabeledContent("Folder") {
-                    Text(location)
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.trailing)
-                }
-            }
-            if model.locationFromEnvironment {
-                Text("Folder jest ustawiony zmienną środowiskową BACKUP_PATH i nie da się go tu zmienić.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Spacer()
-                Button("Pokaż w Finderze") {
-                    if let location = model.location {
-                        NSWorkspace.shared.open(URL(fileURLWithPath: location, isDirectory: true))
-                    }
-                }
-                .disabled(model.location == nil)
-                Button("Zmień…", action: chooseLocation)
-                    .disabled(model.locationFromEnvironment || model.operation != nil)
-            }
+            BackupScheduleSection(model: model, settings: settings, chooseLocation: chooseLocation)
         }
     }
 
@@ -229,10 +203,12 @@ private struct BackupRow: View {
     }
 }
 
-/// Automat kopii: harmonogram, liczba trzymanych kopii, limit rozmiaru.
+/// Automat kopii: harmonogram na stronie, a pod „Zaawansowane” liczba trzymanych kopii, limit rozmiaru
+/// i folder kopii. Harmonogram, liczba i limit zapisują się razem („Zapisz” w obu sekcjach).
 private struct BackupScheduleSection: View {
     let model: BackupsModel
     let settings: AudiobookshelfClient.BackupSettings
+    let chooseLocation: () -> Void
 
     @State private var choice: BackupScheduleChoice = .disabled
     @State private var keep = 2
@@ -257,6 +233,16 @@ private struct BackupScheduleSection: View {
                 saved: BackupScheduleChoice(settings.backupSchedule),
                 customNote: "Harmonogram ustawiony w web UI. Zostanie bez zmian, dopóki nie wybierzesz innego."
             )
+            saveRow
+        } header: {
+            Text("Automatyczne kopie")
+        } footer: {
+            Text("Kopie robi serwer, gdy działa (aplikacja na pasku menu). Godzina jest czasem tego Maca.")
+        }
+        .onAppear(perform: reset)
+        .onChange(of: settings) { reset() }
+
+        AdvancedSection(summary: "Liczba trzymanych kopii, limit rozmiaru, folder kopii") {
             Stepper(value: $keep, in: 1...99) {
                 LabeledContent("Trzymaj kopii", value: "\(keep)")
             }
@@ -269,24 +255,44 @@ private struct BackupScheduleSection: View {
                     Text("GB")
                 }
             }
-            HStack {
-                Text("0 GB = bez limitu. Kopia większa od limitu jest przerywana i usuwana.")
+            Text("0 GB = bez limitu. Kopia większa od limitu jest przerywana i usuwana.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            saveRow
+            if let location = model.location {
+                LabeledContent("Folder kopii") {
+                    Text(location)
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            if model.locationFromEnvironment {
+                Text("Folder jest ustawiony zmienną środowiskową BACKUP_PATH i nie da się go tu zmienić.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                Spacer()
-                Button("Cofnij zmiany") { reset() }
-                    .disabled(!hasChanges)
-                Button("Zapisz") { save(choice) }
-                    .disabled(!hasChanges || model.operation != nil)
             }
-        } header: {
-            Text("Automatyczne kopie")
-        } footer: {
-            Text("Kopie robi serwer, gdy działa (aplikacja na pasku menu). Godzina jest czasem tego Maca.")
-                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Pokaż w Finderze") {
+                    if let location = model.location {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: location, isDirectory: true))
+                    }
+                }
+                .disabled(model.location == nil)
+                Button("Zmień…", action: chooseLocation)
+                    .disabled(model.locationFromEnvironment || model.operation != nil)
+            }
         }
-        .onAppear(perform: reset)
-        .onChange(of: settings) { reset() }
+    }
+
+    private var saveRow: some View {
+        HStack {
+            Spacer()
+            Button("Cofnij zmiany") { reset() }
+                .disabled(!hasChanges)
+            Button("Zapisz") { save(choice) }
+                .disabled(!hasChanges || model.operation != nil)
+        }
     }
 
     private var hasChanges: Bool {
