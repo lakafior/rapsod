@@ -2,7 +2,7 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
-**Decyzja użytkownika (2026-11-23): wariant B.** Pytania 2–10 z części 8 są jeszcze otwarte.
+**Decyzje użytkownika (2026-11-23):** wariant B; telefony dla każdego domownika; pełna kontrola nad kontem root (zmiana i reset hasła); skrót „Podłącz telefon…” na pasku menu tylko jako opcja; wygląd jak w makietach, z własnymi awatarami. Szczegóły i wpływ na plan: [część 9](#9-decyzje-z-2026-11-23-i-ich-skutki).
 
 ## Rekomendacja w skrócie
 
@@ -460,8 +460,8 @@ Ustawienia
 **Konto Maca i root, żeby nie dało się zrobić sobie krzywdy**
 
 - **Konto Maca** ma na kaflu odznakę z Makiem i telefonem, a na profilu podpis „Konto tego Maca”. Nie da się go dezaktywować, bo przełącznik „Aktywne” jest ukryty, tak jak dziś zablokowany. Rola jest zmienialna, ale wybór „Administrator” pyta o potwierdzenie (jak dziś „Nadaj…”) i, tak jak obecne `setListenerAdmin`, włącza też „Edycję pozycji”, której serwer wymaga do pobierania odcinków. Usuwanie jest na samym dole, z opisem skutków (zatrzyma odtwarzanie, wyloguje telefony, skasuje postęp) i potwierdzeniem, które powtarza nazwę konta.
-- **Root nie jest w siatce domowników.** To wąski, szary kafel z kłódką pod siatką z opisem „Konto techniczne aplikacji. Nie trafia do telefonów, nie da się go usunąć.” Strona roota jest tylko do odczytu: stan logowania, informacja, że hasło jest w pęku kluczy, oraz pod „Zaawansowane” akcja „Zaloguj ponownie hasłem…” (dawne K3/B9). Brak akcji telefonów, roli i usuwania.
-- **Telefony są tylko na profilu konta Maca**, bo `PhonePairing` dziś paruje wyłącznie konto słuchacza. Na innych profilach sekcji „Telefony” nie ma. Parowanie telefonów innych domowników byłoby nową funkcją (pytanie 7).
+- **Root nie jest w siatce domowników.** To wąski, szary kafel z kłódką pod siatką z opisem „Konto techniczne aplikacji. Nie trafia do telefonów, nie da się go usunąć.” Strona roota nie ma akcji telefonów, roli ani usuwania. Hasło: Pokaż · Kopiuj · Zmień…, a pod „Zaawansowane” „Zaloguj ponownie hasłem…” (dawne K3/B9) i „Zresetuj hasło…” (decyzja z części 9; pierwotnie strona była tylko do odczytu).
+- **Telefony są na profilu każdej osoby** (decyzja z części 9). Dziś `PhonePairing` paruje wyłącznie konto słuchacza, więc to nowa funkcja w etapie 2b.
 - **„Pokaż” i „Kopiuj” hasło są tylko tam, gdzie aplikacja zna hasło,** czyli na koncie Maca (pęk kluczy). Na innych profilach jest tylko „Zmień…”, bo serwer haseł nie zwraca.
 - **Brak konta Maca:** pierwszym kaflem jest „Utwórz konto tego Maca” ze znakiem uwagi. Ten sam znak pojawia się przy „Użytkownikach” na pasku bocznym.
 - **Menu kontekstowe kafla** daje skróty bez wchodzenia w profil: „Podłącz telefon…”, „Kopiuj hasło”, „Zmień hasło…”. To te same arkusze co na profilu.
@@ -796,9 +796,72 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
 2. **Nagłówek siatki** „Kto słucha?” (jak w makiecie) czy bez nagłówka, sam tytuł „Użytkownicy”?
 3. **Awatary:** gradient z inicjałami (makieta), wybór z kilku symboli lub emoji, czy zdjęcie? Audiobookshelf nie trzyma awatarów, więc byłyby zapisane tylko na Macu i nie trafiłyby do telefonu.
 4. **Kafel roota:** pod siatką (makieta) czy całkiem schowany pod „Zaawansowane” na stronie Użytkownicy?
-5. **„Podłącz telefon…” także w menu na pasku menu?** Skraca parowanie do 4 kliknięć.
+5. ~~**„Podłącz telefon…” także w menu na pasku menu?**~~ Rozstrzygnięte w części 9 (opcja, domyślnie wyłączona). Skraca parowanie do 4 kliknięć.
 6. **Pasek boczny czy pasek narzędzi z 6 ikonami** (styl Safari/Mail, zalecany przez HIG dla okien ustawień)? Rekomenduję pasek boczny ze względu na podstrony osób i bibliotek.
-7. **Telefony innych domowników:** dziś telefon paruje się tylko z kontem Maca. Czy chcesz parowania telefonu np. Tomka do jego konta? To nowa funkcja `PhonePairing`.
-8. **Konto root:** zostawić tylko „Zaloguj ponownie hasłem…”, czy dodać „Pokaż/Kopiuj hasło” (jest w pęku kluczy) albo „Zmień hasło roota” (nowa funkcja)?
+7. ~~**Telefony innych domowników:**~~ Rozstrzygnięte w części 9 (tak). dziś telefon paruje się tylko z kontem Maca. Czy chcesz parowania telefonu np. Tomka do jego konta? To nowa funkcja `PhonePairing`.
+8. ~~**Konto root:**~~ Rozstrzygnięte w części 9 (pełna kontrola). Pierwotnie: zostawić tylko „Zaloguj ponownie hasłem…”, czy dodać „Pokaż/Kopiuj hasło” (jest w pęku kluczy) albo „Zmień hasło roota” (nowa funkcja)?
 9. **Słownictwo:** „Podłącz/Odłącz telefon” zamiast „Sparuj/Unieważnij”, „Dostęp zdalny” zamiast „Udostępnianie”, „Dziennik serwera” zamiast „Log serwera”. Pasuje?
 10. **Nazwa okna:** „Ustawienia” zamiast „Ustawienia aplikacji”, bo grupa „Serwer audiobookshelf” znika i podział aplikacja/serwer przestaje być potrzebny.
+
+
+## 9. Decyzje z 2026-11-23 i ich skutki
+
+| Pytanie | Decyzja | Skutek dla projektu |
+|---|---|---|
+| 1. Wariant | **B** | Plan z części 6 bez zmian w kolejności. |
+| 7. Telefony innych domowników | **Tak, dla każdego konta** („inaczej nie podłączę dziewczyny”) | Sekcja „Telefony” na każdym profilu, nie tylko konta Maca. |
+| 8. Konto root | **Pełna kontrola: zmiana i reset hasła**, skoro web UI jest schowane | Strona roota przestaje być tylko do odczytu. |
+| 5. „Podłącz telefon…” na pasku menu | **Nie domyślnie; najwyżej jako opcja** | Przełącznik w Ogólne › Aplikacja, domyślnie wyłączony. Niski priorytet (etap 6). |
+| 2, 4 (wygląd siatki, kafel roota) | **Jak w makietach** | Nagłówek „Kto słucha?”, kafel roota pod siatką. |
+| 3. Awatary | **Własne awatary — pytanie, czy się da** | Da się, ale tylko po stronie Maca (niżej). |
+
+**Telefony dla każdego domownika (etap 2b)**
+
+- **Mechanizm jest ten sam.** Root tworzy klucz API dla wybranego konta z tym samym przedrostkiem nazwy, a kod QR niesie identyfikator i nazwę tego konta (`PairingPayload.account`). Format kodu się nie zmienia. Telefon loguje się jako ta osoba i ma jej własny postęp.
+- **Zmiany na Macu:**
+  - `PhonePairing` dostaje parametr konta zamiast stałego „słuchacza”,
+  - lista urządzeń filtruje klucze po `userId` profilu,
+  - „Kod z adresami” obejmuje telefony wszystkich kont (adresy są wspólne),
+  - baner w „Dostępie zdalnym” liczy telefony wszystkich osób.
+- **Uprawnienie do pobierania odcinków z telefonu** (administrator + „Edycja pozycji”) staje się ustawieniem roli każdej osoby. Dla innych niż konto Maca zostaje to samo potwierdzenie i wyjaśnienie, że administrator zarządza całym serwerem.
+- **Konto „Gość”:** parowanie dozwolone, ale bez pytania o administratora.
+- **Hasło innych osób:** serwer go nie zwraca, więc „Pokaż/Kopiuj” jest tylko dla konta Maca i roota. Telefon z aplikacją AudiobookSwift hasła nie potrzebuje. Dla innych aplikacji audiobookshelf (np. dziewczyna z oficjalną aplikacją) jest „Zmień…” i „Dane logowania…” pokazujące nowe hasło raz, zaraz po zmianie.
+- **iOS:**
+  - Protokół bez zmian.
+  - Tekst w `PodcastStore` ma mówić o profilu tej osoby, nie „koncie Maca”.
+  - Do sprawdzenia: czy klient iOS nie zakłada gdzieś, że konto z kodu to konto Maca (np. komunikaty z nazwą „konto do słuchania”).
+- **Ryzyko:** klucz telefonu daje dostęp do konta bez hasła. Lista telefonów każdej osoby musi być równie widoczna jak dziś lista konta Maca, a „Odłącz” działać od razu.
+
+**Root: zmiana i reset hasła (etap 2c)**
+
+- **„Zmień…”:** serwer ma `PATCH /api/me/password` (stare i nowe hasło) dla zalogowanego konta. Aplikacja zna stare hasło z pęku kluczy, więc zmiana to jedno pole. Puste pole oznacza losowe, tak jak przy zakładaniu konta. Nowe hasło trafia od razu do pęku kluczy. Kolejność: najpierw zmiana na serwerze, potem pęk kluczy, a przy błędzie zapisu do pęku pokazać hasło do przepisania.
+- **„Pokaż / Kopiuj”:** hasło jest w pęku kluczy, więc to tylko interfejs. Odsłonięcie zakrywa się samo po minucie, jak kod parowania.
+- **„Zresetuj hasło…”:** gdy hasła nie ma albo nie pasuje (np. po przywróceniu starej kopii albo przeniesieniu folderu danych na innego Maca). Serwer nie ma resetu przez API.
+  - Aplikacja zarządza serwerem, więc może: zatrzymać serwer, zapisać nowy skrót bcrypt w kolumnie `pash` roota w bazie SQLite folderu danych, uruchomić serwer i zalogować się nowym hasłem.
+  - To ingerencja w bazę serwera, więc musi mieć potwierdzenie, kopię bazy przed zmianą i test na kopii danych.
+  - **Ryzyko większe niż reszta etapu.** Sprawdzone w kodzie serwera: hasła są w bcrypt (`server/auth/LocalAuthStrategy.js`, `hashPassword` i `bcrypt.compare` z dołączonego `bcryptjs`), a `User.cache` to pamięć podręczna w procesie (`LRUCache`), więc przy zatrzymanym serwerze nie przeszkadza. Do sprawdzenia przy wdrożeniu: zgodność skrótu wygenerowanego po stronie Swifta z `bcryptjs` (koszt, prefiks `$2a$`/`$2b$`) albo wygenerowanie go dołączonym Node.
+- **Web UI zarządzania** (⌥ przy „Ustawieniach…”) zostaje jako wyjście awaryjne, bez zmian.
+
+**Własne awatary (etap 2d, opcjonalny)**
+
+- **Serwer audiobookshelf nie ma awatarów:** model `User` nie ma takiego pola, a `extraData` jest z API niezmienialne. Awatar musi więc żyć po stronie Maca.
+- **Propozycja:** plik `avatars/<id-konta>.png` w folderze danych aplikacji, obok `sharing.json`. Folder danych to jedno miejsce, które przenosi się razem z serwerem.
+- **Wybór:**
+  - zdjęcie (przeciągnięcie albo panel „Otwórz”, przycięcie do koła),
+  - jeden z kilkunastu symboli lub emoji na kolorowym tle,
+  - domyślnie gradient z inicjałami jak w makiecie.
+- **Ograniczenia:**
+  - Kopia zapasowa audiobookshelf awatarów nie obejmie, bo serwer tworzy kopie z własnej bazy i metadanych. Trzeba to napisać przy wyborze awatara albo dopisać folder do kopii po stronie aplikacji.
+  - Telefony nie zobaczą awatara, chyba że później dodamy go do kodu parowania albo do lekkiego zapytania o profil. To osobna, opcjonalna praca.
+- **Koszt:** mały, niezależny od reszty, można dodać po etapie 2.
+
+**Zmiany w planie (część 6)**
+
+Etap 2 dzieli się na:
+
+- **2a:** siatka, profile, strona roota i przeniesienie istniejących funkcji. Bez nowej funkcjonalności.
+- **2b:** telefony dla każdego konta.
+- **2c:** zmiana, podgląd i reset hasła roota.
+- **2d:** własne awatary.
+
+Etapy 2b–2d są od siebie niezależne. Do etapu 6 dochodzi opcja „Pokaż „Podłącz telefon…” na pasku menu”. Do spisu dochodzą nowe pozycje bez starego miejsca: parowanie dla innych kont, hasło roota (pokaż/kopiuj/zmień/resetuj), awatar i opcja skrótu. Nie są w tabeli przejścia, bo dziś nie istnieją.
