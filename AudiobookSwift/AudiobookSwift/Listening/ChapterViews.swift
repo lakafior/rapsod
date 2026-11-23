@@ -3,6 +3,7 @@
 // panel boczny zamiast pełnego ekranu, pasek odtwarzania na dole okna, sterowanie w menu ikony,
 // bez muzyki, kolejki i wyboru wyjścia AirPlay.
 
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Suwak w obrębie bieżącego rozdziału (w długiej książce cała oś byłaby za gęsta)
@@ -39,21 +40,16 @@ struct ChapterScrubber: View {
             .disabled(player.book == nil)
             .accessibilityIdentifier("player.scrubber")
             HStack {
-                Text(Self.time(shown - start))
+                Text(PlaybackFormat.clock(shown - start))
                 Spacer()
-                Text("Całość: \(Self.time(player.duration - shown)) do końca" + (player.rate != 1 ? " (\(Self.time((player.duration - shown) / Double(player.rate))) przy \(SpeedMenu.label(player.rate)))" : ""))
+                Text("Całość: \(PlaybackFormat.clock(player.duration - shown)) do końca" + (player.rate != 1 ? " (\(PlaybackFormat.clock((player.duration - shown) / Double(player.rate))) przy \(PlaybackFormat.rate(player.rate)))" : ""))
                     .accessibilityIdentifier("player.remaining")
                 Spacer()
-                Text("-" + Self.time(end - shown))
+                Text("-" + PlaybackFormat.clock(end - shown))
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
         }
-    }
-
-    static func time(_ seconds: Double) -> String {
-        let value = seconds.isFinite ? max(0, seconds) : 0
-        return Duration.seconds(value).formatted(.time(pattern: value >= 3600 ? .hourMinuteSecond : .minuteSecond))
     }
 }
 
@@ -80,7 +76,7 @@ struct ChapterList: View {
                         if chapter.id == current {
                             Image(systemName: player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill").foregroundStyle(.tint)
                         } else {
-                            Text(ChapterScrubber.time(chapter.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            Text(PlaybackFormat.clock(chapter.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }
                     }
                     .contentShape(Rectangle())

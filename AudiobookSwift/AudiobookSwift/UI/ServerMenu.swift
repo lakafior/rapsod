@@ -1,3 +1,4 @@
+import AudiobookshelfPlayback
 import SwiftUI
 
 struct ServerMenu: View {

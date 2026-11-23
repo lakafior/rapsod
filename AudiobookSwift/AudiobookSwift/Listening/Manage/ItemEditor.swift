@@ -1,5 +1,6 @@
 import AppKit
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Stan arkusza zarządzania pozycją. Szkice (szczegóły, rozdziały) są brane z pozycji raz,
@@ -323,7 +324,7 @@ final class ItemEditorModel {
             let updated = try await manager.run { try await $0.updateChapters(itemID: id, payload, token: $1) }
             try await reload()
             resetChapters()
-            let chapters = (item.media.chapters ?? []).map { AudiobookPlayer.Chapter(id: $0.id, start: $0.start, end: $0.end, title: $0.title) }
+            let chapters = (item.media.chapters ?? []).map { PlaybackChapter(id: $0.id, start: $0.start, end: $0.end, title: $0.title) }
             listening.chaptersChanged(itemID: id, chapters: chapters)
             return updated ? "Zapisano rozdziały (\(payload.count))." : "Nic się nie zmieniło."
         }

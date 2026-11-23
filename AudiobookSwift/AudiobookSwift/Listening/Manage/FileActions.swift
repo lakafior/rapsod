@@ -1,5 +1,6 @@
 import AppKit
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 import SwiftUI
 
 extension ItemManager {
@@ -256,7 +257,7 @@ struct AudioFileSheet: View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 5) {
             row("Ścieżka", file.metadata?.path)
             row("Rozmiar", Formats.size(file.metadata?.size))
-            row("Czas trwania", file.duration.map { ChapterScrubber.time($0) })
+            row("Czas trwania", file.duration.map { PlaybackFormat.clock($0) })
             row("Format", file.format)
             row("Kodek", file.codec)
             row("Kanały", file.channels.map { channels in file.channelLayout.map { "\(channels) (\($0))" } ?? "\(channels)" })
