@@ -268,11 +268,15 @@ struct ClockField: View {
             .onSubmit(apply)
             .onChange(of: focused) { if !focused { apply() } }
             .accessibilityLabel(label)
-            .accessibilityValue(PlaybackFormat.spokenDuration(value))
     }
 
     private func apply() {
-        if let seconds = Self.parse(text) { commit(seconds) } else { text = PlaybackFormat.clock(value) }
+        guard let seconds = Self.parse(text) else {
+            text = PlaybackFormat.clock(value)
+            return
+        }
+        // Zatwierdzenie bez zmiany (Enter, utrata fokusu) nie jest poprawką.
+        if abs(seconds - value.rounded(.down)) >= 1 { commit(seconds) }
     }
 
     static func parse(_ text: String) -> Double? {

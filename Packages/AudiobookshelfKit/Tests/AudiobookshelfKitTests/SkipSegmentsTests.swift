@@ -259,6 +259,17 @@ struct SkipMapTests {
         #expect(redone.segments.filter { $0.source == .description }.count == 1)
     }
 
+    @Test func repeatedAdjustOfDetectedSegmentDoesNotDuplicate() {
+        var map = Self.map()
+        let detected = map.segments[0]
+        map.adjust(detected, start: 101, end: 160)
+        // Druga zmiana z nieaktualnego widoku (ten sam wykryty segment).
+        map.adjust(detected, start: 101, end: 158)
+        #expect(map.effectiveSegments.filter { $0.start > 50 }.map { [$0.start, $0.end] } == [[101, 158]])
+        #expect(map.corrections.removed.count == 1)
+        #expect(map.corrections.added.count == 1)
+    }
+
     @Test func removingUserSegmentDeletesIt() {
         var map = Self.map()
         let added = map.add(start: 500, end: 520, kind: .sponsor)

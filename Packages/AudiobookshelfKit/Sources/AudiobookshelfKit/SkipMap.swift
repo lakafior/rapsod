@@ -166,15 +166,19 @@ public struct SkipMap: Codable, Sendable, Equatable {
     /// Nowe granice (albo rodzaj) segmentu. Wykryty zostaje odrzucony i zastąpiony segmentem użytkownika.
     public mutating func adjust(_ segment: SkipSegment, start: Double, end: Double, kind: SkipKind? = nil) {
         let range = SkipSegment.clamped(start: start, end: end, duration: audio.duration)
-        if let index = corrections.added.firstIndex(where: { $0.id == segment.id }) {
+        // Poprawka wykrytego segmentu ma stały identyfikator — kolejna edycja (także z nieaktualnego
+        // widoku) nadpisuje ją zamiast dokładać duplikat.
+        let editID = segment.source == .user ? segment.id : segment.id + "-edit"
+        if let index = corrections.added.firstIndex(where: { $0.id == segment.id || $0.id == editID }) {
             corrections.added[index].start = range.start
             corrections.added[index].end = range.end
             if let kind { corrections.added[index].kind = kind }
             return
         }
-        corrections.removed.append(.init(start: segment.start, end: segment.end))
-        corrections.added.append(SkipSegment(start: range.start, end: range.end, kind: kind ?? segment.kind, source: .user, confidence: 1,
-                                             label: segment.label))
+        let rejected = SkipTimeRange(start: segment.start, end: segment.end)
+        if !corrections.removed.contains(rejected) { corrections.removed.append(rejected) }
+        corrections.added.append(SkipSegment(id: editID, start: range.start, end: range.end, kind: kind ?? segment.kind, source: .user,
+                                             confidence: 1, label: segment.label))
     }
 
     /// Dodaje segment użytkownika.
