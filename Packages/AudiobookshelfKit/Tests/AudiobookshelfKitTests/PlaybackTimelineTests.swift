@@ -150,6 +150,10 @@ private let chapters = [
         #expect(PlaybackFormat.clock(-5) == "0:00")
         #expect(PlaybackFormat.clock(.nan) == "0:00")
         #expect(PlaybackFormat.clock(.infinity) == "0:00")
+        // Wariant Maca: zaokrąglanie jak dawne `Duration.formatted(.time)`.
+        #expect(PlaybackFormat.clock(59.6, rounding: .toNearestOrEven) == "1:00")
+        #expect(PlaybackFormat.clock(59.4, rounding: .toNearestOrEven) == "0:59")
+        #expect(PlaybackFormat.clock(45.5, rounding: .toNearestOrEven) == "0:46")
         #expect(PlaybackFormat.rate(1) == "1×")
         #expect(PlaybackFormat.rate(2) == "2×")
         let quarter = PlaybackFormat.rate(1.25)

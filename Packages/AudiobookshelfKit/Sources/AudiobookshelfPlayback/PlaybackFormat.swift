@@ -10,10 +10,11 @@ import Foundation
 
 /// Napisy odtwarzacza wspólne dla Maca i iOS.
 public enum PlaybackFormat {
-    /// Czas jak na zegarze: „1:02:03” albo „12:05”. Ułamki sekund odcinane (nie zaokrąglane),
-    /// żeby czas od początku i do końca nie przeskakiwał o sekundę naprzód.
-    public static func clock(_ seconds: Double) -> String {
-        let total = Int(max(0, seconds.isFinite ? seconds : 0).rounded(.down))
+    /// Czas jak na zegarze: „1:02:03” albo „12:05”. Domyślnie ułamki sekund odcinane (iOS: czas
+    /// od początku i do końca nie przeskakuje o sekundę naprzód); Mac od etapu 9a zaokrągla
+    /// (`.toNearestOrEven`) i przy tym zostaje, dopóki nie zapadnie decyzja o jednym wariancie.
+    public static func clock(_ seconds: Double, rounding: FloatingPointRoundingRule = .down) -> String {
+        let total = Int(max(0, seconds.isFinite ? seconds : 0).rounded(rounding))
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }

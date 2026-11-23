@@ -40,12 +40,12 @@ struct ChapterScrubber: View {
             .disabled(player.book == nil)
             .accessibilityIdentifier("player.scrubber")
             HStack {
-                Text(PlaybackFormat.clock(shown - start))
+                Text(PlaybackFormat.clock(shown - start, rounding: .toNearestOrEven))
                 Spacer()
-                Text("Całość: \(PlaybackFormat.clock(player.duration - shown)) do końca" + (player.rate != 1 ? " (\(PlaybackFormat.clock((player.duration - shown) / Double(player.rate))) przy \(PlaybackFormat.rate(player.rate)))" : ""))
+                Text("Całość: \(PlaybackFormat.clock(player.duration - shown, rounding: .toNearestOrEven)) do końca" + (player.rate != 1 ? " (\(PlaybackFormat.clock((player.duration - shown) / Double(player.rate), rounding: .toNearestOrEven)) przy \(PlaybackFormat.rate(player.rate)))" : ""))
                     .accessibilityIdentifier("player.remaining")
                 Spacer()
-                Text("-" + PlaybackFormat.clock(end - shown))
+                Text("-" + PlaybackFormat.clock(end - shown, rounding: .toNearestOrEven))
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
@@ -76,7 +76,7 @@ struct ChapterList: View {
                         if chapter.id == current {
                             Image(systemName: player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill").foregroundStyle(.tint)
                         } else {
-                            Text(PlaybackFormat.clock(chapter.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            Text(PlaybackFormat.clock(chapter.duration, rounding: .toNearestOrEven)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }
                     }
                     .contentShape(Rectangle())

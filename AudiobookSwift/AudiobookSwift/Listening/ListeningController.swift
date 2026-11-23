@@ -524,7 +524,7 @@ final class ListeningController {
     func addBookmarkAtCurrentPosition() async {
         guard let book = player.book, book.episodeID == nil else { return }
         let time = (player.currentTime * 10).rounded() / 10
-        let title = player.currentChapter.map { "\($0.title) — \(PlaybackFormat.clock(time - $0.start))" } ?? PlaybackFormat.clock(time)
+        let title = player.currentChapter.map { "\($0.title) — \(PlaybackFormat.clock(time - $0.start, rounding: .toNearestOrEven))" } ?? PlaybackFormat.clock(time, rounding: .toNearestOrEven)
         do {
             try await api { try await $0.createBookmark(itemID: book.itemID, time: time, title: title, token: $1) }
         } catch {

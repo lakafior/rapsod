@@ -141,7 +141,7 @@ private struct FileRow: View {
             if let track = file.track { Text("ścieżka \(track)").font(.caption).foregroundStyle(.tertiary) }
             Text(file.codec ?? "").font(.caption).foregroundStyle(.secondary).frame(width: 44)
             Text(Formats.size(file.size)).font(.caption).foregroundStyle(.secondary).frame(width: 70, alignment: .trailing)
-            Text(PlaybackFormat.clock(file.duration ?? 0)).monospacedDigit().frame(width: 70, alignment: .trailing)
+            Text(PlaybackFormat.clock(file.duration ?? 0, rounding: .toNearestOrEven)).monospacedDigit().frame(width: 70, alignment: .trailing)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(file.name)\(file.exclude ? ", wykluczony" : "")")

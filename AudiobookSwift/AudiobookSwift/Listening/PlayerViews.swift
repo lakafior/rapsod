@@ -142,7 +142,7 @@ struct BookmarksMenu: View {
             if !bookmarks.isEmpty {
                 Divider()
                 ForEach(bookmarks) { bookmark in
-                    Button("\(PlaybackFormat.clock(bookmark.time))  \(bookmark.title)") { listening.player.seek(to: bookmark.time) }
+                    Button("\(PlaybackFormat.clock(bookmark.time, rounding: .toNearestOrEven))  \(bookmark.title)") { listening.player.seek(to: bookmark.time) }
                 }
             }
         } label: {
