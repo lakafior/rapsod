@@ -24,7 +24,9 @@ public enum SkipAnalyzer {
             megaphone = await SkipNetwork.megaphone(for: url, session: session)
         }
         let input = SkipDetection.Input(description: description, chapters: chapters, feedDuration: rss?.durationSeconds,
-                                        fileDuration: duration, fileSize: audio.size, megaphone: megaphone?.payload,
+                                        fileDuration: duration, fileSize: audio.size,
+                                        fileAudioBytes: audio.size.map { $0 - SkipAudioFingerprint.id3Size(fileAt: audioFile) },
+                                        megaphone: megaphone?.payload,
                                         megaphoneTotalSize: megaphone?.totalSize)
         let result = SkipDetection.analyze(input)
         let ref = SkipMap.EpisodeRef(itemID: podcastID, episodeID: episode.id, guid: episode.guid, title: episode.title,

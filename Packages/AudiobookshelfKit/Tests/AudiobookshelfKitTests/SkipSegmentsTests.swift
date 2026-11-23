@@ -61,12 +61,16 @@ struct MegaphoneTests {
     @Test func describesOnlyTheSameFile() throws {
         let payload = try #require(MegaphonePayload.parse(MegaphoneFixtures.filled))
         let size = MegaphoneFixtures.filledSize
-        #expect(payload.describes(totalSize: size, fileSize: size, fileDuration: MegaphoneFixtures.filledDuration))
+        let audio = size - 17_593
+        #expect(payload.describes(totalSize: size, fileAudioBytes: audio, fileDuration: MegaphoneFixtures.filledDuration))
+        // Serwer przepisał znaczniki ID3 (inny nagłówek, ~1 KB różnicy w audio) — nadal ten sam plik.
+        #expect(payload.describes(totalSize: size, fileAudioBytes: audio + 1044, fileDuration: MegaphoneFixtures.filledDuration))
         // Ta sama odpowiedź, ale plik na dysku pobrany z innym zestawem reklam.
-        #expect(!payload.describes(totalSize: size, fileSize: 39_047_145, fileDuration: 1951.5))
+        #expect(!payload.describes(totalSize: size, fileAudioBytes: 39_047_145 - 17_593, fileDuration: 1951.5))
         // Bez rozmiaru pliku (strumień): długość musi się zgadzać.
-        #expect(payload.describes(totalSize: size, fileSize: nil, fileDuration: 1997.1))
-        #expect(!payload.describes(totalSize: size, fileSize: nil, fileDuration: 1990))
+        #expect(payload.describes(totalSize: size, fileAudioBytes: nil, fileDuration: 1997.1))
+        #expect(!payload.describes(totalSize: size, fileAudioBytes: nil, fileDuration: 1990))
+        #expect(SkipAudioFingerprint.id3Size(Data([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0x43, 0x39])) == 8643)
         #expect(MegaphonePayload.totalSize(contentRange: "bytes 0-0/39966655") == size)
     }
 }
@@ -150,7 +154,7 @@ struct SkipDetectionTests {
         // Opis na osi wydawcy: reklama czytana 10:00–11:00.
         let input = SkipDetection.Input(description: "10:00 Sponsor: Firma\n11:00 Dalej", feedDuration: 1822,
                                         fileDuration: MegaphoneFixtures.filledDuration, fileSize: MegaphoneFixtures.filledSize,
-                                        megaphone: payload, megaphoneTotalSize: MegaphoneFixtures.filledSize)
+                                        fileAudioBytes: MegaphoneFixtures.filledSize - 17_593, megaphone: payload, megaphoneTotalSize: MegaphoneFixtures.filledSize)
         let result = SkipDetection.analyze(input)
         #expect(result.insertedAds?.located == true)
         #expect(result.insertedAds?.slots == 7)
@@ -164,7 +168,7 @@ struct SkipDetectionTests {
 
     @Test func megaphoneFromAnotherDownloadIsNotLocated() throws {
         let payload = try #require(MegaphonePayload.parse(MegaphoneFixtures.filled))
-        let input = SkipDetection.Input(description: nil, fileDuration: 1951.5, fileSize: 39_047_145, megaphone: payload,
+        let input = SkipDetection.Input(description: nil, fileDuration: 1951.5, fileSize: 39_047_145, fileAudioBytes: 39_047_145 - 17_593, megaphone: payload,
                                         megaphoneTotalSize: MegaphoneFixtures.filledSize)
         let result = SkipDetection.analyze(input)
         #expect(result.segments.isEmpty)

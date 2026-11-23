@@ -21,6 +21,7 @@ struct SkipEvaluation {
         let title: String
         let duration: Double
         let size: Int64
+        let audioBytes: Int64?
         let megaphone: String?
         let total: Int64?
         let truth: [[Value]]?
@@ -59,7 +60,7 @@ struct SkipEvaluation {
             let rss = try #require(entry.title.isEmpty ? feed.episodes.first : feed.episodes.first { $0.title.contains(entry.title) }, "\(entry.name)")
             let chapters = RSSChapter.ranges(rss.chapters ?? [], duration: entry.duration)
             let input = SkipDetection.Input(description: rss.summary, chapters: chapters.count > 1 ? chapters : [], feedDuration: rss.durationSeconds,
-                                            fileDuration: entry.duration, fileSize: entry.size,
+                                            fileDuration: entry.duration, fileSize: entry.size, fileAudioBytes: entry.audioBytes,
                                             megaphone: entry.megaphone.flatMap(MegaphonePayload.parse), megaphoneTotalSize: entry.total)
             let result = SkipDetection.analyze(input)
             let truth = (entry.truth ?? []).compactMap { row -> (Double, Double)? in

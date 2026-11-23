@@ -438,6 +438,21 @@ public struct SkipAudioFingerprint: Codable, Sendable, Equatable {
                                     headSHA256: sha256(head), tailSHA256: sha256(tail))
     }
 
+    /// Rozmiar nagłówka ID3v2 na początku pliku (0, gdy go nie ma).
+    public static func id3Size(fileAt url: URL) -> Int64 {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return 0 }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 10) else { return 0 }
+        return id3Size(head)
+    }
+
+    static func id3Size(_ head: Data) -> Int64 {
+        let b = [UInt8](head.prefix(10))
+        guard b.count == 10, b[0] == 0x49, b[1] == 0x44, b[2] == 0x33 else { return 0 }
+        let size = (Int64(b[6] & 0x7f) << 21) | (Int64(b[7] & 0x7f) << 14) | (Int64(b[8] & 0x7f) << 7) | Int64(b[9] & 0x7f)
+        return size + 10 + (b[5] & 0x10 != 0 ? 10 : 0)
+    }
+
     static func sha256(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }

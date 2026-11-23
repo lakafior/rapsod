@@ -36,12 +36,16 @@ public enum SkipDetection {
         public var fileDuration: Double
         /// Rozmiar pliku w bajtach, gdy znany (plik na dysku).
         public var fileSize: Int64?
+        /// Bajty audio pliku na dysku (rozmiar bez nagłówka ID3v2). Serwer przy pobieraniu odcinka
+        /// przepisuje znaczniki, więc do porównania z odpowiedzią Megaphone liczy się samo audio.
+        public var fileAudioBytes: Int64?
         /// Nagłówek `x-megaphone-payload-2` i całkowity rozmiar z `Content-Range` tej samej odpowiedzi.
         public var megaphone: MegaphonePayload?
         public var megaphoneTotalSize: Int64?
 
         public init(description: String?, chapters: [Chapter] = [], feedDuration: Double? = nil, fileDuration: Double,
-                    fileSize: Int64? = nil, megaphone: MegaphonePayload? = nil, megaphoneTotalSize: Int64? = nil) {
+                    fileSize: Int64? = nil, fileAudioBytes: Int64? = nil, megaphone: MegaphonePayload? = nil, megaphoneTotalSize: Int64? = nil) {
+            self.fileAudioBytes = fileAudioBytes
             self.description = description
             self.chapters = chapters
             self.feedDuration = feedDuration
@@ -81,7 +85,7 @@ public enum SkipDetection {
             let filled = payload.breaks
             if !filled.isEmpty {
                 let seconds = filled.reduce(0) { $0 + $1.duration }
-                if payload.describes(totalSize: input.megaphoneTotalSize, fileSize: input.fileSize, fileDuration: input.fileDuration) {
+                if payload.describes(totalSize: input.megaphoneTotalSize, fileAudioBytes: input.fileAudioBytes, fileDuration: input.fileDuration) {
                     breaks = filled
                     for item in filled {
                         segments.append(SkipSegment(start: item.start, end: min(item.end, input.fileDuration), kind: .sponsor, source: .megaphone,
@@ -430,11 +434,12 @@ public struct MegaphonePayload: Sendable, Equatable {
         return result
     }
 
-    /// Czy nagłówek opisuje właśnie ten plik: rozmiar z `Content-Range` równy plikowi na dysku
-    /// (albo, bez rozmiaru pliku, długość z bitrate zgodna z długością odtwarzanego pliku) i stały bitrate.
-    public func describes(totalSize: Int64?, fileSize: Int64?, fileDuration: Double) -> Bool {
+    /// Czy nagłówek opisuje właśnie ten plik: tyle samo bajtów audio co w odpowiedzi (bez nagłówka ID3;
+    /// tolerancja pół sekundy nagrania — przepisanie znaczników zmienia ok. 1 KB, a slot reklamy to
+    /// setki KB), a bez pliku na dysku — długość z bitrate zgodna z odtwarzanym plikiem.
+    public func describes(totalSize: Int64?, fileAudioBytes: Int64?, fileDuration: Double) -> Bool {
         guard let totalSize, totalSize > audioStart else { return false }
-        if let fileSize, fileSize != totalSize { return false }
+        if let fileAudioBytes, abs((totalSize - audioStart) - fileAudioBytes) > Int64(bitrate / 16) { return false }
         return abs(duration(totalSize: totalSize) - fileDuration) <= SkipAudioFingerprint.durationTolerance
     }
 
