@@ -15,6 +15,7 @@ struct PlayerPanel: View {
     @AppStorage(BookTextSettings.panelKey) private var showsText = false
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var editsSkips = false
 
     private var player: AudiobookPlayer { listening.player }
 
@@ -56,6 +57,8 @@ struct PlayerPanel: View {
 
                 ChapterScrubber(player: player)
 
+                SkipBanner(player: player)
+
                 TransportControls(player: player, large: true)
 
                 if let error = player.error {
@@ -94,6 +97,11 @@ struct PlayerPanel: View {
                         Button("Zatrzymaj i zamknij", systemImage: "xmark.circle") {
                             Task { await listening.stopPlayback() }
                         }
+                        if book.episodeID != nil {
+                            Divider()
+                            Button("Segmenty sponsorowane…", systemImage: "forward.end.alt") { editsSkips = true }
+                                .disabled(listening.playback.skipContext == nil)
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -120,6 +128,7 @@ struct PlayerPanel: View {
                 }
             }
             .padding()
+            .sheet(isPresented: $editsSkips) { SkipEditorSheet(listening: listening) }
             // Licznik okładki: po edycji okładki odtwarzacz wczytuje nową, jak `AsyncCover`.
             .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
                 cover = await listening.cover(for: book.itemID, path: book.coverPath, size: 300)

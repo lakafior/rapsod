@@ -141,6 +141,7 @@ struct PodcastPage: View {
             .fixedSize()
             .help("Więcej")
             .accessibilityIdentifier("podcast.more")
+            PodcastSkipButton(listening: listening, item: item)
             if item.media.autoDownloadEpisodes == true {
                 Label("Pobiera nowe automatycznie", systemImage: "clock.arrow.circlepath").font(.caption).foregroundStyle(.secondary)
             }
