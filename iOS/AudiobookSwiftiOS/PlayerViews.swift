@@ -109,14 +109,25 @@ struct PlayerScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var cover: UIImage?
     @State private var showsChapters = false
+    /// Tryb „Tekst” (etap 11b): tekst książki zamiast dużej okładki.
+    @AppStorage("player.showsText") private var showsText = false
+    @State private var text = TextFollowModel()
+    @Namespace private var artworkSpace
 
     private var player: AudiobookPlayer { model.playback.player }
+    /// Tekst ma sens tylko dla książek (podcast nie ma e-booka).
+    private var textAvailable: Bool { player.book.map { $0.episodeID == nil && $0.feedKey == nil } ?? false }
+    private var textMode: Bool { showsText && textAvailable }
 
     var body: some View {
         ZStack {
             if let book = player.book {
                 GeometryReader { proxy in
-                    if proxy.size.width > proxy.size.height * 1.15 {
+                    let landscape = proxy.size.width > proxy.size.height * 1.15
+                    if textMode {
+                        textLayout(book, size: proxy.size, landscape: landscape)
+                            .transition(.opacity)
+                    } else if landscape {
                         HStack(spacing: 36) {
                             artwork(side: min(proxy.size.height - 40, proxy.size.width * 0.42))
                             // Przewijana, gdy przy dużym tekście sterowanie się nie mieści.
@@ -136,6 +147,7 @@ struct PlayerScreen: View {
                         }
                         .padding(.horizontal, 24)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity)
                     } else {
                         ScrollView {
                             VStack(spacing: 22) {
@@ -153,11 +165,18 @@ struct PlayerScreen: View {
                             .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                         }
                         .scrollBounceBehavior(.basedOnSize)
+                        .transition(.opacity)
                     }
                 }
                 .task(id: book.key) {
                     cover = await model.currentSession?.cover(itemID: book.itemID, path: nil, size: 520, scale: displayScale)
                 }
+                // Mapę wczytujemy dopiero, gdy ktoś włączy tekst (i przy zmianie książki).
+                .task(id: textMode ? book.key : nil) {
+                    guard textMode else { return }
+                    loadText(book)
+                }
+                .background { if textMode { TextTimeFeed(model: text, player: player) } }
             } else {
                 VStack {
                     topBar.padding(24)
@@ -166,13 +185,166 @@ struct PlayerScreen: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { ArtworkBackdrop(image: cover, fadesToBackground: false).ignoresSafeArea() }
+        .background { ArtworkBackdrop(image: cover, fadesToBackground: false, dimming: textMode ? 0.66 : nil).ignoresSafeArea() }
         .foregroundStyle(.white)
         .tint(.white)
         .environment(\.colorScheme, .dark)
         .sheet(isPresented: $showsChapters) {
             ChapterList(player: player)
         }
+        // Ekran nie gaśnie, gdy czyta się tekst w trakcie słuchania; blokada znika po pauzie i wyjściu.
+        .onChange(of: textMode && player.isPlaying, initial: true) { _, keepAwake in
+            UIApplication.shared.isIdleTimerDisabled = keepAwake
+        }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+    }
+
+    private func loadText(_ book: PlaybackBook) {
+        guard let session = model.currentSession else { return }
+        let itemID = book.itemID
+        let auth = session.auth
+        let downloads = session.downloads.manager
+        text.load(key: session.scope + "|" + itemID, source: TextSyncSource(
+            itemID: itemID,
+            fetchItem: { try await auth.perform { try await $0.item(id: itemID, token: $1) } },
+            fetchFile: { ino in try await auth.perform { try await $0.libraryFile(itemID: itemID, ino: ino, token: $1) } },
+            downloadedCopy: { downloads.textSyncData(itemID: itemID) },
+            updateDownloadedCopy: { downloads.storeTextSync($0, itemID: itemID) }
+        ), cache: .standard())
+    }
+
+    private func toggleText() {
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.55, bounce: 0.12)) {
+            showsText.toggle()
+        }
+    }
+
+    /// Tryb tekstu: u góry mała okładka z tytułem, pod nią tekst, na dole zwarte sterowanie.
+    /// W poziomie tekst po lewej, sterowanie w kolumnie po prawej.
+    @ViewBuilder
+    private func textLayout(_ book: PlaybackBook, size: CGSize, landscape: Bool) -> some View {
+        if landscape {
+            HStack(spacing: 20) {
+                BookTextView(model: text, player: player)
+                    .mask(Self.textFade)
+                    .frame(maxWidth: .infinity)
+                ScrollView {
+                    VStack(spacing: 16) {
+                        topBar
+                        compactHeader(book)
+                        ChapterScrubber(player: player)
+                        controls
+                        options
+                    }
+                    .padding(.vertical, 12)
+                    .frame(minHeight: size.height - 24)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(width: min(400, size.width * 0.4))
+            }
+            .padding(.horizontal, 20)
+        } else {
+            VStack(spacing: 0) {
+                VStack(spacing: 14) {
+                    topBar
+                    compactHeader(book)
+                }
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 560)
+                // Przy największych rozmiarach pasek z czterema przyciskami rozpychałby ekran;
+                // tekst książki ma własną regulację rozmiaru.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                BookTextView(model: text, player: player, bottomInset: 8)
+                    .mask(Self.textFade)
+                    .frame(maxHeight: .infinity)
+                VStack(spacing: 14) {
+                    ChapterScrubber(player: player, compact: true)
+                    compactControls
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+                .frame(maxWidth: 560)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Tekst łagodnie znika przy górnej i dolnej krawędzi.
+    private static var textFade: some View {
+        LinearGradient(stops: [
+            .init(color: .clear, location: 0), .init(color: .black, location: 0.07),
+            .init(color: .black, location: 0.9), .init(color: .clear, location: 1),
+        ], startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Mała okładka, tytuł i rozdział (rozdział otwiera listę rozdziałów).
+    private func compactHeader(_ book: PlaybackBook) -> some View {
+        HStack(spacing: 12) {
+            CoverImage(image: cover)
+                .matchedGeometryEffect(id: "artwork", in: artworkSpace)
+                .frame(width: 54, height: 54)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(book.title).font(.headline).lineLimit(1)
+                if let chapter = player.currentChapter, player.chapters.count > 1 {
+                    Button {
+                        showsChapters = true
+                    } label: {
+                        Text(chapter.title).font(.subheadline).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Rozdział: \(chapter.title)"))
+                    .accessibilityHint(Text("Pokazuje listę rozdziałów"))
+                } else if let author = book.author {
+                    Text(author).font(.subheadline).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Zwarte sterowanie w trybie tekstu: −15 s, odtwarzaj, +30 s, prędkość i rozdziały.
+    private var compactControls: some View {
+        HStack {
+            Menu {
+                Picker("Prędkość", selection: Binding(get: { player.rate }, set: { player.rate = $0 })) {
+                    ForEach(AudiobookPlayer.rates, id: \.self) { rate in
+                        Text(Self.rateLabel(rate)).tag(rate)
+                    }
+                }
+            } label: {
+                Text(Self.rateLabel(player.rate)).font(.subheadline.weight(.semibold).monospacedDigit())
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel(Text("Prędkość: \(Self.rateLabel(player.rate))"))
+            Spacer()
+            Button {
+                player.skip(by: -AudiobookPlayer.skipBack)
+            } label: {
+                Image(systemName: "gobackward.15").font(.system(size: 26, weight: .medium))
+            }
+            .accessibilityLabel(Text("15 sekund wstecz"))
+            Spacer()
+            PlayPauseButton(player: player, size: .system(size: 42, weight: .semibold))
+            Spacer()
+            Button {
+                player.skip(by: AudiobookPlayer.skipForward)
+            } label: {
+                Image(systemName: "goforward.30").font(.system(size: 26, weight: .medium))
+            }
+            .accessibilityLabel(Text("30 sekund do przodu"))
+            Spacer()
+            Button {
+                showsChapters = true
+            } label: {
+                Image(systemName: "list.bullet").font(.title3).frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel(Text("Rozdziały"))
+            .disabled(player.chapters.count < 2)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: 440)
     }
 
     /// Uchwyt, zamknięcie i menu.
@@ -185,6 +357,24 @@ struct PlayerScreen: View {
             Spacer()
             Capsule().fill(.white.opacity(0.35)).frame(width: 40, height: 5).accessibilityHidden(true)
             Spacer()
+            if textAvailable {
+                HStack(spacing: 10) {
+                    if textMode { BookTextSettingsMenu().labelStyle(.iconOnly).buttonStyle(.glass).buttonBorderShape(.circle) }
+                    Button {
+                        toggleText()
+                    } label: {
+                        Label(textMode ? "Okładka" : "Tekst", systemImage: "quote.bubble")
+                            .symbolVariant(textMode ? .fill : .none)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel(Text("Tekst książki"))
+                    .accessibilityValue(Text(textMode ? "włączony" : "wyłączony"))
+                    .accessibilityHint(Text(textMode ? "Wraca do okładki" : "Pokazuje tekst zsynchronizowany z nagraniem"))
+                }
+            }
             Menu {
                 Button("Oznacz jako ukończone", systemImage: "checkmark.circle") {
                     Task { await model.playback.markFinished() }
@@ -202,11 +392,14 @@ struct PlayerScreen: View {
             .buttonBorderShape(.circle)
         }
         .controlSize(.large)
+        // Cztery okrągłe przyciski w jednym wierszu — bez rozmiarów dostępności, które rozpychały ekran.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     /// Okładka — przy pauzie lekko mniejsza (bez animacji przy „Ogranicz ruch”).
     private func artwork(side: CGFloat) -> some View {
         CoverImage(image: cover, isPodcast: player.book?.episodeID != nil || player.book?.feedKey != nil)
+            .matchedGeometryEffect(id: "artwork", in: artworkSpace)
             .frame(width: max(120, side), height: max(120, side))
             .scaleEffect(player.isPlaying || reduceMotion ? 1 : 0.86)
             .animation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.3), value: player.isPlaying)
@@ -335,6 +528,8 @@ struct PlayerScreen: View {
 /// Suwak w obrębie rozdziału, czas od początku i do końca rozdziału oraz pozycja w całej książce.
 private struct ChapterScrubber: View {
     let player: AudiobookPlayer
+    /// Tryb tekstu: bez wiersza z czasem całej książki.
+    var compact = false
     /// Wartość w trakcie przeciągania (sekundy od początku rozdziału); `nil` = pokazuje odtwarzacz.
     @State private var dragging: Double?
 
@@ -363,7 +558,7 @@ private struct ChapterScrubber: View {
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
 
-            if position.chapter != nil {
+            if position.chapter != nil, !compact {
                 let bookTime = position.start + elapsed
                 Text("Całość: \(TimeText.clock(bookTime)) z \(TimeText.clock(player.duration)) · zostało \(TimeText.long((player.duration - bookTime) / Double(player.rate)))")
                     .font(.caption.monospacedDigit())

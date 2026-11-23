@@ -11,7 +11,9 @@ import Foundation
 /// trafia do `libraryFiles` i każde konto z dostępem do pozycji pobierze ją przez
 /// `GET /api/items/:id/file/:ino`. Plik o nieznanym rozszerzeniu skaner by pominął.
 public struct TextSyncMap: Codable, Sendable, Hashable {
-    public static let currentVersion = 1
+    /// 1 — etap 11a; 2 — etap 11b: rodzaje bloków (`blocks`) do wyświetlania tekstu w odtwarzaczu.
+    /// Mapy w starszej wersji czyta się dalej (brakujące pola są opcjonalne).
+    public static let currentVersion = 2
     /// Końcówka nazwy pliku mapy.
     public static let fileSuffix = ".sync.json"
 
@@ -60,6 +62,24 @@ public struct TextSyncMap: Codable, Sendable, Hashable {
         public var interpolated: Bool?
     }
 
+    /// Blok tekstu inny niż zwykły akapit (nagłówek, element listy, cytat…) — do ładnego
+    /// wyświetlania bez parsowania EPUB-a na telefonie. Zwykłe akapity się pomija (oszczędność miejsca).
+    public struct Block: Codable, Sendable, Hashable {
+        public var href: String
+        public var block: Int
+        /// Nazwa znacznika XHTML: `h1`…`h6`, `li`, `blockquote`, `pre`, `td`, `figcaption`…
+        public var kind: String
+        public init(href: String, block: Int, kind: String) {
+            self.href = href; self.block = block; self.kind = kind
+        }
+
+        /// Poziom nagłówka 1…6 albo `nil`.
+        public var headingLevel: Int? {
+            guard kind.count == 2, kind.first == "h", let level = Int(kind.dropFirst()), (1...6).contains(level) else { return nil }
+            return level
+        }
+    }
+
     public var version: Int
     public var createdAt: Date
     /// Silnik rozpoznawania mowy (np. `apple-dictation`) i jego język (BCP 47).
@@ -70,8 +90,10 @@ public struct TextSyncMap: Codable, Sendable, Hashable {
     public var ebook: FileFingerprint
     public var stats: Stats
     public var sentences: [Sentence]
+    /// Od wersji 2; `nil` w mapach z etapu 11a (wtedy nagłówki zgaduje `TextSyncDocument`).
+    public var blocks: [Block]?
 
-    public init(createdAt: Date = .now, engine: String, locale: String, audio: [FileFingerprint], ebook: FileFingerprint, stats: Stats, sentences: [Sentence]) {
+    public init(createdAt: Date = .now, engine: String, locale: String, audio: [FileFingerprint], ebook: FileFingerprint, stats: Stats, sentences: [Sentence], blocks: [Block]? = nil) {
         self.version = Self.currentVersion
         self.createdAt = createdAt
         self.engine = engine
@@ -80,6 +102,7 @@ public struct TextSyncMap: Codable, Sendable, Hashable {
         self.ebook = ebook
         self.stats = stats
         self.sentences = sentences
+        self.blocks = blocks
     }
 
     public func encoded() throws -> Data {
@@ -137,8 +160,15 @@ public enum TextSync {
     /// zwinięte, encje rozwinięte. Prosty skaner znaczników zamiast parsera XML: rozdziały EPUB-ów
     /// z różnych narzędzi bywają niepoprawnym XML-em (encje HTML, niezamknięte znaczniki).
     public static func blocks(fromXHTML source: String) -> [String] {
-        var blocks: [String] = []
+        blockElements(fromXHTML: source).map(\.text)
+    }
+
+    /// Jak `blocks(fromXHTML:)` (te same bloki w tej samej kolejności, więc te same numery),
+    /// z nazwą znacznika, który blok otworzył (`p`, `h2`, `li`…; tekst poza znacznikiem — `p`).
+    public static func blockElements(fromXHTML source: String) -> [(text: String, kind: String)] {
+        var blocks: [(text: String, kind: String)] = []
         var current = ""
+        var kind = "p"
         var skipDepth = 0
         var skipName: String?
         let s = Array(source.unicodeScalars)
@@ -146,7 +176,7 @@ public enum TextSync {
 
         func flush() {
             let text = collapse(decodeEntities(current))
-            if !text.isEmpty { blocks.append(text) }
+            if !text.isEmpty { blocks.append((text, kind)) }
             current = ""
         }
 
@@ -191,7 +221,11 @@ public enum TextSync {
                 continue
             }
             if skipDepth > 0 { continue }
-            if blockTags.contains(name) { flush() }
+            if blockTags.contains(name) {
+                flush()
+                // Tekst po zamknięciu bloku należy już do rodzica — zwykły akapit.
+                kind = closing || selfClosing || name == "br" || name == "hr" ? (name == "br" ? kind : "p") : Self.kindName(name)
+            }
             else if name == "img" || name == "image" {
                 // Obrazek w tekście nie jest słowem; odstęp, żeby nie skleić sąsiednich słów.
                 current += " "
@@ -199,6 +233,14 @@ public enum TextSync {
         }
         flush()
         return blocks
+    }
+
+    /// Kontenery (`div`, `section`…) liczą się jako zwykły akapit.
+    private static func kindName(_ tag: String) -> String {
+        switch tag {
+        case "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "td", "th", "dt", "dd", "figcaption": tag
+        default: "p"
+        }
     }
 
     private static let entities: [String: String] = [
@@ -292,17 +334,26 @@ public enum TextSync {
 
     /// Zdania całej książki z rozdziałów w kolejności spisu (`spine`).
     public static func sentences(spine: [(href: String, xhtml: String)]) -> [TextSyncMap.Sentence] {
+        document(spine: spine).sentences
+    }
+
+    /// Zdania i bloki inne niż zwykły akapit (do zapisania w mapie od wersji 2).
+    public static func document(spine: [(href: String, xhtml: String)]) -> (sentences: [TextSyncMap.Sentence], blocks: [TextSyncMap.Block]) {
         var out: [TextSyncMap.Sentence] = []
+        var kinds: [TextSyncMap.Block] = []
         for doc in spine {
-            for (b, block) in blocks(fromXHTML: doc.xhtml).enumerated() {
+            for (b, element) in blockElements(fromXHTML: doc.xhtml).enumerated() {
+                let block = element.text
                 let utf16 = Array(block.utf16)
-                for r in sentenceRanges(in: block) {
+                let ranges = sentenceRanges(in: block)
+                for r in ranges {
                     let text = String(decoding: utf16[r.offset..<(r.offset + r.length)], as: UTF16.self)
                     out.append(.init(href: doc.href, block: b, offset: r.offset, length: r.length, text: text))
                 }
+                if element.kind != "p", !ranges.isEmpty { kinds.append(.init(href: doc.href, block: b, kind: element.kind)) }
             }
         }
-        return out
+        return (out, kinds)
     }
 
     // MARK: - Wyrównanie

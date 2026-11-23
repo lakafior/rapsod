@@ -91,8 +91,21 @@ final class DownloadsController {
             chapters: (item.media.chapters ?? []).map { DownloadedChapter(start: $0.start, end: $0.end, title: $0.title) },
             files: files
         )
-        try manager.enqueue(entry, cover: await coverData(itemID: item.id, session: session))
+        try manager.enqueue(entry, cover: await coverData(itemID: item.id, session: session), textSync: await textSyncData(item: item, session: session))
         if let progress = session.library.progress.value(item.id) { session.journal.recordServer(progress) }
+    }
+
+    /// Mapa tekstu książki (etap 11b), żeby tryb „Tekst” działał bez sieci. Mała (kilka MB),
+    /// więc pobiera się od razu, nie przez sesję tła; brak albo błąd nie blokuje pobrania audio.
+    private func textSyncData(item: Client.ItemDetail, session: ServerSession) async -> Data? {
+        guard let file = TextSyncMap.file(in: item) else { return nil }
+        guard let data = try? await session.auth.perform({ try await $0.libraryFile(itemID: item.id, ino: file.ino, token: $1) }),
+              (try? TextSyncLoader.decode(data)) != nil
+        else {
+            logger.error("Mapa tekstu \(item.id, privacy: .public) nie pobrała się z książką")
+            return nil
+        }
+        return data
     }
 
     /// Odcinek podcastu, który jest na serwerze.

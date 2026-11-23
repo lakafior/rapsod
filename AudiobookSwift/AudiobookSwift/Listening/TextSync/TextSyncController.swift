@@ -150,11 +150,7 @@ final class TextSyncController {
 
     /// Czy mapa powstała z innych plików niż obecne (nowe nagranie albo inny e-book).
     static func isStale(_ map: TextSyncMap, item: AudiobookshelfClient.ItemDetail) -> Bool {
-        let tracks = item.media.tracks?.elements ?? []
-        let audio = tracks.map { TextSyncMap.FileFingerprint(ino: $0.ino, filename: $0.metadata?.filename, size: $0.metadata?.size) }
-        let ebook = item.media.ebookFile
-        return map.audio.map(\.ino) != audio.map(\.ino) || map.audio.map(\.size) != audio.map(\.size)
-            || map.ebook.ino != ebook?.ino || map.ebook.size != ebook?.metadata?.size
+        map.isStale(for: item)
     }
 
     // MARK: - Praca
@@ -193,7 +189,9 @@ final class TextSyncController {
     private func run(itemID: String, input: Input, rescan: @MainActor () async -> String?) async throws {
         // 1. E-book i język.
         let source = try await EpubSource.load(input.ebook)
-        let sentences = await Task.detached(priority: .userInitiated) { TextSync.sentences(spine: source.spine) }.value
+        // Zdania i rodzaje bloków (nagłówki, cytaty…) — od wersji 2 mapy, do tekstu w odtwarzaczu.
+        let document = await Task.detached(priority: .userInitiated) { TextSync.document(spine: source.spine) }.value
+        let sentences = document.sentences
         guard !sentences.isEmpty else { throw SpeechTranscription.Failure(message: "W e-booku nie ma tekstu do zsynchronizowania.") }
         guard let locale = await SpeechTranscription.locale(for: [source.language, input.language]) else {
             let lang = source.language ?? input.language ?? "nieznany"
@@ -254,7 +252,7 @@ final class TextSyncController {
         let map = TextSyncMap(
             engine: SpeechTranscription.engine, locale: locale.identifier(.bcp47),
             audio: input.tracks.map { .init(ino: $0.ino, filename: $0.filename, size: $0.size) },
-            ebook: input.ebookFingerprint, stats: aligned.stats, sentences: aligned.sentences)
+            ebook: input.ebookFingerprint, stats: aligned.stats, sentences: aligned.sentences, blocks: document.blocks)
         let url = input.folder.appending(path: TextSyncMap.fileName(forEbook: input.ebookFingerprint.filename ?? input.ebook.lastPathComponent))
         let data = try map.encoded()
         try Task.checkCancellation()

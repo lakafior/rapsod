@@ -18,6 +18,8 @@ struct PlaybackCommands: Commands {
 /// w trakcie słuchania.
 private struct PlaybackMenuItems: View {
     let player: AudiobookPlayer
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage(BookTextSettings.panelKey) private var showsText = false
 
     var body: some View {
         let loaded = player.book != nil
@@ -56,5 +58,13 @@ private struct PlaybackMenuItems: View {
             .disabled(!loaded || slower == nil)
         Button("Normalna prędkość") { player.rate = 1 }
             .disabled(!loaded || player.rate == 1)
+
+        Divider()
+
+        // Tekst książki zsynchronizowany z nagraniem (etap 11b).
+        Toggle("Tekst w odtwarzaczu", isOn: $showsText)
+            .keyboardShortcut("t", modifiers: [.control, .command])
+        Button("Tekst w osobnym oknie") { openWindow(id: BookTextWindow.windowID) }
+            .keyboardShortcut("t", modifiers: [.control, .shift, .command])
     }
 }

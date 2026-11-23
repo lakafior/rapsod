@@ -96,6 +96,9 @@ public struct DownloadedItem: Codable, Sendable, Equatable, Identifiable {
     public var isPaused: Bool
     public var completedAt: Date?
 
+    /// Mapa tekstu (etap 11b) w katalogu pozycji — sama obecność pliku wystarcza, indeks się nie zmienia.
+    public static let textSyncFileName = "textsync.json"
+
     public var isEpisode: Bool { episodeID != nil }
     public var isComplete: Bool { !files.isEmpty && files.allSatisfy { $0.state == .done } }
     public var expectedBytes: Int64 { files.reduce(0) { $0 + ($1.expectedSize ?? 0) } }
@@ -276,7 +279,7 @@ public enum DownloadIndex {
                     break
                 }
             }
-            let expected = Set(item.files.map(\.fileName) + ["cover.jpg"])
+            let expected = Set(item.files.map(\.fileName) + ["cover.jpg", DownloadedItem.textSyncFileName])
             for name in present.keys.sorted() where !expected.contains(name) { orphans.append(item.folder + "/" + name) }
             if item.hasCover, present["cover.jpg"] == nil { item.hasCover = false }
             fixed.append(item)

@@ -37,6 +37,14 @@ struct AudiobookSwiftApp: App {
         .restorationBehavior(.disabled)
         .commandsRemoved()
 
+        // Tekst książki zsynchronizowany z nagraniem (etap 11b) — większe okno do czytania przy słuchaniu.
+        Window("Tekst książki", id: BookTextWindow.windowID) {
+            BookTextWindow(listening: appDelegate.listening)
+        }
+        .defaultSize(width: 760, height: 820)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+
         Window(WebUIWindow.title, id: WebUIWindow.windowID) {
             WebUIWindow(supervisor: appDelegate.supervisor, account: appDelegate.account, mode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
         }
