@@ -96,7 +96,10 @@ Decyzja użytkownika: 13a i 13b od razu.
 - **13a. Znaczniki bez modelu.** Czasy z opisu odcinka ze słowami („autopromocja”, „partner”, „sponsor”, „reklama”, „brought to you by”). Wykrywanie reklam wstawianych dynamicznie: `itunes:duration` z kanału kontra długość pliku, sloty z nagłówka Megaphone `x-megaphone-payload-2` (format nieudokumentowany, parser własny — istniejące są na AGPL/GPL). Plik `<odcinek>.skip.json` w folderze podcastu, jak `.sync.json` (do sprawdzenia: `PodcastScanner` a pliki `.json`). Format: wersja, odcisk pliku audio (rozmiar, czas, skrót fragmentów), segmenty `start/end/kind/source/confidence`, poprawki użytkownika. W pakiecie (MPL): model pliku, wczytywanie, sprawdzenie dopasowania do odtwarzanego pliku (tolerancja ok. 1 s, przy niezgodności bez automatu), pomijanie w `AudiobookshelfPlayback` z „Cofnij” i znaczniki na pasku postępu; ustawienie per podcast.
 - **13b. Transkrypcja i zdalny klasyfikator na Macu.** Kolejka po pobraniu odcinka na serwer (jedno zadanie naraz, `DictationTranscriber` i `TranscriptCache` z 11a) oraz przyciskiem. Endpoint i klucz API zgodnego z OpenAI w ustawieniach, ze zgodą na wysyłanie transkrypcji. Okna z zakładką, docinanie granic do słowa i ciszy. Zestaw testowy z rozpoznania jako test regresji.
 - **Później:** odcinki tylko z RSS na iOS (analiza na Macu na żądanie albo transkrypcja na telefonie), Parakeet v3 przez FluidAudio (lepsza transkrypcja rozmów), ręczna korekta granic, odciski powtarzających się reklam.
-- **Do ustalenia z użytkownikiem:** domyślnie „tylko znaczniki” czy automatyczne pomijanie; autopromocje razem ze sponsorami czy osobnym przełącznikiem; przykładowy dostawca API.
+- **Ustalenia z użytkownikiem (2026-11-23):**
+  - Domyślnie automatyczne pomijanie: kto podał API i włączył „Wykrywaj fragmenty sponsorowane”, oczekuje działania. „Cofnij” i znaczniki zostają.
+  - Kategorie osobno z wyborem działania dla każdej (jak w SponsorBlock: pomijaj / tylko pokaż / ignoruj): sponsor (reklama czytana i wstawiana), autopromocja (własne produkty, książki, gry, newsletter, Patronite prowadzącego). Sloty dynamiczne to źródło, nie kategoria.
+  - Przykład w ustawieniach API: „mały model, np. Mistral Small albo Gemini Flash”. Użytkownik używa `mistral-small`.
 
 ### Bardziej natywna aplikacja
 
