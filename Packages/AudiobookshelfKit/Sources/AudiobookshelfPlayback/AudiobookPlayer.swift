@@ -231,6 +231,21 @@ public final class AudiobookPlayer {
         #endif
     }
 
+    /// Nowe rozdziały bieżącej książki (np. po edycji rozdziałów); pliki i pozycja bez zmian.
+    public func replaceChapters(_ chapters: [PlaybackChapter]) {
+        guard book != nil else { return }
+        book?.chapters = chapters
+        let id = PlaybackTimeline.chapter(in: chapters, at: currentTime)?.id
+        if id != currentChapterID { currentChapterID = id }
+        updateNowPlaying()
+    }
+
+    /// Nowa okładka bieżącej książki (plik na serwerze), np. po jej zmianie.
+    public func replaceCoverPath(_ path: String?) {
+        guard book != nil, book?.coverPath != path else { return }
+        book?.coverPath = path
+    }
+
     /// Przewija do miejsca na osi czasu książki; między plikami ładuje właściwy plik.
     public func seek(to time: Double) {
         guard let book, !book.tracks.isEmpty else { return }

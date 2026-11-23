@@ -106,6 +106,129 @@ extension Stubbed {
 }
 }
 
+/// Odtwarzanie na Macu (etap 12): pliki serwera prosto z dysku, ale postęp przez sesję serwera.
+extension Stubbed {
+@Suite @MainActor struct LocalServerFileTests {
+    init() { StubServer.reset() }
+
+    /// Sekunda ciszy w WAV — plik, który AVFoundation naprawdę otworzy.
+    private static func silentWAV() throws -> URL {
+        let rate = 8000, samples = rate
+        var data = Data("RIFF".utf8)
+        func le<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        le(UInt32(36 + samples * 2)); data.append(contentsOf: Array("WAVEfmt ".utf8))
+        le(UInt32(16)); le(UInt16(1)); le(UInt16(1)); le(UInt32(rate)); le(UInt32(rate * 2)); le(UInt16(2)); le(UInt16(16))
+        data.append(contentsOf: Array("data".utf8)); le(UInt32(samples * 2)); data.append(Data(count: samples * 2))
+        let url = FileManager.default.temporaryDirectory.appending(path: "etap12-\(UUID().uuidString).wav")
+        try data.write(to: url)
+        return url
+    }
+
+    private static func session(path: String, method: Int = 0) -> String {
+        """
+        {"id":"ses\(method)","libraryItemId":"li","mediaType":"book","displayTitle":"Książka","duration":1,"currentTime":0,"playMethod":\(method),
+         "audioTracks":[{"index":1,"startOffset":0,"duration":1,"contentUrl":"/api/items/li/file/1","metadata":{"path":"\(path)"}}],
+         "chapters":[]}
+        """
+    }
+
+    private func makeCoordinator() -> PlaybackCoordinator {
+        let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
+        let device = AudiobookshelfClient.DeviceInfo(deviceId: "mac-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "Mac")
+        let coordinator = PlaybackCoordinator(device: device) { auth }
+        coordinator.localFile = { FileManager.default.isReadableFile(atPath: $0) ? URL(filePath: $0) : nil }
+        return coordinator
+    }
+
+    private var calls: [String] { StubServer.requests.map { "\($0.request.httpMethod ?? "") \($0.request.url!.path())" } }
+
+    @Test func playsFromDiskWithServerSession() async throws {
+        let file = try Self.silentWAV()
+        defer { try? FileManager.default.removeItem(at: file) }
+        StubServer.on("POST api/items/li/play", .json(Self.session(path: file.path)))
+        StubServer.on("POST api/session/ses0/sync", .json("{}"))
+        let coordinator = makeCoordinator()
+        var saved: [PositionRecord] = []
+        coordinator.onProgressSaved = { saved.append($0) }
+        await coordinator.play(itemID: "li")
+        #expect(coordinator.player.book?.tracks.map(\.source) == [.serverFile(file)])
+        coordinator.player.isDirty = true
+        await coordinator.sync()
+        // Sesja serwera, nie „sesja lokalna” pozycji pobranej na urządzenie.
+        #expect(calls.contains { $0.hasSuffix("api/session/ses0/sync") }, "\(calls)")
+        #expect(!calls.contains { $0.contains("local") })
+        #expect(saved.map(\.itemID) == ["li"])
+        #expect(saved.first?.isUnsent == false)
+        coordinator.player.stop()
+    }
+
+    @Test func unreadableFileFallsBackToTranscoding() async throws {
+        let bad = FileManager.default.temporaryDirectory.appending(path: "etap12-\(UUID().uuidString).m4a")
+        try Data("to nie jest dźwięk".utf8).write(to: bad)
+        defer { try? FileManager.default.removeItem(at: bad) }
+        StubServer.on("POST api/items/li/play", .json(Self.session(path: bad.path)), .json(Self.session(path: bad.path, method: 2)))
+        let coordinator = makeCoordinator()
+        await coordinator.play(itemID: "li")
+        let starts = StubServer.requests.filter { $0.request.url!.path().hasSuffix("api/items/li/play") }
+        #expect(starts.count == 2)
+        #expect(starts.last.flatMap { $0.body }.map { String(decoding: $0, as: UTF8.self).contains("forceTranscode") } == true)
+        #expect(coordinator.player.book?.tracks.map(\.source) == [.sessionStream])
+        coordinator.player.stop()
+    }
+
+    @Test func discardClosesWithoutPosition() async throws {
+        let file = try Self.silentWAV()
+        defer { try? FileManager.default.removeItem(at: file) }
+        StubServer.on("POST api/items/li/play", .json(Self.session(path: file.path)))
+        StubServer.on("POST api/session/ses0/close", .json("{}"))
+        let coordinator = makeCoordinator()
+        await coordinator.play(itemID: "li")
+        coordinator.journal.recordLocal(itemID: "li", episodeID: nil, currentTime: 0.5, duration: 1)
+        coordinator.player.isDirty = true
+        await coordinator.discardCurrent()
+        #expect(coordinator.player.book == nil)
+        #expect(coordinator.journal.position(itemID: "li", episodeID: nil) == nil, "wyzerowany postęp nie wraca z dziennika")
+        let close = try #require(StubServer.requests.last { $0.request.url!.path().hasSuffix("api/session/ses0/close") })
+        #expect((close.body ?? Data()).isEmpty || String(decoding: close.body!, as: UTF8.self) == "{}", "bez pozycji")
+        #expect(!calls.contains { $0.hasPrefix("PATCH") || $0.hasSuffix("/sync") })
+    }
+
+    @Test func serverStoppedKeepsPositionInJournal() async throws {
+        let file = try Self.silentWAV()
+        defer { try? FileManager.default.removeItem(at: file) }
+        StubServer.on("POST api/items/li/play", .json(Self.session(path: file.path)))
+        let coordinator = makeCoordinator()
+        var reachable = true
+        coordinator.isReachable = { reachable }
+        await coordinator.play(itemID: "li")
+        coordinator.player.seek(to: 0.4)
+        StubServer.clearRequests()
+        // Serwer (proces potomny na Macu) zatrzymany: zamknięcie bez sieci, pozycja do dziennika.
+        reachable = false
+        await coordinator.stop()
+        #expect(calls.isEmpty, "\(calls)")
+        let unsent = try #require(coordinator.journal.position(itemID: "li", episodeID: nil))
+        #expect(unsent.isUnsent)
+        #expect(unsent.currentTime == 0.4)
+    }
+
+    @Test func replacingChaptersKeepsPosition() {
+        let player = AudiobookPlayer()
+        let book = PlaybackBook(itemID: "li", episodeID: nil, title: "K", author: nil, duration: 100,
+                                tracks: [PlaybackTrack(startOffset: 0, duration: 100, title: "01", source: .sessionTrack(index: 1))],
+                                chapters: [PlaybackChapter(id: 0, start: 0, end: 100, title: "Całość")])
+        player.start(book, at: 60, autoplay: false)
+        #expect(player.currentChapter?.title == "Całość")
+        player.replaceChapters([PlaybackChapter(id: 0, start: 0, end: 50, title: "Jeden"), PlaybackChapter(id: 1, start: 50, end: 100, title: "Dwa")])
+        #expect(player.currentChapter?.title == "Dwa")
+        #expect(player.currentTime == 60)
+        player.replaceCoverPath("/okladka.jpg")
+        #expect(player.book?.coverPath == "/okladka.jpg")
+        player.stop()
+    }
+}
+}
+
 @MainActor private final class ConnectionErrors {
     var count = 0
 }

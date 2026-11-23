@@ -3,6 +3,7 @@
 // panel boczny zamiast pełnego ekranu, pasek odtwarzania na dole okna, sterowanie w menu ikony,
 // bez muzyki, kolejki i wyboru wyjścia AirPlay.
 
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Pasek na dole okna, gdy coś jest załadowane: okładka, tytuł, rozdział, sterowanie.
@@ -18,7 +19,7 @@ struct MiniPlayerBar: View {
                 CoverView(image: cover, symbol: "headphones")
                     .frame(width: 36, height: 36)
                     .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
-                        cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 40)
+                        cover = await listening.cover(for: book.itemID, path: book.coverPath, size: 40)
                     }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(book.title).font(.callout.weight(.semibold)).lineLimit(1)

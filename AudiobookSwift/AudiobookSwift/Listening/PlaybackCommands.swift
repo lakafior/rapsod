@@ -1,3 +1,4 @@
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Menu „Odtwarzanie” w menu głównym: te same polecenia co przyciski odtwarzacza.

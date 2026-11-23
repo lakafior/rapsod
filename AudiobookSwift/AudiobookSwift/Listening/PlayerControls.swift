@@ -3,6 +3,7 @@
 // panel boczny zamiast pełnego ekranu, pasek odtwarzania na dole okna, sterowanie w menu ikony,
 // bez muzyki, kolejki i wyboru wyjścia AirPlay.
 
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Poprzedni rozdział, −15 s, odtwarzaj/pauza, +30 s, następny rozdział.
@@ -54,16 +55,12 @@ struct SpeedMenu: View {
 
     var body: some View {
         Picker("Prędkość", selection: Bindable(player).rate) {
-            ForEach(AudiobookPlayer.rates, id: \.self) { Text(Self.label($0)).tag($0) }
+            ForEach(AudiobookPlayer.rates, id: \.self) { Text(PlaybackFormat.rate($0)).tag($0) }
         }
         .labelsHidden()
         .fixedSize()
         .help("Prędkość odtwarzania")
         .accessibilityIdentifier("player.speed")
-    }
-
-    static func label(_ rate: Float) -> String {
-        rate.formatted(.number.precision(.fractionLength(0...2))) + "×"
     }
 }
 
@@ -72,7 +69,7 @@ struct SleepMenu: View {
 
     var body: some View {
         Menu {
-            ForEach(AudiobookPlayer.SleepTimer.choices, id: \.self) { choice in
+            ForEach(SleepTimer.choices, id: \.self) { choice in
                 Button(choice.label) { player.setSleepTimer(choice) }
             }
             if player.sleepTimer != nil {

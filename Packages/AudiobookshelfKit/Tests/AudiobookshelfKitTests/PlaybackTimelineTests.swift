@@ -123,6 +123,43 @@ private let chapters = [
         #expect(!PlaybackTimeline.needsTranscoding(session))
     }
 
+    @Test func serverFilesReadFromDisk() throws {
+        let json = """
+        {"id":"ses","libraryItemId":"li","mediaType":"book","duration":100,"currentTime":0,"playMethod":0,
+         "audioTracks":[
+           {"index":1,"startOffset":0,"duration":40,"contentUrl":"/api/items/li/file/1","metadata":{"path":"/x/01.m4a"}},
+           {"index":2,"startOffset":40,"duration":60,"contentUrl":"/api/items/li/file/2","metadata":{"path":"/brak/02.m4a"}}],
+         "chapters":[]}
+        """
+        let session = try JSONDecoder().decode(AudiobookshelfClient.PlaybackSession.self, from: Data(json.utf8))
+        // Mac: plik czytelny na dysku gra prosto z niego, niedostępny — przez sesję serwera.
+        let mapped = PlaybackTimeline.tracks(from: session) { $0.hasPrefix("/x/") ? URL(filePath: $0) : nil }
+        #expect(mapped.map(\.source) == [.serverFile(URL(filePath: "/x/01.m4a")), .sessionTrack(index: 2)])
+        #expect(!mapped[0].source.isServer, "plik z dysku nie zależy od adresu serwera")
+
+        // Transkodowanie: zawsze strumień, nawet gdy plik leży na dysku.
+        let transcoded = try JSONDecoder().decode(AudiobookshelfClient.PlaybackSession.self, from: Data(json.replacingOccurrences(of: "\"playMethod\":0", with: "\"playMethod\":2").utf8))
+        #expect(PlaybackTimeline.tracks(from: transcoded) { URL(filePath: $0) }.allSatisfy { $0.source == .sessionStream })
+    }
+
+    @Test func clockAndRateLabels() {
+        #expect(PlaybackFormat.clock(0) == "0:00")
+        #expect(PlaybackFormat.clock(59.9) == "0:59", "ułamki odcinane, nie zaokrąglane")
+        #expect(PlaybackFormat.clock(725) == "12:05")
+        #expect(PlaybackFormat.clock(3723) == "1:02:03")
+        #expect(PlaybackFormat.clock(-5) == "0:00")
+        #expect(PlaybackFormat.clock(.nan) == "0:00")
+        #expect(PlaybackFormat.clock(.infinity) == "0:00")
+        // Wariant Maca: zaokrąglanie jak dawne `Duration.formatted(.time)`.
+        #expect(PlaybackFormat.clock(59.6, rounding: .toNearestOrEven) == "1:00")
+        #expect(PlaybackFormat.clock(59.4, rounding: .toNearestOrEven) == "0:59")
+        #expect(PlaybackFormat.clock(45.5, rounding: .toNearestOrEven) == "0:46")
+        #expect(PlaybackFormat.rate(1) == "1×")
+        #expect(PlaybackFormat.rate(2) == "2×")
+        let quarter = PlaybackFormat.rate(1.25)
+        #expect(quarter.hasPrefix("1") && quarter.hasSuffix("25×") && quarter.count == 5)
+    }
+
     @Test func unplayableFormatNeedsTranscoding() throws {
         let json = """
         {"id":"ses","libraryItemId":"li","mediaType":"book","duration":10,"currentTime":0,"playMethod":0,

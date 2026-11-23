@@ -1,5 +1,6 @@
 import AppKit
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Zakładki książki: przejście do miejsca, zmiana nazwy, usunięcie.
@@ -23,7 +24,7 @@ struct BookmarksSection: View {
                                     Image(systemName: "bookmark.fill").foregroundStyle(.tint)
                                     Text(bookmark.title).lineLimit(1)
                                     Spacer()
-                                    Text(ChapterScrubber.time(bookmark.time)).monospacedDigit().foregroundStyle(.secondary)
+                                    Text(PlaybackFormat.clock(bookmark.time, rounding: .toNearestOrEven)).monospacedDigit().foregroundStyle(.secondary)
                                 }
                                 .contentShape(Rectangle())
                             }
@@ -62,7 +63,7 @@ struct ChaptersSection: View {
     var body: some View {
         let chapters = item.media.chapters ?? []
         if !chapters.isEmpty {
-            let titles = Dictionary(zip(chapters.map(\.id), ChapterTitles.display(chapters.map(\.title))), uniquingKeysWith: { first, _ in first })
+            let titles = Dictionary(zip(chapters.map(\.id), PlaybackTimeline.displayTitles(chapters.map(\.title))), uniquingKeysWith: { first, _ in first })
             DisclosureGroup("Rozdziały (\(chapters.count))") {
                 Table(chapters) {
                     TableColumn("#") { Text("\($0.id + 1)").monospacedDigit() }.width(36)
@@ -71,8 +72,8 @@ struct ChaptersSection: View {
                             .buttonStyle(.link)
                             .help("Odtwarzaj od tego rozdziału")
                     }
-                    TableColumn("Początek") { Text(ChapterScrubber.time($0.start)).monospacedDigit() }.width(80)
-                    TableColumn("Czas") { Text(ChapterScrubber.time($0.end - $0.start)).monospacedDigit() }.width(80)
+                    TableColumn("Początek") { Text(PlaybackFormat.clock($0.start, rounding: .toNearestOrEven)).monospacedDigit() }.width(80)
+                    TableColumn("Czas") { Text(PlaybackFormat.clock($0.end - $0.start, rounding: .toNearestOrEven)).monospacedDigit() }.width(80)
                 }
                 .frame(height: min(CGFloat(chapters.count) * 24 + 32, 360))
                 .accessibilityIdentifier("book.chapters")
@@ -95,7 +96,7 @@ struct TracksSection: View {
                     TableColumn("Kodek") { Text($0.codec ?? "—") }.width(60)
                     TableColumn("Bitrate") { Text($0.bitRate.map { "\(Int($0 / 1000)) kb/s" } ?? "—") }.width(70)
                     TableColumn("Rozmiar") { Text(Formats.size($0.metadata?.size)) }.width(80)
-                    TableColumn("Czas") { Text(ChapterScrubber.time($0.duration ?? 0)).monospacedDigit() }.width(80)
+                    TableColumn("Czas") { Text(PlaybackFormat.clock($0.duration ?? 0, rounding: .toNearestOrEven)).monospacedDigit() }.width(80)
                 }
                 .frame(height: min(CGFloat(tracks.count) * 24 + 32, 300))
             }

@@ -8,7 +8,8 @@
 // gra strumień z serwera przez sieć. Kształty zapytań — z kodu serwera audiobookshelf
 // (`SessionController.js`, `PlaybackSessionManager.js`), bez przenoszenia jego kodu.
 // Odcinki prosto z kanału RSS (etap 10e), pliki pobrane na telefon i trwała kolejka postępu
-// (etap 10f): kod własny projektu.
+// (etap 10f): kod własny projektu. Od etapu 12 ta sama klasa obsługuje odtwarzanie w aplikacji na Maca
+// (pliki prosto z dysku przez `localFile`, zdarzenia dla kolejki playlisty i postępu w oknie).
 
 import AVFoundation
 import AudiobookshelfKit
@@ -75,6 +76,16 @@ public final class PlaybackCoordinator {
     @ObservationIgnored public var onConnectionError: (@MainActor () -> Void)?
     /// Zapis postępu doszedł do serwera — połączenie znowu działa.
     @ObservationIgnored public var onServerReached: (@MainActor () -> Void)?
+    /// Plik serwera dostępny na tym komputerze (ścieżka z serwera → adres do odczytu albo `nil`).
+    /// Mac: serwer działa obok, więc dźwięk idzie prosto z dysku, a postęp — przez sesję serwera.
+    @ObservationIgnored public var localFile: (@Sendable (_ serverPath: String) -> URL?)?
+    /// Serwer przyjął pozycję bieżącej książki (wpis z dziennika, już uzgodniony z serwerem).
+    @ObservationIgnored public var onProgressSaved: (@MainActor (PositionRecord) -> Void)?
+    /// Książka dobiegła końca i jej ukończenie zostało zapisane (np. następna z kolejki playlisty).
+    @ObservationIgnored public var onFinished: (@MainActor (PlaybackBook) async -> Void)?
+    /// Komunikat, gdy serwer nie odpowiada przy starcie słuchania (Mac podaje własny — tam nie ma
+    /// „pozycji pobranych na telefon”).
+    @ObservationIgnored public var unreachableMessage = PlaybackCoordinator.offlineMessage
 
     public static let syncInterval: Duration = .seconds(15)
 
@@ -180,7 +191,7 @@ public final class PlaybackCoordinator {
             return
         }
         guard isReachable() else {
-            loadError = Self.offlineMessage
+            loadError = unreachableMessage
             return
         }
         guard let auth = authProvider() else { return }
@@ -194,15 +205,17 @@ public final class PlaybackCoordinator {
             var playback = try await auth.perform {
                 try await $0.startPlayback(itemID: itemID, episodeID: episodeID, device: device, transcode: false, token: $1)
             }
-            if PlaybackTimeline.needsTranscoding(playback) {
+            var tracks = PlaybackTimeline.tracks(from: playback, localFile: localFile)
+            let playable = await Self.serverFilesPlayable(tracks)
+            if PlaybackTimeline.needsTranscoding(playback) || !playable {
                 // Formaty spoza AVFoundation (np. WMA): serwer transkoduje do HLS. Nowa sesja tego
                 // samego urządzenia zamyka poprzednią.
                 logger.notice("Format spoza AVFoundation — odtwarzanie przez transkodowanie")
                 playback = try await auth.perform {
                     try await $0.startPlayback(itemID: itemID, episodeID: episodeID, device: device, transcode: true, token: $1)
                 }
+                tracks = PlaybackTimeline.tracks(from: playback)
             }
-            let tracks = PlaybackTimeline.tracks(from: playback)
             guard !tracks.isEmpty else { throw PlaybackError.noAudio }
 
             var start = PlaybackTimeline.rewoundStart(playback.currentTime)
@@ -239,7 +252,7 @@ public final class PlaybackCoordinator {
             loadArtwork(book)
         } catch {
             logger.error("Start odtwarzania: \(error.localizedDescription, privacy: .public)")
-            loadError = AddressSelection.isConnectionError(error) ? Self.offlineMessage : error.localizedDescription
+            loadError = AddressSelection.isConnectionError(error) ? unreachableMessage : error.localizedDescription
             reportIfConnection(error)
         }
     }
@@ -452,6 +465,16 @@ public final class PlaybackCoordinator {
         return true
     }
 
+    /// Pliki serwera czytane z dysku, których AVFoundation nie otworzy mimo znanego rozszerzenia
+    /// (np. nietypowy kodek) — wtedy, jak dla WMA, serwer transkoduje.
+    private static func serverFilesPlayable(_ tracks: [PlaybackTrack]) async -> Bool {
+        for track in tracks {
+            guard case .serverFile(let url) = track.source else { continue }
+            if await (try? AVURLAsset(url: url).load(.isPlayable)) != true { return false }
+        }
+        return true
+    }
+
     /// Adres do odtworzenia (dla `http://` najpierw ten sam po HTTPS) i długość pliku według
     /// AVFoundation — prawdziwa, nie z kanału (`nil`, gdy plik jej nie podaje).
     private static func probe(_ original: URL) async throws -> (URL, Double?) {
@@ -540,6 +563,34 @@ public final class PlaybackCoordinator {
         endSyncLoop()
     }
 
+    /// Zamyka bieżącą pozycję bez zapisu pozycji (np. przed wyzerowaniem postępu): sesja na serwerze
+    /// zamykana bez danych, niewysłana pozycja i sesja lokalna znikają z dziennika — kolejna
+    /// synchronizacja nie założy postępu od nowa.
+    public func discardCurrent() async {
+        guard let book = player.book else { return }
+        player.isDirty = false
+        player.pause()
+        if let syncInFlight { await syncInFlight.value }
+        endSyncLoop()
+        player.isDirty = false
+        _ = player.takeListenedTime()
+        if let session, session.key == book.key, isReachable(), let auth = authProvider() {
+            try? await auth.perform { try await $0.closeSession(id: session.id, nil, token: $1) }
+        }
+        if let id = localSessionID { journal.removeSession(id: id) }
+        localSessionID = nil
+        switch target(for: book) {
+        case .server(let itemID, let episodeID): journal.removePosition(itemID: itemID, episodeID: episodeID)
+        case .local: if let feedKey = book.feedKey { journal.remove(itemID: book.itemID, feedKey: feedKey) }
+        }
+        session = nil
+        lastAgreed = nil
+        player.stop()
+        redirected = [:]
+        redirectedDurations = [:]
+        externalTemplate = nil
+    }
+
     /// Połączenie z serwerem wróciło albo zmienił się jego adres.
     public func connectionChanged(baseURLChanged: Bool) async {
         if baseURLChanged, let book = player.book, !player.isPlaying || player.isStalled,
@@ -568,7 +619,7 @@ public final class PlaybackCoordinator {
 
     private func asset(for track: PlaybackTrack, fresh: Bool) async throws -> AVURLAsset {
         switch track.source {
-        case .file(let url), .remote(let url): return AVURLAsset(url: url)
+        case .file(let url), .remote(let url), .serverFile(let url): return AVURLAsset(url: url)
         case .sessionTrack, .sessionStream: break
         }
         guard let auth = authProvider() else { throw AudiobookshelfClient.APIError.unauthorized }
@@ -580,7 +631,7 @@ public final class PlaybackCoordinator {
         switch track.source {
         case .sessionTrack(let index):
             path = "public/session/\(session.id)/track/\(index)"
-        case .sessionStream, .file, .remote:
+        case .sessionStream, .file, .remote, .serverFile:
             path = "hls/\(session.id)/output.m3u8"
         }
         return AVURLAsset(url: auth.baseURL.appending(path: path))
@@ -637,6 +688,7 @@ public final class PlaybackCoordinator {
             let end = beginBackgroundWork?("Koniec książki")
             Task {
                 await finish(book)
+                await onFinished?(book)
                 end?()
             }
         case .remoteFailed:
@@ -764,6 +816,7 @@ public final class PlaybackCoordinator {
         let now = Date.now
         journal.recordLocal(itemID: itemID, episodeID: episodeID, currentTime: time, duration: duration, isFinished: finished, at: now)
         journal.markSent(itemID: itemID, episodeID: episodeID, upTo: now)
+        if let record = journal.position(itemID: itemID, episodeID: episodeID) { onProgressSaved?(record) }
     }
 
     private func saveProgress(_ book: PlaybackBook, time: Double, auth: ListeningAuth) async throws {

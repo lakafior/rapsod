@@ -313,7 +313,7 @@ private struct ChapterRow: View {
                 .foregroundStyle(.primary)
                 .fontWeight(isCurrent ? .semibold : .regular)
             Spacer()
-            Text(TimeText.clock(chapter.start))
+            Text(PlaybackFormat.clock(chapter.start))
                 .font(.footnote.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -407,14 +407,8 @@ private struct ProgressSummary: View {
     }
 }
 
-/// Czas do pokazania: „1:02:03” albo „12:05”, oraz opisowo „1 godz. 2 min”.
+/// Czas opisowo: „1 godz. 2 min” (zegarowo — `PlaybackFormat.clock` z pakietu).
 enum TimeText {
-    static func clock(_ seconds: Double) -> String {
-        let total = Int(max(0, seconds.isFinite ? seconds : 0).rounded(.down))
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
-    }
-
     static func long(_ seconds: Double) -> String {
         let value = max(0, seconds.isFinite ? seconds : 0)
         let duration = Duration.seconds(value)

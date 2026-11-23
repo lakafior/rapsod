@@ -3,6 +3,7 @@
 // panel boczny zamiast pełnego ekranu, pasek odtwarzania na dole okna, sterowanie w menu ikony,
 // bez muzyki, kolejki i wyboru wyjścia AirPlay.
 
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Pełny odtwarzacz w panelu bocznym okna: okładka, rozdział, suwak, przewijanie,
@@ -121,7 +122,7 @@ struct PlayerPanel: View {
             .padding()
             // Licznik okładki: po edycji okładki odtwarzacz wczytuje nową, jak `AsyncCover`.
             .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
-                cover = await listening.cover(for: book.itemID, path: listening.nowPlayingCoverPath, size: 300)
+                cover = await listening.cover(for: book.itemID, path: book.coverPath, size: 300)
             }
         } else {
             ContentUnavailableView("Nic nie gra", systemImage: "headphones", description: Text("Wybierz książkę z listy."))
@@ -141,7 +142,7 @@ struct BookmarksMenu: View {
             if !bookmarks.isEmpty {
                 Divider()
                 ForEach(bookmarks) { bookmark in
-                    Button("\(ChapterScrubber.time(bookmark.time))  \(bookmark.title)") { listening.player.seek(to: bookmark.time) }
+                    Button("\(PlaybackFormat.clock(bookmark.time, rounding: .toNearestOrEven))  \(bookmark.title)") { listening.player.seek(to: bookmark.time) }
                 }
             }
         } label: {

@@ -3,6 +3,7 @@
 // bieżące zdanie, śledzenie, okno akapitów) jest wspólna w pakiecie (`TextFollowModel`).
 
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 import SwiftUI
 
 /// Numer zdania w mapie, doczepiony do kawałka tekstu akapitu.
