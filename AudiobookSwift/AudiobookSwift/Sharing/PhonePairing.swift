@@ -59,6 +59,8 @@ final class PhonePairing {
 
     /// Telefony wszystkich kont (od najnowszego).
     private(set) var devices: [Device] = []
+    /// Liczba pozostałych kluczy API (nie telefonów) każdego konta — do profilu osoby.
+    private(set) var otherKeyCounts: [String: Int] = [:]
     private(set) var isLoading = false
     private(set) var loadError: String?
 
@@ -120,6 +122,8 @@ final class PhonePairing {
         defer { isLoading = false }
         do {
             let keys = try await account.withAdminToken { try await $0.apiKeys(token: $1) }
+            otherKeyCounts = Dictionary(grouping: keys.filter { !$0.name.hasPrefix(Self.keyPrefix) }, by: { $0.userId ?? "" })
+                .mapValues(\.count)
             devices = keys
                 .filter { $0.name.hasPrefix(Self.keyPrefix) && $0.userId != nil }
                 .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
@@ -166,7 +170,10 @@ final class PhonePairing {
             key: created.secret
         )
         let code = Code(url: try payload.url(), deviceName: deviceName, keyID: created.key.id)
+        // Jedyny telefon zna obecne adresy; przy innych telefonach baner o adresach zostaje.
+        let wasFirst = devices.isEmpty
         await refresh()
+        if wasFirst { sharing.markRemoteAddressesKnownToPhones() }
         return code
     }
 
@@ -176,7 +183,9 @@ final class PhonePairing {
     func addressesCode() -> URL? {
         guard let serverID = sharing.settings.serverID, !addresses.isEmpty else { return nil }
         let payload = AddressesPayload(server: .init(id: serverID, name: Self.serverName), addresses: addresses)
-        return try? payload.url()
+        guard let url = try? payload.url() else { return nil }
+        sharing.markRemoteAddressesKnownToPhones()
+        return url
     }
 
     /// Odłącza telefon: usuwa jego klucz z serwera. Telefon dostaje 401 przy następnym zapytaniu.

@@ -1,33 +1,21 @@
 import SwiftUI
 
-/// Wiersze trybu „Cloudflare Tunnel” na stronie „Dostęp zdalny”: instalacja `cloudflared`,
-/// token z panelu, stan połączenia, opublikowany adres i log tunelu.
+/// Wiersze trybu „Cloudflare Tunnel” na stronie „Dostęp zdalny”: instalacja `cloudflared`, stan,
+/// opublikowany adres i token (pole w wierszu przy pierwszym ustawieniu, potem „Zmień…” w arkuszu).
+/// Log tunelu jest osobno, pod „Zaawansowane” (`CloudflareTunnelLogRows`).
 struct CloudflareTunnelSection: View {
     let tunnel: CloudflareTunnel
-    /// Hasło konta użytkownika — tylko do ostrzeżenia o słabym haśle.
-    let phonePassword: String?
 
     @State private var tokenText = ""
-    @State private var showsLog = false
+    @State private var changingToken = false
 
     var body: some View {
         if tunnel.cloudflared == nil {
             installHint
         } else {
-            tokenRows
             statusRows
+            tokenRows
         }
-
-        if let password = phonePassword, password.count < 16 {
-            Text("Przez tunel serwer jest dostępny z całego internetu. Hasło konta użytkownika jest krótkie — ustaw dłuższe (najlepiej losowe: puste pole przy zakładaniu konta).")
-                .font(.footnote)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        Text("Darmowy plan Cloudflare zastrzega, że wideo i „nieproporcjonalnie dużo” plików audio i innych dużych plików wymaga płatnych usług; to dotyczy też tuneli. Przy słuchaniu audiobooków Cloudflare może ograniczyć ten adres. Szczegóły w README.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Brak cloudflared
@@ -46,35 +34,35 @@ struct CloudflareTunnelSection: View {
 
     @ViewBuilder
     private var tokenRows: some View {
-        if let tunnelID = tunnel.tunnelID {
-            LabeledContent("Tunel") {
+        if tunnel.tunnelID != nil {
+            LabeledContent("Token tunelu") {
                 HStack {
-                    Text(tunnelID)
-                        .font(.callout.monospaced())
-                        .textSelection(.enabled)
-                    Button("Usuń token") { Task { await tunnel.removeToken() } }
+                    Text("zapisany w pęku kluczy").foregroundStyle(.secondary)
+                    Button("Zmień…") { changingToken = true }
                 }
             }
-        }
-        LabeledContent(tunnel.tunnelID == nil ? "Token tunelu" : "Nowy token") {
-            HStack {
-                SecureField("Token tunelu", text: $tokenText, prompt: Text("wklej token lub polecenie z panelu Cloudflare"))
-                    .labelsHidden()
-                    .onSubmit(saveToken)
-                Button("Zapisz", action: saveToken)
-                    .disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .sheet(isPresented: $changingToken) {
+                TunnelTokenSheet(tunnel: tunnel)
             }
-        }
-        if tunnel.tunnelID == nil {
-            Text("W panelu Cloudflare: Networking → Tunnels → Create tunnel (Cloudflared), skopiuj polecenie instalacji z tokenem i wklej je tutaj. Potem w zakładce Routes dodaj „Published application”: własna nazwa w Twojej domenie, usługa http://127.0.0.1:\(String(ServerEnvironment.port)). Token trafia tylko do pęku kluczy.")
+        } else {
+            LabeledContent("Token tunelu") {
+                HStack {
+                    SecureField("Token tunelu", text: $tokenText, prompt: Text("wklej token lub polecenie z panelu Cloudflare"))
+                        .labelsHidden()
+                        .onSubmit(saveToken)
+                    Button("Zapisz", action: saveToken)
+                        .disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            Text(TunnelTokenSheet.instruction)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-        if let error = tunnel.tokenError {
-            Text(error)
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
+            if let error = tunnel.tokenError {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -91,7 +79,7 @@ struct CloudflareTunnelSection: View {
 
     @ViewBuilder
     private var statusRows: some View {
-        LabeledContent("Stan tunelu") {
+        LabeledContent("Stan") {
             Label(tunnel.state.title, systemImage: tunnel.state.symbolName)
                 .foregroundStyle(tunnel.state.tint)
         }
@@ -113,9 +101,86 @@ struct CloudflareTunnelSection: View {
                 Button("Spróbuj ponownie") { Task { await tunnel.retry() } }
             }
         }
-        if !tunnel.recentLog.isEmpty {
-            DisclosureGroup("Log tunelu", isExpanded: $showsLog) {
-                // Tekst logu składany tylko po rozwinięciu — zwinięta grupa nie przelicza go przy każdym wpisie.
+        if let url = tunnel.publicURL {
+            CopyableRow(title: "Adres", value: url.absoluteString)
+        }
+    }
+}
+
+/// Zmiana albo usunięcie zapisanego tokenu tunelu (dawne „Nowy token” i „Usuń token”).
+struct TunnelTokenSheet: View {
+    let tunnel: CloudflareTunnel
+    @Environment(\.dismiss) private var dismiss
+    @State private var tokenText = ""
+    @State private var confirmingRemoval = false
+
+    static let instruction = "W panelu Cloudflare: Networking → Tunnels → Create tunnel (Cloudflared), skopiuj polecenie instalacji z tokenem i wklej je tutaj. Potem w zakładce Routes dodaj „Published application”: własna nazwa w Twojej domenie, usługa http://127.0.0.1:\(String(ServerEnvironment.port)). Token trafia tylko do pęku kluczy."
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Form {
+                Section {
+                    if let tunnelID = tunnel.tunnelID {
+                        LabeledContent("Obecny tunel") {
+                            Text(tunnelID)
+                                .font(.callout.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
+                    SecureField("Nowy token", text: $tokenText, prompt: Text("wklej token lub polecenie z panelu Cloudflare"))
+                    if let error = tunnel.tokenError {
+                        Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    }
+                } header: {
+                    Text("Token tunelu Cloudflare")
+                } footer: {
+                    Text(Self.instruction)
+                }
+                Section {
+                    Button("Usuń token…", role: .destructive) { confirmingRemoval = true }
+                } footer: {
+                    Text("Bez tokenu tunel się zatrzyma, a adres spoza domu przestanie działać.")
+                }
+            }
+            .formStyle(.grouped)
+            HStack {
+                Spacer()
+                Button("Anuluj", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Zapisz") {
+                    let text = tokenText
+                    Task { if await tunnel.saveToken(text) { dismiss() } }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 540, height: 380)
+        .confirmationDialog("Usunąć token tunelu?", isPresented: $confirmingRemoval) {
+            Button("Usuń token", role: .destructive) {
+                Task {
+                    await tunnel.removeToken()
+                    dismiss()
+                }
+            }
+        } message: {
+            Text("Tunel się zatrzyma. Telefony i inne urządzenia spoza domu stracą połączenie, dopóki nie zapiszesz nowego tokenu.")
+        }
+        .onDisappear { tokenText = "" }
+    }
+}
+
+/// Log tunelu (rozwijany, składany dopiero po rozwinięciu) — pod „Zaawansowane” na „Dostępie zdalnym”.
+struct CloudflareTunnelLogRows: View {
+    let tunnel: CloudflareTunnel
+    @State private var showsLog = false
+
+    var body: some View {
+        if tunnel.recentLog.isEmpty {
+            LabeledContent("Log tunelu", value: "pusty")
+        } else {
+            DisclosureGroup("Log tunelu (\(tunnel.recentLog.count) wpisów)", isExpanded: $showsLog) {
                 if showsLog {
                     VStack(alignment: .trailing) {
                         ScrollView([.vertical, .horizontal]) {

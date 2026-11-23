@@ -2,65 +2,33 @@ import AppKit
 import AudiobookshelfKit
 import SwiftUI
 
-/// Dostęp: klucze API (`client/pages/config/api-keys`) i sposób logowania
-/// (`client/pages/config/authentication.vue`), przełączane u góry strony.
-struct AccessSettingsPage: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case apiKeys = "Klucze API"
-        case login = "Logowanie"
-        var id: Self { self }
-    }
-
-    let models: AppModels
-    @State private var tab: Tab = .apiKeys
-    // Modele kart trzymane tutaj, żeby przełączenie karty nie wyrzucało ich (i stanu filtrów) — wracając, karta tylko się odświeża.
-    @State private var apiKeysModel: ApiKeysModel?
-    @State private var authModel: AuthSettingsModel?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Picker("Widok", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .padding(.top, 12)
-            switch tab {
-            case .apiKeys:
-                AdminPage(account: models.account, title: "Klucze API", make: { cachedApiKeysModel() }, load: { await $0.load() }) { model in
-                    ApiKeysContent(model: model, account: models.account)
-                }
-            case .login:
-                AdminPage(account: models.account, title: "Logowanie", make: { cachedAuthModel() }, load: { await $0.load() }) { model in
-                    AuthContent(model: model)
-                }
-            }
-        }
-    }
-
-    private func cachedApiKeysModel() -> ApiKeysModel {
-        if let apiKeysModel { return apiKeysModel }
-        let made = ApiKeysModel(account: models.account)
-        apiKeysModel = made
-        return made
-    }
-
-    private func cachedAuthModel() -> AuthSettingsModel {
-        if let authModel { return authModel }
-        let made = AuthSettingsModel(account: models.account)
-        authModel = made
-        return made
-    }
-}
+// Zawartość „Zaawansowane” na stronie „Dostęp zdalny” (etap 3 planu): klucze API
+// (`client/pages/config/api-keys`) i logowanie (`client/pages/config/authentication.vue`).
+// Dawniej strona „Dostęp” z dwiema kartami.
 
 // MARK: - Klucze API
 
-private struct ApiKeysContent: View {
+/// Klucze API wszystkich kont. Klucze telefonów (przedrostek `PhonePairing.keyPrefix`) są
+/// oznaczone, prowadzą do profilu osoby, a wyłączenie i usunięcie pytają z ostrzeżeniem.
+struct ApiKeysContent: View {
     let model: ApiKeysModel
-    let account: ServerAccount
+    let pairing: PhonePairing
+    @Environment(SettingsNavigation.self) private var navigation
     @State private var creating = false
-    @State private var keyToDelete: AudiobookshelfClient.ApiKey?
+    /// Jedno okno potwierdzenia na sekcję: dwa `confirmationDialog` na tym samym widoku
+    /// SwiftUI nie pokazuje (drugi milczał).
+    @State private var pending: PendingAction?
+
+    private enum PendingAction: Identifiable {
+        case delete(AudiobookshelfClient.ApiKey)
+        case disablePhone(AudiobookshelfClient.ApiKey)
+        var key: AudiobookshelfClient.ApiKey {
+            switch self { case .delete(let key), .disablePhone(let key): key }
+        }
+        var id: String {
+            switch self { case .delete(let key): "d" + key.id; case .disablePhone(let key): "w" + key.id }
+        }
+    }
 
     var body: some View {
         Section {
@@ -69,7 +37,19 @@ private struct ApiKeysContent: View {
                 Text("Nie ma żadnego klucza API.").foregroundStyle(.secondary)
             }
             ForEach(model.keys) { key in
-                ApiKeyRow(key: key, model: model, delete: { keyToDelete = key })
+                ApiKeyRow(
+                    key: key,
+                    model: model,
+                    toggle: {
+                        if Self.isPhone(key), key.isActive {
+                            pending = .disablePhone(key)
+                        } else {
+                            Task { await model.setActive(key, !key.isActive); await pairing.refresh() }
+                        }
+                    },
+                    delete: { pending = .delete(key) },
+                    openProfile: { navigation.show(.user(id: $0)) }
+                )
             }
             HStack {
                 Spacer()
@@ -79,7 +59,7 @@ private struct ApiKeysContent: View {
         } header: {
             Text("Klucze API")
         } footer: {
-            Text("Klucz API to stałe hasło dla skryptów i innych programów: działa jak zalogowanie na wybrane konto, z jego uprawnieniami, i nie wygasa, chyba że ustawisz termin. Wysyła się go w nagłówku „Authorization: Bearer <klucz>”. Wyłączony albo usunięty klucz przestaje działać od razu.")
+            Text("Klucz API to stałe hasło dla skryptów i innych programów: działa jak zalogowanie na wybrane konto, z jego uprawnieniami, i nie wygasa, chyba że ustawisz termin. Wysyła się go w nagłówku „Authorization: Bearer <klucz>”. Wyłączony albo usunięty klucz przestaje działać od razu. Klucze telefonów powstają przy „Podłącz telefon…” w profilu osoby.")
                 .foregroundStyle(.secondary)
         }
         .sheet(isPresented: $creating) {
@@ -90,25 +70,67 @@ private struct ApiKeysContent: View {
                 ApiKeySecretSheet(name: created.name, secret: created.secret) { model.createdSecret = nil }
             }
         }
-        .confirmationDialog("Usunąć klucz „\(keyToDelete?.name ?? "")”?", item: $keyToDelete) { key in
-            Button("Usuń", role: .destructive) { Task { await model.delete(key) } }
+        .confirmationDialog(dialogTitle, item: $pending) { action in
+            switch action {
+            case .delete(let key):
+                Button(Self.isPhone(key) ? "Odłącz telefon (usuń klucz)" : "Usuń", role: .destructive) {
+                    Task { await model.delete(key); await pairing.refresh() }
+                }
+            case .disablePhone(let key):
+                Button("Wyłącz klucz", role: .destructive) {
+                    Task { await model.setActive(key, false); await pairing.refresh() }
+                }
+            }
             Button("Anuluj", role: .cancel) {}
-        } message: { _ in
-            Text("Programy, które go używają, stracą dostęp do serwera.")
+        } message: { action in
+            switch action {
+            case .delete(let key) where Self.isPhone(key):
+                Text("To klucz telefonu „\(Self.phoneName(key))” konta „\(key.user?.username ?? "—")”. Telefon straci dostęp do serwera przy następnym połączeniu; żeby znów go użyć, trzeba go podłączyć ponownie w profilu osoby.")
+            case .delete:
+                Text("Programy, które go używają, stracą dostęp do serwera.")
+            case .disablePhone(let key):
+                Text("Telefon konta „\(key.user?.username ?? "—")” przestanie łączyć się z serwerem, dopóki nie włączysz klucza z powrotem.")
+            }
         }
+    }
+
+    private var dialogTitle: String {
+        switch pending {
+        case .delete(let key): Self.isPhone(key) ? "Odłączyć telefon „\(Self.phoneName(key))”?" : "Usunąć klucz „\(key.name)”?"
+        case .disablePhone(let key): "Wyłączyć klucz telefonu „\(Self.phoneName(key))”?"
+        case nil: ""
+        }
+    }
+
+    static func isPhone(_ key: AudiobookshelfClient.ApiKey) -> Bool {
+        key.name.hasPrefix(PhonePairing.keyPrefix)
+    }
+
+    static func phoneName(_ key: AudiobookshelfClient.ApiKey) -> String {
+        String(key.name.dropFirst(PhonePairing.keyPrefix.count))
     }
 }
 
 private struct ApiKeyRow: View {
     let key: AudiobookshelfClient.ApiKey
     let model: ApiKeysModel
+    let toggle: () -> Void
     let delete: () -> Void
+    let openProfile: (String) -> Void
+
+    private var isPhone: Bool { ApiKeysContent.isPhone(key) }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(key.name).font(.body.weight(.medium))
+                    if isPhone {
+                        Image(systemName: "iphone").foregroundStyle(Color.accentColor).accessibilityHidden(true)
+                    }
+                    Text(isPhone ? ApiKeysContent.phoneName(key) : key.name).font(.body.weight(.medium))
+                    if isPhone {
+                        Text("telefon").font(.caption).padding(.horizontal, 5).background(.quaternary, in: Capsule())
+                    }
                     if key.isExpired {
                         Text("wygasł").font(.caption).foregroundStyle(.red)
                     } else if !key.isActive {
@@ -118,16 +140,22 @@ private struct ApiKeyRow: View {
                 Text(details).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            if isPhone, let userID = key.userId {
+                Button("Profil…") { openProfile(userID) }
+                    .help("Telefony tej osoby: lista, odłączanie, podłączanie")
+            }
             // Przycisk, nie przełącznik: mały przełącznik w wierszu nie reagował na akcję dostępności (AXPress).
-            Button(key.isActive ? "Wyłącz" : "Włącz") { Task { await model.setActive(key, !key.isActive) } }
+            Button(key.isActive ? "Wyłącz" : "Włącz", action: toggle)
                 .disabled(model.status.isBusy)
                 .help(key.isActive ? "Wyłącz klucz — przestanie działać od razu" : "Włącz klucz")
-            Button("Usuń klucz", systemImage: "trash", role: .destructive, action: delete)
+            Button(isPhone ? "Odłącz telefon" : "Usuń klucz", systemImage: "trash", role: .destructive, action: delete)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .disabled(model.status.isBusy)
-                .help("Usuń klucz")
+                .help(isPhone ? "Odłącz telefon (usuń jego klucz)" : "Usuń klucz")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(isPhone ? "Klucz telefonu \(ApiKeysContent.phoneName(key))" : "Klucz \(key.name)")
     }
 
     private var details: String {
@@ -139,7 +167,7 @@ private struct ApiKeyRow: View {
             parts.append("bez wygasania")
         }
         if let used = key.lastUsedAt { parts.append("ostatnio użyty: " + Formats.dateTime(used)) }
-        if let created = key.createdAt { parts.append("utworzony " + Formats.dateTime(created)) }
+        if let created = key.createdAt { parts.append((isPhone ? "podłączony " : "utworzony ") + Formats.dateTime(created)) }
         return parts.joined(separator: " · ")
     }
 }
@@ -262,44 +290,87 @@ private struct ApiKeySecretSheet: View {
 
 // MARK: - Logowanie
 
-private struct AuthContent: View {
+/// Wiersze „Logowanie” pod „Zaawansowane”: stan SSO i wiadomości na stronie logowania oraz
+/// przycisk do arkusza ze wszystkimi ustawieniami logowania (D4–D8).
+struct LoginSummaryRows: View {
     let model: AuthSettingsModel
-    @State private var draft: AudiobookshelfClient.AuthSettings?
-    @State private var redirectURIs = ""
+    @State private var editing = false
 
     var body: some View {
-        if let draft = Binding($draft) {
-            methodsSection(draft)
-            if draft.wrappedValue.authActiveAuthMethods.contains("openid") {
-                openIDSections(draft)
+        Section {
+            if let settings = model.settings {
+                LabeledContent("Logowanie przez OpenID (SSO)", value: settings.authActiveAuthMethods.contains("openid") ? "włączone" : "wyłączone")
+                LabeledContent("Wiadomość na stronie logowania", value: (settings.authLoginCustomMessage ?? "").isEmpty ? "brak" : "ustawiona")
             }
-            Section {
-                TextField("Wiadomość na stronie logowania", text: optional(draft.authLoginCustomMessage), prompt: Text(verbatim: "brak"), axis: .vertical)
-                    .lineLimit(2...5)
-            } header: {
-                Text("Strona logowania web UI")
-            } footer: {
-                Text("Tekst (może zawierać prosty HTML) pokazywany nad formularzem logowania w przeglądarce.").foregroundStyle(.secondary)
+            AdminStatusRows(status: model.status)
+            HStack {
+                Spacer()
+                Button("Ustawienia logowania…") { editing = true }
+                    .disabled(model.settings == nil || model.status.isBusy)
             }
-            Section {
-                AdminStatusRows(status: model.status)
-                HStack {
-                    Spacer()
-                    Button("Przywróć") {
-                        model.status.error = nil
-                        reset()
+        } header: {
+            Text("Logowanie")
+        } footer: {
+            Text("Logowanie hasłem jest zawsze włączone. OpenID przydaje się, gdy serwer ma stały adres spoza domu.")
+                .foregroundStyle(.secondary)
+        }
+        .sheet(isPresented: $editing) {
+            if let settings = model.settings {
+                LoginSettingsSheet(model: model, settings: settings)
+            }
+        }
+    }
+}
+
+/// Arkusz ustawień logowania: sposoby logowania, OpenID i wiadomość na stronie logowania.
+/// Jeden wzorzec zapisu długiego formularza: „Anuluj” odrzuca zmiany, „Zapisz” zapisuje całość.
+private struct LoginSettingsSheet: View {
+    let model: AuthSettingsModel
+    @State private var draft: AudiobookshelfClient.AuthSettings?
+    @State private var redirectURIs: String
+    @Environment(\.dismiss) private var dismiss
+
+    init(model: AuthSettingsModel, settings: AudiobookshelfClient.AuthSettings) {
+        self.model = model
+        _draft = State(initialValue: settings)
+        _redirectURIs = State(initialValue: (settings.authOpenIDMobileRedirectURIs ?? []).joined(separator: "\n"))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                if let draft = Binding($draft) {
+                    methodsSection(draft)
+                    if draft.wrappedValue.authActiveAuthMethods.contains("openid") {
+                        openIDSections(draft)
                     }
-                        .disabled(!hasChanges || model.status.isBusy)
-                    Button("Zapisz") { Task { await save() } }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(!hasChanges || model.status.isBusy)
+                    Section {
+                        TextField("Wiadomość na stronie logowania", text: optional(draft.authLoginCustomMessage), prompt: Text(verbatim: "brak"), axis: .vertical)
+                            .lineLimit(2...5)
+                    } header: {
+                        Text("Strona logowania web UI")
+                    } footer: {
+                        Text("Tekst (może zawierać prosty HTML) pokazywany nad formularzem logowania w przeglądarce.").foregroundStyle(.secondary)
+                    }
                 }
             }
-        } else {
-            Section("Logowanie") { AdminStatusRows(status: model.status) }
-                .onChange(of: model.settings) { reset() }
-                .onAppear { if model.settings != nil { reset() } }
+            .formStyle(.grouped)
+            Divider()
+            HStack {
+                AdminStatusRows(status: model.status)
+                Spacer()
+                Button("Anuluj", role: .cancel) {
+                    model.status.error = nil
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Zapisz") { Task { await save() } }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!hasChanges || model.status.isBusy)
+            }
+            .padding()
         }
+        .frame(width: 620, height: 640)
     }
 
     private var hasChanges: Bool {
@@ -312,16 +383,11 @@ private struct AuthContent: View {
         redirectURIs.split(whereSeparator: { $0 == "," || $0.isNewline || $0 == " " }).map(String.init)
     }
 
-    private func reset() {
-        draft = model.settings
-        redirectURIs = (model.settings?.authOpenIDMobileRedirectURIs ?? []).joined(separator: "\n")
-    }
-
     private func save() async {
         guard var draft else { return }
         draft.authOpenIDMobileRedirectURIs = parsedURIs
         await model.save(draft)
-        if model.status.error == nil { reset() }
+        if model.status.error == nil { dismiss() }
     }
 
     private func methodsSection(_ draft: Binding<AudiobookshelfClient.AuthSettings>) -> some View {

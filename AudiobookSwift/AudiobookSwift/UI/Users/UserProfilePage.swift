@@ -308,7 +308,7 @@ private struct ProfileContent: View {
     // MARK: Zaawansowane i usuwanie
 
     private var advanced: some View {
-        AdvancedSection(summary: isMac ? "Nazwa konta na serwerze i dostęp według tagów" : "Nazwa konta na serwerze, aktywność i dostęp według tagów") {
+        AdvancedSection(summary: isMac ? "Nazwa konta na serwerze, klucze API i dostęp według tagów" : "Nazwa konta na serwerze, aktywność, klucze API i dostęp według tagów") {
             LabeledContent("Nazwa konta") {
                 HStack {
                     TextField("Nazwa konta", text: $newName)
@@ -322,6 +322,15 @@ private struct ProfileContent: View {
             if !isMac {
                 Toggle("Aktywne (może się logować)", isOn: Binding(get: { user.isActive }, set: setActive))
                     .disabled(!isReady)
+            }
+            LabeledContent("Inne klucze API tego konta") {
+                HStack {
+                    Text("\(pairing.otherKeyCounts[user.id] ?? 0)").foregroundStyle(.secondary)
+                    Button("Klucze API…") {
+                        navigation.pendingRemoteAdvanced = true
+                        navigation.page = .sharing
+                    }
+                }
             }
             LabeledContent("Dostęp według tagów") {
                 HStack {
