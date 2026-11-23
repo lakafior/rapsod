@@ -285,7 +285,7 @@ struct LibraryPage: View {
                 .fixedSize()
                 .disabled(reordering)
             }
-            .help("Kolejność bibliotek — ta sama w oknie „Biblioteka”, w telefonie i w web UI.")
+            .help("Kolejność bibliotek — ta sama w oknie „Biblioteka”, w telefonie i w web UI. Na liście bibliotek można też przeciągać wiersze.")
         }
     }
 

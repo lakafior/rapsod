@@ -70,7 +70,7 @@ enum SettingsTour {
         if models.account.state == .ready, !models.users.hasLoaded { await models.users.load() }
         return models.users.people.map { .user(id: $0.id) } + [.root, .history(userID: nil)]
             + models.users.people.prefix(1).map { .history(userID: $0.id) }
-            + models.account.libraries.map { .library(id: $0.id) } + [.serverLog]
+            + models.account.libraries.map { .library(id: $0.id) } + [.serverLog, .sponsorDetection]
     }
 
     private static func log(_ text: String) {
@@ -87,6 +87,7 @@ extension SettingsDestination {
         case .root: "root"
         case .serverLog: "serverLog"
         case .library: "library"
+        case .sponsorDetection: "sponsorDetection"
         case .history(let userID): userID == nil ? "history-all" : "history-user"
         }
     }

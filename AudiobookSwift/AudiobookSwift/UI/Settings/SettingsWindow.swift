@@ -123,6 +123,8 @@ enum SettingsDestination: Hashable, Codable {
     case root
     /// Dziennik serwera (Ogólne › Dziennik serwera).
     case serverLog
+    /// Fragmenty sponsorowane w podcastach i usługa modelu językowego (Ogólne › Fragmenty sponsorowane, etap 13b).
+    case sponsorDetection
     /// Historia słuchania (Użytkownicy › „Historia słuchania wszystkich…”, albo jednej osoby z jej profilu).
     case history(userID: String?)
     /// Biblioteka (Biblioteki › biblioteka).
@@ -132,7 +134,7 @@ enum SettingsDestination: Hashable, Codable {
     var page: SettingsPage {
         switch self {
         case .user, .root, .history: .users
-        case .serverLog: .general
+        case .serverLog, .sponsorDetection: .general
         case .library: .libraries
         }
     }
@@ -144,6 +146,9 @@ enum SettingsDestination: Hashable, Codable {
         case .root: RootProfilePage(models: models)
         case .library(let id): LibraryPage(models: models, libraryID: id)
         case .serverLog: ServerLogPage(models: models)
+        case .sponsorDetection:
+            SettingsForm { SponsorDetectionSection(dataRoot: models.supervisor.dataRoot) }
+                .navigationSubtitle("Fragmenty sponsorowane")
         case .history(let userID): ListeningHistoryPage(models: models, userID: userID)
         }
     }

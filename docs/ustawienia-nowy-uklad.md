@@ -710,10 +710,10 @@ Wariant B nie oszczędza kliknięć: w czterech zadaniach z pięciu jest tak sam
 | NW5 | — (nowe) | Dostęp zdalny › baner pod „Skąd można słuchać” | — |
 | NW6 | — (nowe) | Użytkownicy › kafel i nagłówek profilu | — |
 | NW7 | — (nowe) | Ogólne › Aplikacja | — |
-| NW8 | — (13b) | Ogólne › Fragmenty sponsorowane w podcastach | — |
-| NW9 | — (13a/13b) | Ogólne › Fragmenty sponsorowane w podcastach | — |
-| NW10 | — (13b) | Ogólne › Usługa modelu językowego | — |
-| NW11 | — (13b) | Ogólne › Fragmenty sponsorowane w podcastach | — |
+| NW8 | — (13b) | Ogólne › Fragmenty sponsorowane › (podstrona) | — |
+| NW9 | — (13a/13b) | Ogólne › Fragmenty sponsorowane › (podstrona) | — |
+| NW10 | — (13b) | Ogólne › Fragmenty sponsorowane › Usługa modelu językowego | — |
+| NW11 | — (13b) | Ogólne › Fragmenty sponsorowane › (podstrona) | — |
 | NW12 | — (13a) | bez zmian: strona podcastu i odtwarzacz w oknie „Biblioteka” (jak X3) | — |
 Kontrola kompletności: każdy identyfikator ze spisu (1.3) występuje w tej tabeli dokładnie raz. Sprawdza to skrypt w [`ustawienia-nowy-uklad/sprawdz-tabele.sh`](ustawienia-nowy-uklad/sprawdz-tabele.sh).
 
@@ -1122,7 +1122,7 @@ Do testów w bazie testowej kopii dopisana jest druga biblioteka audiobooków i 
 
 ### Tylko skompilowane albo przejrzane
 
-- **Przeciągania wierszy nie ma.** Pierwsza wersja miała `onMove`, ale w formularzu (`Form` w stylu grouped, wiersze bez `AXRow`) najpewniej nic by nie robiło, a nie dało się tego sprawdzić bez przejęcia myszy. Zamiast obiecywać przeciąganie, kolejność zmienia „Wyżej/Niżej” na podstronie biblioteki (sprawdzone). Przeciąganie zostaje do zrobienia (`draggable`/`dropDestination`) — odstępstwo od B2.
+- **Przeciąganie wierszy** zostało dorobione po etapie 6 (część 15). Pierwsza wersja z `onMove` w formularzu nie była pewna i została usunięta.
 - **Dodawanie biblioteki** z „Dodaj audiobooki…” / „Dodaj podcasty…” nie było klikane (panel wyboru folderu). Kod dodawania się nie zmienił, zmieniły się tylko nazwy przycisków.
 - **Polskie źródła i własny dostawca** nie były włączane ani dodawane. To ten sam kod co na dawnej stronie, w nowym miejscu.
 - **Okno powitalne:** sprawdzone przeglądem zmian, bez uruchomienia. Usunięte są tylko gałęzie dla ustawień.
@@ -1279,8 +1279,30 @@ Atrapy na tym Macu: serwer HTTP udający Apprise (`127.0.0.1:13499`) i serwer SM
 
 ### Znane braki i pytania (etapy 4–6)
 
-- **Przeciąganie bibliotek** (B2) nie jest zrobione; kolejność zmienia „Wyżej/Niżej” na podstronie (część 12).
-- **„Fragmenty sponsorowane” (13b)** zajmują dużo miejsca w „Ogólnych”. Propozycja z części 13: osobna podstrona.
+- **Przeciąganie bibliotek** (B2) dorobione i sprawdzone myszą (część 15).
+- **„Fragmenty sponsorowane” (13b)** są od części 15 osobną podstroną „Ogólnych”.
 - **Zrzuty etapów 1–3** pokazują stary pasek boczny. Można je odświeżyć skryptami z części 10–11.
 - **VoiceOver** nie był słuchany z mową. Etykiety sprawdzone w drzewie dostępności.
+
+## 15. Po etapie 6: fragmenty sponsorowane jako podstrona i przeciąganie bibliotek
+
+Decyzja użytkownika z 2026-11-23: oba punkty otwarte w części 14 zrobić od razu.
+
+- **Fragmenty sponsorowane** (13b): w „Ogólnych” został jeden wiersz „Fragmenty sponsorowane w podcastach” ze stanem w jednym zdaniu (np. „Wyłączone — najpierw ustaw usługę modelu językowego”). Prowadzi do podstrony (`SettingsDestination.sponsorDetection`) z dotychczasowymi sekcjami „Fragmenty sponsorowane w podcastach” i „Usługa modelu językowego”. Logika sekcji (`SponsorDetectionSection`) jest bez zmian. „Zaawansowane” w „Ogólnych” są teraz widoczne bez przewijania.
+- **Przeciąganie bibliotek** (B2):
+  - wiersz na liście „Bibliotek” da się przeciągnąć na miejsce innej biblioteki (`draggable` / `dropDestination`, działa także w formularzu, który nie jest listą);
+  - linia nad wierszem pokazuje miejsce upuszczenia;
+  - kolejność idzie od razu na serwer (`ServerAccount.reorderLibraries`);
+  - przeciągany jest tekst z przedrostkiem `abswift-library:`, więc upuszczenie zwykłego tekstu z innej aplikacji niczego nie zmienia;
+  - „Wyżej/Niżej” na podstronie zostaje dla klawiatury i VoiceOver.
+- **Sprawdzone uruchomieniem** (testowa kopia, prawdziwe przeciągnięcie myszą za zgodą użytkownika):
+  - „Podcasty” przeciągnięte na „lib” dały w bazie kolejność `Podcasty:1 lib:2`;
+  - drugie przeciągnięcie przywróciło `lib:1 Podcasty:2`;
+  - klik w wiersz nadal otwiera podstronę biblioteki;
+  - podstrona fragmentów sponsorowanych otwiera się z „Ogólnych”, a tryb sprawdzający ją odwiedza (`TOUR OK`).
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Ogólne z wierszem fragmentów | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-dark.png) |
+| Fragmenty sponsorowane | ![](ustawienia-nowy-uklad/wdrozenie-png/fragmenty-sponsorowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/fragmenty-sponsorowane-dark.png) |
 

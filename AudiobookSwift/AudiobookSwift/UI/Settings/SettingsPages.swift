@@ -1,7 +1,7 @@
 import AudiobookshelfKit
 import SwiftUI
 
-/// Strona „Biblioteki” (etap 4 planu): lista bibliotek (wiersz → podstrona), dodawanie, polskie źródła i własni dostawcy metadanych, a pod „Zaawansowane” wspólne
+/// Strona „Biblioteki” (etap 4 planu): lista bibliotek (wiersz → podstrona, przeciąganie zmienia kolejność), dodawanie, polskie źródła i własni dostawcy metadanych, a pod „Zaawansowane” wspólne
 /// ustawienia skanera, okładek, zapisu w folderach, sortowania i pamięci podręcznej serwera.
 struct LibrariesSettingsPage: View {
     let models: AppModels
@@ -17,7 +17,7 @@ struct LibrariesSettingsPage: View {
             } header: {
                 Text("Biblioteki na serwerze")
             } footer: {
-                Text("Kliknij bibliotekę, aby zmienić jej ustawienia, harmonogram skanu albo ją usunąć. Kolejność bibliotek (ta sama w oknie „Biblioteka”, w telefonie i w web UI) zmienisz na stronie biblioteki w „Zaawansowane”.")
+                Text("Kliknij bibliotekę, aby zmienić jej ustawienia, harmonogram skanu albo ją usunąć. Kolejność (ta sama w oknie „Biblioteka”, w telefonie i w web UI) zmienisz, przeciągając wiersz na miejsce innej biblioteki, albo przyciskami „Wyżej/Niżej” na stronie biblioteki.")
             }
             Section {
                 MetadataSourcesSection(sources: models.metadataSources)
@@ -70,6 +70,7 @@ private struct LibraryListRows: View {
     @Environment(SettingsNavigation.self) private var navigation
     @Environment(\.openWindow) private var openWindow
     @State private var error: String?
+    @State private var dropTarget: String?
 
     private var account: ServerAccount { models.account }
     private var tasks: LibraryTasks { models.libraryTasks }
@@ -106,6 +107,22 @@ private struct LibraryListRows: View {
         }
         ForEach(account.libraries) { library in
             row(library)
+                // Przeciąganie zmienia kolejność: upuszczona biblioteka zajmuje miejsce tej, na którą ją upuszczono.
+                .draggable(LibraryDrag.payload(library.id)) {
+                    Label(library.name, systemImage: library.mediaType == "podcast" ? "antenna.radiowaves.left.and.right" : "books.vertical")
+                        .padding(6)
+                }
+                .dropDestination(for: String.self) { items, _ in
+                    guard let dragged = items.first.flatMap(LibraryDrag.id(from:)) else { return false }
+                    return move(dragged, to: library.id)
+                } isTargeted: { targeted in
+                    if targeted { dropTarget = library.id } else if dropTarget == library.id { dropTarget = nil }
+                }
+                .overlay(alignment: .top) {
+                    if dropTarget == library.id {
+                        Rectangle().fill(Color.accentColor).frame(height: 2).offset(y: -5)
+                    }
+                }
         }
         if let error {
             Label(error, systemImage: "xmark.octagon")
@@ -181,6 +198,23 @@ private struct LibraryListRows: View {
         return folders.isEmpty ? kind : "\(kind) · \(folders)"
     }
 
+    /// Przenosi bibliotekę `dragged` na miejsce `target` i zapisuje nową kolejność na serwerze.
+    private func move(_ dragged: String, to target: String) -> Bool {
+        var ids = account.libraries.map(\.id)
+        guard dragged != target, let from = ids.firstIndex(of: dragged), let to = ids.firstIndex(of: target) else { return false }
+        ids.remove(at: from)
+        ids.insert(dragged, at: to)
+        error = nil
+        Task {
+            do {
+                try await account.reorderLibraries(ids)
+            } catch {
+                self.error = "Nie udało się zmienić kolejności bibliotek: \(error.localizedDescription)"
+            }
+        }
+        return true
+    }
+
     private func add(_ kind: ServerAccount.LibraryKind) {
         Task {
             guard let folder = await chooseLibraryFolder(for: kind) else { return }
@@ -191,5 +225,15 @@ private struct LibraryListRows: View {
     private func reconnect() {
         guard let environment = models.supervisor.environment, models.supervisor.state == .running else { return }
         Task { await account.connect(environment: environment) }
+    }
+}
+
+/// Przeciągana biblioteka jako tekst z przedrostkiem — upuszczenie zwykłego tekstu (np. z innej
+/// aplikacji) nie zmienia kolejności.
+enum LibraryDrag {
+    static let prefix = "abswift-library:"
+    static func payload(_ id: String) -> String { prefix + id }
+    static func id(from text: String) -> String? {
+        text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)) : nil
     }
 }

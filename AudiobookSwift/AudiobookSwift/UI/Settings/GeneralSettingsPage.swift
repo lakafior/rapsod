@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Ogólne (etap 5 planu): stan i sterowanie serwerem z błędem startu, adres, dziennik serwera (podstrona),
-/// start przy logowaniu, wykrywanie fragmentów sponsorowanych, a pod „Zaawansowane” wersja audiobookshelf,
+/// start przy logowaniu, wiersz do podstrony „Fragmenty sponsorowane”, a pod „Zaawansowane” wersja audiobookshelf,
 /// folder danych, poziom logu i język serwera. Przy błędzie startu aplikacja otwiera tę stronę sama.
 struct GeneralSettingsPage: View {
     let models: AppModels
@@ -15,11 +15,17 @@ struct GeneralSettingsPage: View {
         SettingsForm {
             serverSection
             loginItemSection
-            SponsorDetectionSection(dataRoot: supervisor.dataRoot)
+            Section {
+                NavigationLink(value: SettingsDestination.sponsorDetection) {
+                    Text("Fragmenty sponsorowane w podcastach")
+                    Text(sponsorSummary)
+                }
+            }
             AdvancedSection(summary: "Wersja audiobookshelf, folder danych, poziom logu i język serwera") {
                 advancedRows
             }
         }
+        .onAppear { if let dataRoot = supervisor.dataRoot { SponsorDetectionStore.shared.open(dataRoot: dataRoot) } }
     }
 
     // MARK: Serwer
@@ -54,6 +60,15 @@ struct GeneralSettingsPage: View {
                     .disabled(!supervisor.state.canStop)
             }
         }
+    }
+
+    /// Stan wykrywania w jednym zdaniu (pod wierszem prowadzącym do podstrony).
+    private var sponsorSummary: String {
+        let settings = SponsorDetectionStore.shared.settings
+        if settings.enabled { return "Włączone — usługa modelu ustawiona" }
+        if !settings.isConfigured { return "Wyłączone — najpierw ustaw usługę modelu językowego" }
+        if !settings.hasConsent { return "Wyłączone — brak zgody na wysyłanie transkrypcji" }
+        return "Wyłączone"
     }
 
     // MARK: Zaawansowane

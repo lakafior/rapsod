@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Ustawienia → Ogólne → „Fragmenty sponsorowane w podcastach” (etap 13b): domyślne działanie dla
 /// kategorii, usługa modelu (adres, model, klucz w pęku kluczy), zgoda na wysyłanie transkrypcji
-/// i „Wykrywaj fragmenty sponsorowane”. Samodzielna sekcja — wpięta jednym wierszem w stronę „Ogólne”.
+/// i „Wykrywaj fragmenty sponsorowane”. Samodzielne sekcje — od etapu 6 planu ustawień podstrona „Ogólnych” (`SettingsDestination.sponsorDetection`).
 struct SponsorDetectionSection: View {
     let dataRoot: URL?
 
