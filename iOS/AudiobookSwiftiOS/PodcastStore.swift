@@ -172,9 +172,9 @@ final class PodcastStore {
     /// Co włączyć na Macu, żeby telefon mógł zlecać pobrania.
     nonisolated static func permissionHelp(_ permission: Permission) -> String {
         if permission == .needsEditPermission {
-            return "Konto tego telefonu ma uprawnienia administratora, ale serwer wymaga też „Edycji pozycji”. Na Macu: Ustawienia AudiobookSwift → Udostępnianie → Aplikacja AudiobookSwift na telefonie → Uprawnienia administratora → „Nadaj…” (włącza oba) albo Ustawienia → Użytkownicy → konto telefonu → „Edycja pozycji”."
+            return "Konto tego telefonu ma uprawnienia administratora, ale serwer wymaga też „Edycji pozycji”. Na Macu: ustawienia AudiobookSwift → Użytkownicy → profil tej osoby → rola „Administrator” (włącza oba) albo „Zarządzaj dostępem…” → „Edycja pozycji”."
         }
-        return "Pobieranie na serwer wymaga uprawnień administratora dla konta tego telefonu. Na Macu: Ustawienia AudiobookSwift → Udostępnianie → Aplikacja AudiobookSwift na telefonie → Uprawnienia administratora → „Nadaj…”."
+        return "Pobieranie na serwer wymaga roli „Administrator” dla konta tego telefonu. Na Macu: ustawienia AudiobookSwift → Użytkownicy → profil tej osoby → rola „Administrator” (włącza też „Edycję pozycji”)."
     }
 
     /// Zleca serwerowi pobranie odcinków z kanału. Serwer dostaje odcinki w postaci z własnego

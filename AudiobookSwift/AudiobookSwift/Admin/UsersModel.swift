@@ -5,14 +5,20 @@ import OSLog
 
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "AudiobookSwift", category: "Admin")
 
-/// Konta na serwerze (podstrona „Użytkownicy”), na tokenie root. Wzorzec: `UserController.js`
-/// i `AccountModal.vue` upstreamu. Konto root jest tylko do odczytu (jego hasło trzyma pęk kluczy
-/// aplikacji), a konto do słuchania używane przez aplikację ma zablokowany typ i aktywność;
+/// Konta na serwerze (strona „Użytkownicy” i profile osób), na tokenie root. Wzorzec:
+/// `UserController.js` i `AccountModal.vue` upstreamu. Konta roota tu się nie zmienia (jego hasło
+/// zmienia `ServerAccount`), a konto tego Maca (konto do słuchania) nie da się dezaktywować;
 /// jego nowa nazwa i hasło od razu trafiają do pęku kluczy (`ServerAccount`).
+///
+/// Model żyje w `AppDelegate` (przez `AppModels`), a lista kont zostaje w pamięci, gdy serwer
+/// na chwilę znika (np. restart po włączeniu sieci domowej) — profil i jego arkusze nie znikają
+/// wtedy spod ręki.
 @MainActor
 @Observable
 final class UsersModel {
     private let account: ServerAccount
+    /// Czy lista była choć raz wczytana (pusta lista przed wczytaniem nie znaczy „brak kont”).
+    private(set) var hasLoaded = false
 
     private(set) var users: [AudiobookshelfClient.ManagedUser] = []
     private(set) var tags: [String] = []
@@ -33,11 +39,25 @@ final class UsersModel {
         return try await account.withAdminToken { try await $0.listeningStats(userID: id, token: $1) }
     }
 
-    /// Czy to konto do słuchania, którego używa aplikacja (Mac i telefon).
+    /// Czy to konto tego Maca (konto do słuchania).
     func isListener(_ user: AudiobookshelfClient.ManagedUser) -> Bool {
-        guard let name = account.listeningUsername else { return false }
-        return user.username.caseInsensitiveCompare(name) == .orderedSame
+        account.isListener(username: user.username)
     }
+
+    func user(id: String) -> AudiobookshelfClient.ManagedUser? {
+        users.first { $0.id == id }
+    }
+
+    /// Domownicy (bez roota): najpierw konto tego Maca, potem alfabetycznie.
+    var people: [AudiobookshelfClient.ManagedUser] {
+        users.filter { !$0.isRoot }.sorted { lhs, rhs in
+            let l = isListener(lhs), r = isListener(rhs)
+            if l != r { return l }
+            return lhs.username.localizedCaseInsensitiveCompare(rhs.username) == .orderedAscending
+        }
+    }
+
+    var root: AudiobookshelfClient.ManagedUser? { users.first(where: \.isRoot) }
 
     func load() async {
         guard account.state == .ready else { return }
@@ -49,6 +69,8 @@ final class UsersModel {
                 if lhs.isRoot != rhs.isRoot { return lhs.isRoot }
                 return lhs.username.localizedCaseInsensitiveCompare(rhs.username) == .orderedAscending
             }
+            hasLoaded = true
+            error = nil
             tags = try await account.withAdminToken { try await $0.allTags(token: $1) }
             try? await account.refreshLibraries()
         } catch {
@@ -104,7 +126,7 @@ final class UsersModel {
         if !draft.permissions.accessAllTags, draft.tags.isEmpty { return "Wybierz co najmniej jeden tag albo zaznacz dostęp do wszystkich." }
 
         let original = draft.id.flatMap { id in users.first { $0.id == id } }
-        if original?.isRoot == true { return "Konto root zmienia się tylko w pęku kluczy aplikacji." }
+        if original?.isRoot == true { return "Konto root zmienia się na stronie „Administrator serwera”." }
         let isListener = original.map(isListener) ?? false
 
         var changes = AudiobookshelfClient.UserChanges(
@@ -120,11 +142,9 @@ final class UsersModel {
             if let original {
                 if username != original.username { changes.username = username }
                 changes.password = password
-                // Konto aplikacji: typ i aktywność są zablokowane (decyzja z etapu 9c).
-                if !isListener {
-                    if draft.type != original.type { changes.type = draft.type }
-                    if draft.isActive != original.isActive { changes.isActive = draft.isActive }
-                }
+                if draft.type != original.type { changes.type = draft.type }
+                // Konta tego Maca nie da się dezaktywować (aplikacja przestałaby działać).
+                if !isListener, draft.isActive != original.isActive { changes.isActive = draft.isActive }
                 let updated = try await account.withAdminToken { try await $0.updateUser(id: original.id, changes, token: $1) }
                 replace(updated)
                 logger.notice("Zmieniono konto użytkownika")
@@ -138,7 +158,7 @@ final class UsersModel {
                         account.listenerPermissionsChanged()
                     }
                     notice = password != nil || changes.username != nil
-                        ? "Zmieniono konto „\(updated.username)”. Aplikacja na Macu zapamiętała nowe dane; w telefonie zaloguj się ponownie (dane są w Ustawieniach → Udostępnianie)."
+                        ? "Zmieniono konto „\(updated.username)”. Aplikacja na Macu zapamiętała nowe dane. Telefony z aplikacją AudiobookSwift działają dalej (mają własne klucze); w innych aplikacjach zaloguj się ponownie."
                         : "Zmieniono konto „\(updated.username)”."
                 } else {
                     notice = "Zmieniono konto „\(updated.username)”."
@@ -173,13 +193,83 @@ final class UsersModel {
             users.removeAll { $0.id == user.id }
             if wasListener {
                 account.listenerDeleted()
-                notice = "Usunięto konto „\(user.username)”. Aplikacja potrzebuje teraz nowego konta do słuchania — utwórz je na podstronie „Konta”."
+                notice = "Usunięto konto „\(user.username)”. Aplikacja potrzebuje teraz nowego konta tego Maca — utwórz je kaflem „Utwórz konto tego Maca”."
             } else {
                 notice = "Usunięto konto „\(user.username)”."
             }
         } catch {
             self.error = ItemManager.message(for: error, action: "Nie udało się usunąć konta „\(user.username)”")
         }
+    }
+
+    // MARK: - Pojedyncze zmiany z profilu
+
+    /// Rola konta — jedyna droga zmiany typu (profil, arkusz podłączania telefonu). Jak dawne
+    /// `setListenerAdmin`: administrator dostaje też „Edycję pozycji”, bo serwer przy zlecaniu
+    /// pobrań odcinków (`download-episodes`) sprawdza i typ, i `permissions.update`; powrót do
+    /// użytkownika ją zabiera. Gość dostaje domyślne uprawnienia gościa. Wybór bibliotek i tagów zostaje.
+    @discardableResult
+    func setRole(_ role: String, of user: AudiobookshelfClient.ManagedUser) async throws -> AudiobookshelfClient.ManagedUser {
+        guard !user.isRoot, ["admin", "user", "guest"].contains(role) else { return user }
+        var permissions = user.permissions
+        switch role {
+        case "admin":
+            permissions.update = true
+        case "user":
+            permissions.update = false
+        default:
+            let keep = permissions
+            permissions = .defaults(for: "guest")
+            permissions.accessAllLibraries = keep.accessAllLibraries
+            permissions.accessAllTags = keep.accessAllTags
+            permissions.selectedTagsNotAccessible = keep.selectedTagsNotAccessible
+        }
+        guard user.type != role || permissions != user.permissions else { return user }
+        let changes = AudiobookshelfClient.UserChanges(
+            type: role,
+            permissions: permissions,
+            librariesAccessible: user.librariesAccessible,
+            itemTagsSelected: user.itemTagsSelected
+        )
+        let updated = try await account.withAdminToken { try await $0.updateUser(id: user.id, changes, token: $1) }
+        logger.notice("Konto ma teraz typ \(role, privacy: .public)")
+        replace(updated)
+        if isListener(user) { account.listenerPermissionsChanged() }
+        return updated
+    }
+
+    /// Nowe hasło konta (puste = losowe). Zwraca ustawione hasło, żeby arkusz mógł je pokazać raz.
+    /// Dla konta tego Maca hasło trafia od razu do pęku kluczy.
+    func setPassword(_ password: String, of user: AudiobookshelfClient.ManagedUser) async throws -> String {
+        guard !user.isRoot else { throw AudiobookshelfClient.APIError.unauthorized }
+        let password = password.isEmpty ? PasswordGenerator.generate() : password
+        var changes = AudiobookshelfClient.UserChanges(
+            permissions: user.permissions,
+            librariesAccessible: user.librariesAccessible,
+            itemTagsSelected: user.itemTagsSelected
+        )
+        changes.password = password
+        let updated = try await account.withAdminToken { try await $0.updateUser(id: user.id, changes, token: $1) }
+        logger.notice("Zmieniono hasło konta")
+        replace(updated)
+        if isListener(user) { account.listenerCredentialsChanged(username: nil, password: password) }
+        return password
+    }
+
+    /// Zmienia nazwę konta. Dla konta tego Maca nowa nazwa trafia od razu do pęku kluczy;
+    /// telefony z aplikacją AudiobookSwift działają dalej (klucz jest związany z identyfikatorem konta).
+    func rename(_ user: AudiobookshelfClient.ManagedUser, to newName: String) async -> String? {
+        var draft = Draft(user)
+        draft.username = newName
+        return await save(draft)
+    }
+
+    /// Aktywność konta (nie dla konta tego Maca ani roota).
+    func setActive(_ isActive: Bool, of user: AudiobookshelfClient.ManagedUser) async -> String? {
+        guard !user.isRoot, !isListener(user) else { return nil }
+        var draft = Draft(user)
+        draft.isActive = isActive
+        return await save(draft)
     }
 
     private func replace(_ user: AudiobookshelfClient.ManagedUser) {

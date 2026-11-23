@@ -31,13 +31,16 @@ struct BackupsSettingsPage: View {
 /// Wiersz zamiast treści podstrony administracyjnej, gdy konto root nie działa.
 struct AdminUnavailableRow: View {
     let account: ServerAccount
+    @Environment(SettingsNavigation.self) private var navigation: SettingsNavigation?
 
     var body: some View {
         switch account.state {
         case .connecting:
             ProgressView("Łączenie z serwerem…").controlSize(.small)
         case .needsPassword:
-            Text("Wymaga konta root — podaj jego hasło na podstronie „Konta”.").foregroundStyle(.secondary)
+            ActionBanner(text: "Wymaga konta root, a aplikacja nie zna jego aktualnego hasła.", actionTitle: "Przejdź do konta root…") {
+                navigation?.show(.root)
+            }
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
         case .disconnected, .ready:
@@ -235,8 +238,6 @@ private struct BackupScheduleSection: View {
     @State private var keep = 2
     @State private var maxSize = 1.0
 
-    private enum Mode: Hashable { case disabled, daily, weekly, custom }
-
     var body: some View {
         Section {
             if choice == .disabled {
@@ -250,31 +251,12 @@ private struct BackupScheduleSection: View {
                     .disabled(model.operation != nil)
                 }
             }
-            Picker("Harmonogram", selection: modeBinding) {
-                Text("Wyłączony").tag(Mode.disabled)
-                Text("Codziennie").tag(Mode.daily)
-                Text("Co tydzień").tag(Mode.weekly)
-                if case .custom = choice { Text("Własny (cron)").tag(Mode.custom) }
-            }
-            if case .weekly(let weekday, _, _) = choice {
-                Picker("Dzień", selection: Binding(
-                    get: { weekday },
-                    set: { if case .weekly(_, let hour, let minute) = choice { choice = .weekly(weekday: $0, hour: hour, minute: minute) } }
-                )) {
-                    ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { day in
-                        Text(Self.weekdayName(day)).tag(day)
-                    }
-                }
-            }
-            if let time = timeBinding {
-                DatePicker("Godzina", selection: time, displayedComponents: .hourAndMinute)
-            }
-            if case .custom(let expression) = choice {
-                LabeledContent("Wyrażenie cron", value: expression)
-                Text("Harmonogram ustawiony w web UI. Zostanie bez zmian, dopóki nie wybierzesz innego.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            ScheduleRows(
+                choice: $choice,
+                defaultTime: (1, 30),
+                saved: BackupScheduleChoice(settings.backupSchedule),
+                customNote: "Harmonogram ustawiony w web UI. Zostanie bez zmian, dopóki nie wybierzesz innego."
+            )
             Stepper(value: $keep, in: 1...99) {
                 LabeledContent("Trzymaj kopii", value: "\(keep)")
             }
@@ -322,54 +304,4 @@ private struct BackupScheduleSection: View {
         Task { await model.updateSettings(schedule: schedule, backupsToKeep: keep, maxBackupSize: maxSize) }
     }
 
-    private var mode: Mode {
-        switch choice {
-        case .disabled: .disabled
-        case .daily: .daily
-        case .weekly: .weekly
-        case .custom: .custom
-        }
-    }
-
-    private var modeBinding: Binding<Mode> {
-        Binding(get: { mode }, set: { newMode in
-            let (hour, minute) = currentTime ?? (1, 30)
-            switch newMode {
-            case .disabled: choice = .disabled
-            case .daily: choice = .daily(hour: hour, minute: minute)
-            case .weekly: choice = .weekly(weekday: 1, hour: hour, minute: minute)
-            case .custom: choice = BackupScheduleChoice(settings.backupSchedule)
-            }
-        })
-    }
-
-    private var currentTime: (Int, Int)? {
-        switch choice {
-        case .daily(let hour, let minute), .weekly(_, let hour, let minute): (hour, minute)
-        case .disabled, .custom: nil
-        }
-    }
-
-    private var timeBinding: Binding<Date>? {
-        guard let (hour, minute) = currentTime else { return nil }
-        return Binding(
-            get: { Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: .now) ?? .now },
-            set: { date in
-                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-                let hour = parts.hour ?? 0
-                let minute = parts.minute ?? 0
-                switch choice {
-                case .daily: choice = .daily(hour: hour, minute: minute)
-                case .weekly(let weekday, _, _): choice = .weekly(weekday: weekday, hour: hour, minute: minute)
-                case .disabled, .custom: break
-                }
-            }
-        )
-    }
-
-    private static func weekdayName(_ cronDay: Int) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "pl_PL")
-        return calendar.standaloneWeekdaySymbols[cronDay % 7]
-    }
 }

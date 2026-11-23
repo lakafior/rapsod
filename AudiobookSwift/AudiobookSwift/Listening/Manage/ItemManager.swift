@@ -26,7 +26,7 @@ final class ItemManager {
     /// Dlaczego edycja jest niedostępna (podpowiedź na wyszarzonym przycisku).
     var unavailableReason: String {
         switch account.state {
-        case .needsPassword: "Edycja wymaga konta root — podaj jego hasło w Ustawieniach → Konta."
+        case .needsPassword: "Edycja wymaga konta root — podaj jego hasło w Ustawieniach → Użytkownicy → Administrator serwera."
         case .failed(let message): "Brak połączenia z kontem root: \(message)"
         default: "Konto root nie jest jeszcze połączone."
         }

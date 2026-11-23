@@ -50,6 +50,11 @@ final class LibrarySettingsModel {
 
     var isPodcast: Bool { loaded?.mediaType == "podcast" }
 
+    /// Harmonogram skanu zapisany na serwerze (do powrotu na „Własny (cron)”).
+    var savedSchedule: BackupScheduleChoice {
+        loaded?.settings.autoScanCronExpression.map { BackupScheduleChoice(.cron($0)) } ?? .disabled
+    }
+
     func load() async {
         await status.run("Wczytywanie…", failure: "Nie udało się wczytać ustawień biblioteki") {
             let details = try await account.withAdminToken { try await $0.libraryDetails(id: libraryID, token: $1) }

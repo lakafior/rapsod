@@ -39,15 +39,16 @@ private struct UserAccountForm: View {
     }
 }
 
-/// Wiersze sekcji „Konto użytkownika” w ustawieniach aplikacji (podstrona „Konta”).
+/// Konto tego Maca (konto do słuchania): stan albo formularz założenia. Używane w kaflu
+/// „Utwórz konto tego Maca” na stronie „Użytkownicy” i w oknach Biblioteka i web UI (X8).
 struct UserAccountSection: View {
     let account: ServerAccount
 
     var body: some View {
         switch account.userState {
         case .ready(let username):
-            LabeledContent("Konto do słuchania", value: "\(username) (hasło w pęku kluczy)")
-            Text("To konto loguje okno biblioteki na Macu i aplikację na telefonie, więc postęp słuchania jest wspólny. Konto root służy tylko do zarządzania serwerem.")
+            LabeledContent("Konto tego Maca", value: "\(username) (hasło w pęku kluczy)")
+            Text("Na tym koncie słuchasz na Macu i na telefonach podłączonych do tego konta, więc postęp słuchania jest wspólny. Konto root służy tylko do zarządzania serwerem.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         case .missing:

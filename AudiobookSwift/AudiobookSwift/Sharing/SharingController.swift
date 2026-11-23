@@ -28,7 +28,7 @@ final class SharingController {
     /// Opcjonalny tunel Cloudflare (działa tylko w trybie `.cloudflareTunnel`).
     let tunnel = CloudflareTunnel()
 
-    /// Jedyne źródło adresu spoza domu dla sekcji „Połącz telefon”.
+    /// Jedyne źródło adresu spoza domu (strona „Dostęp zdalny”, kody telefonów, dane logowania).
     var externalURL: URL? {
         switch settings.externalAccess {
         case .none: nil
@@ -115,7 +115,7 @@ final class SharingController {
         guard mode != settings.externalAccess else { return }
         if mode == .cloudflareTunnel {
             guard account.state == .ready, case .ready = account.userState else {
-                lastError = "Dostęp spoza domu wymaga działającego serwera i konta użytkownika."
+                lastError = "Dostęp spoza domu wymaga działającego serwera i konta tego Maca (Ustawienia → Użytkownicy)."
                 return
             }
         }
@@ -129,7 +129,7 @@ final class SharingController {
         if enabled {
             // Niezainicjalizowany serwer pozwala każdemu w sieci założyć konto root.
             guard account.state == .ready, case .ready = account.userState else {
-                lastError = "Udostępnianie wymaga działającego serwera i konta użytkownika."
+                lastError = "Sieć domowa wymaga działającego serwera i konta tego Maca (Ustawienia → Użytkownicy)."
                 return
             }
         }

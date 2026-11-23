@@ -59,7 +59,7 @@ enum Connector {
         var errorDescription: String? {
             switch self {
             case .keyRejected:
-                "Serwer odrzucił klucz tego telefonu — mógł zostać unieważniony na Macu. Sparuj telefon ponownie."
+                "Serwer odrzucił klucz tego telefonu — telefon mógł zostać odłączony na Macu. Podłącz go ponownie kodem z profilu na Macu."
             case .unreachable(let details):
                 "Serwer nie odpowiada. Sprawdź, czy Mac jest włączony, aplikacja AudiobookSwift działa, a telefon jest w tej samej sieci (albo czy działa dostęp spoza domu).\n\n" + details.joined(separator: "\n")
             }

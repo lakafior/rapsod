@@ -340,7 +340,7 @@ private struct AuthContent: View {
                 }
             )) {
                 Text("OpenID Connect (SSO)")
-                Text("Logowanie przez zewnętrznego dostawcę tożsamości (np. Authentik, Keycloak). Ma sens, gdy serwer jest dostępny pod stałym adresem, np. przez tunel z „Udostępniania”.")
+                Text("Logowanie przez zewnętrznego dostawcę tożsamości (np. Authentik, Keycloak). Ma sens, gdy serwer jest dostępny pod stałym adresem, np. przez tunel z „Dostępu zdalnego”.")
             }
         } header: {
             Text("Sposoby logowania")

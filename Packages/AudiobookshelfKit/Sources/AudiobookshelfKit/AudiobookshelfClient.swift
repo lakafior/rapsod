@@ -173,6 +173,18 @@ public struct AudiobookshelfClient: Sendable {
         try decode(User.self, from: await send("GET", "api/me", token: token, timeout: timeout))
     }
 
+    /// Zmienia hasło konta, do którego należy token (`PATCH /api/me/password`; upstream
+    /// `MeController.updatePassword`). Wymaga obecnego hasła; konto gościa dostaje 403, złe
+    /// obecne hasło — 400. Serwer unieważnia potem pozostałe sesje tego konta, więc po zmianie
+    /// trzeba zalogować się ponownie nowym hasłem. Hasła nie trafiają do logów.
+    public func changeMyPassword(current: String, new: String, token: String) async throws {
+        struct Body: Encodable {
+            let password: String
+            let newPassword: String
+        }
+        _ = try await send("PATCH", "api/me/password", body: Body(password: current, newPassword: new), token: token)
+    }
+
     /// Zakłada zwykłe konto (`type: user`: słuchanie, postęp i pobieranie; bez edycji,
     /// usuwania, uploadu i administracji). Wymaga tokenu administratora.
     /// Zajęta nazwa: HTTP 400. Upstream tworzy konto nieaktywne, jeśli nie podać `isActive`.

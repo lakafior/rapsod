@@ -34,6 +34,16 @@ extension Stubbed {
         #expect(StubServer.requests.first?.request.timeoutInterval == 2.5)
     }
 
+    @Test func changeMyPasswordSendsCurrentAndNew() async throws {
+        StubServer.on("PATCH api/me/password", .json(#"{"success":true}"#))
+        try await StubServer.client().changeMyPassword(current: "stare", new: "nowe", token: "T")
+        let request = try #require(StubServer.requests.first)
+        #expect(request.request.value(forHTTPHeaderField: "Authorization") == "Bearer T")
+        let body = try #require(request.body)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: String])
+        #expect(json == ["password": "stare", "newPassword": "nowe"])
+    }
+
     @Test func itemsPageQueryAndBearerToken() async throws {
         StubServer.on("GET api/libraries/lib1/items", .json(#"{"results":[],"total":0}"#))
         let filter = AudiobookshelfClient.filter("authors", "a1")

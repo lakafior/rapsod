@@ -108,7 +108,7 @@ final class ServerAccount {
     @ObservationIgnored private var userStore: CredentialStore<AudiobookshelfClient.Credentials>?
     @ObservationIgnored private var userCredentials: AudiobookshelfClient.Credentials?
 
-    /// Dane logowania do wpisania w kliencie na telefonie (sekcja „Połącz telefon”).
+    /// Dane logowania konta tego Maca do innych aplikacji (profil › „Dane logowania…”).
     var phoneCredentials: AudiobookshelfClient.Credentials? {
         guard case .ready = userState else { return nil }
         return userCredentials
@@ -324,13 +324,72 @@ final class ServerAccount {
         userState = .ready(username: login.username)
     }
 
-    // MARK: - Zmiany konta do słuchania z podstrony „Użytkownicy”
+    // MARK: - Konto root na stronie „Administrator serwera”
+
+    /// Hasło roota z pęku kluczy (do „Pokaż” i „Kopiuj”), gdy aplikacja jest zalogowana.
+    var rootPassword: String? {
+        guard state == .ready else { return nil }
+        return credentials?.password
+    }
+
+    enum RootPasswordError: LocalizedError {
+        case notReady
+        /// Nowe hasło jest w błędzie, żeby arkusz mógł je pokazać do przepisania.
+        case keychain(String, password: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notReady: "Zmiana hasła wymaga działającego serwera i zalogowanego konta root."
+            case .keychain(let detail, _): "Serwer przyjął nowe hasło konta root, ale nie udało się zapisać go w pęku kluczy (\(detail)). Przepisz hasło pokazane niżej — bez niego aplikacja nie zaloguje się po ponownym uruchomieniu."
+            }
+        }
+    }
+
+    /// Zmienia hasło roota (`PATCH /api/me/password`): najpierw na serwerze, potem w pęku kluczy
+    /// (kolejność z planu, część 9). Puste hasło oznacza losowe. Serwer unieważnia stare sesje
+    /// roota, więc aplikacja loguje się od razu nowym hasłem. Przy błędzie zapisu w pęku kluczy
+    /// rzuca `RootPasswordError.keychain` — nowe hasło trzeba wtedy pokazać do przepisania.
+    @discardableResult
+    func changeRootPassword(to newPassword: String) async throws -> String {
+        guard state == .ready, let current = credentials, let store else { throw RootPasswordError.notReady }
+        let password = newPassword.isEmpty ? PasswordGenerator.generate() : newPassword
+        try await authorized { try await $0.changeMyPassword(current: current.password, new: password, token: $1) }
+        logger.notice("Zmieniono hasło konta root")
+        var updated = current
+        updated.password = password
+        credentials = updated
+        // Pęk kluczy od razu po zmianie na serwerze — nic, co może się nie udać (np. limit logowań),
+        // nie może stanąć między nimi, bo bez resetu hasła roota nie byłoby jak tego naprawić.
+        do {
+            try store.save(updated)
+        } catch {
+            logger.error("Zapis hasła roota w pęku kluczy: \(error.localizedDescription, privacy: .public)")
+            throw RootPasswordError.keychain(error.localizedDescription, password: password)
+        }
+        // Ponowne logowanie nie jest konieczne: przy następnym 401 `authorized` zaloguje się nowym hasłem.
+        if let login = try? await client.login(updated) {
+            accessToken = login.accessToken
+        }
+        return password
+    }
+
+    // MARK: - Zmiany konta tego Maca z profilu („Użytkownicy”)
 
     /// Nazwa konta do słuchania, którego używa aplikacja (i telefon), gdy działa.
     var listeningUsername: String? {
         if case .ready(let username) = userState { return username }
         return userCredentials?.username
     }
+
+    /// Czy konto o tej nazwie to konto tego Maca (konto do słuchania). Jedyne porównanie
+    /// w aplikacji: bez rozróżniania wielkości liter, jak logowanie w audiobookshelf.
+    func isListener(username: String) -> Bool {
+        guard let name = listeningUsername else { return false }
+        return username.caseInsensitiveCompare(name) == .orderedSame
+    }
+
+    /// Hasło konta tego Maca z pęku kluczy (do „Pokaż”, „Kopiuj” i „Danych logowania”).
+    var listenerPassword: String? { phoneCredentials?.password }
 
     /// Serwer przyjął nową nazwę albo hasło konta do słuchania: aplikacja zapisuje je od razu,
     /// bo serwer unieważnił już stare sesje tego konta. Okno biblioteki odnowi token samo

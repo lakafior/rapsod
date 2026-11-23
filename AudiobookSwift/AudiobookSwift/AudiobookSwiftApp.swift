@@ -123,6 +123,10 @@ private struct MenuBarLabel: View {
                 welcomeShown = true
                 openWindow.bringToFront(id: WelcomeWindow.windowID)
             }
+            .task {
+                // Tryb sprawdzający okno ustawień (tylko testowa kopia, argument `-ABSSettingsTour YES`).
+                if SettingsTour.isRequested { openWindow.openSettings(navigation: settings) }
+            }
             .onChange(of: supervisor.state) {
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
                 if case .failed = supervisor.state {
@@ -144,6 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
     private(set) lazy var listening = ListeningController(supervisor: supervisor, account: account)
     private(set) lazy var libraryTasks = LibraryTasks(account: account)
+    private(set) lazy var users = UsersModel(account: account)
+    let avatars = AvatarStore()
     private(set) lazy var models = AppModels(
         supervisor: supervisor,
         account: account,
@@ -151,7 +157,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sharing: sharing,
         pairing: pairing,
         metadataSources: metadataSources,
-        libraryTasks: libraryTasks
+        libraryTasks: libraryTasks,
+        users: users,
+        avatars: avatars
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {

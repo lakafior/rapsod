@@ -21,7 +21,7 @@ struct WelcomeView: View {
                     .accessibilityHidden(true)
                 Text("AudiobookSwift")
                     .font(.largeTitle.bold())
-                Text("Na Macu otwórz Ustawienia aplikacji → Udostępnianie → „Sparuj telefon…”, a potem zeskanuj pokazany kod.")
+                Text("Na Macu otwórz ustawienia AudiobookSwift → Użytkownicy → swój profil → „Podłącz telefon…”, a potem zeskanuj pokazany kod.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -85,7 +85,7 @@ struct ManualEntryView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } footer: {
-                    Text("Adres Maca w sieci domowej znajdziesz na Macu w Ustawieniach → Udostępnianie. Poza siecią lokalną potrzebny jest adres https. Klucz API konta do słuchania (nie konta root) utworzysz na Macu na podstronie „Dostęp”.")
+                    Text("Adres Maca w sieci domowej znajdziesz na Macu w ustawieniach AudiobookSwift → Dostęp zdalny. Poza siecią domową potrzebny jest adres https. Klucz API swojego konta (nie konta root) utworzysz na Macu na stronie „Dostęp” — prościej jednak podłączyć telefon kodem w swoim profilu.")
                 }
             }
             .safeAreaInset(edge: .bottom) {
