@@ -1,85 +1,82 @@
 {
-  "groups": [
-    {
-      "layers": [
-        {
-          "image-name": "sluchawki.svg",
-          "name": "sluchawki",
-          "glass": true,
-          "position": {
-            "scale": 1,
-            "translation-in-points": [
-              0,
-              0
-            ]
-          }
-        }
-      ],
-      "name": "sluchawki",
-      "specular": true,
-      "shadow": {
-        "kind": "layer-color",
-        "opacity": 0.4
-      },
-      "blur-material": null
-    },
-    {
-      "layers": [
-        {
-          "image-name": "ksiazka.svg",
-          "name": "ksiazka",
-          "glass": true,
-          "position": {
-            "scale": 1,
-            "translation-in-points": [
-              0,
-              0
-            ]
-          }
-        }
-      ],
-      "name": "ksiazka",
-      "specular": true,
-      "shadow": {
-        "kind": "layer-color",
-        "opacity": 0.4
-      },
-      "blur-material": null
-    }
-  ],
-  "supported-platforms": {
-    "squares": "shared",
-    "circles": [
-      "watchOS"
-    ]
-  },
-  "fill-specializations": [
-    {
-      "value": {
-        "solid": "srgb:0.94118,0.35294,0.15686,1.00000"
-      }
-    },
-    {
-      "appearance": "dark",
-      "value": {
-        "solid": "srgb:0.22745,0.10196,0.06275,1.00000"
-      }
-    }
-  ],
-  "fill": {
-    "linear-gradient": [
+  "fill" : {
+    "linear-gradient" : [
       "srgb:1.00000,0.60392,0.23922,1.00000",
       "srgb:0.90980,0.26275,0.16471,1.00000"
     ],
-    "orientation": {
-      "start": {
-        "x": 0.5,
-        "y": 1
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 1
       },
-      "stop": {
-        "x": 0.5,
-        "y": 0
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0
       }
     }
+  },
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "sluchawki.svg",
+          "name" : "sluchawki",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "name" : "sluchawki",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "ksiazka.svg",
+          "name" : "ksiazka",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "ksiazka",
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.6
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
   }
 }
