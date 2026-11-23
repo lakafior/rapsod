@@ -19,17 +19,18 @@ Osoba, biblioteka i dziennik serwera mają własne podstrony. Każda podstrona z
 - **Profil konta Maca** zbiera wszystko w jednym miejscu: telefony (parowanie, lista, odłączanie, „Kod z adresami”), hasło (pokaż, kopiuj, zmień), rolę i dostęp, statystyki oraz usuwanie konta.
 - **Konto root** jest osobnym, wyszarzonym kaflem poniżej siatki. Nie da się na nim niczego zepsuć.
 - **Rzadkie ustawienia** schodzą pod zwijane „Zaawansowane” na dole stron, które się do nich odnoszą. Dotyczy to skanera, okładek, sortowania, pamięci podręcznej, SSO, kluczy API, kanałów RSS i poziomu logu.
-- **Nic nie znika.** Każda ze 123 pozycji spisu ma w tabeli przejścia nowe miejsce dla obu wariantów.
+- **Nic nie znika.** Każda ze 124 pozycji spisu ma w tabeli przejścia nowe miejsce dla obu wariantów.
 
 Ostrożniejszy **wariant A** ma 10 stron. Scala tylko oczywiste duplikaty: Konta, Użytkowników i telefon w jeden profil, a log trafia do Ogólnych. Resztę kategorii zostawia.
 
-Przewaga wariantu B to nie mniej kliknięć w typowych zadaniach (zmiana o −1 do +1). Liczy się to, że każda rzecz ma jedno miejsce: 6 stron zamiast 15 widoków, bez kart segmentowych i bez trzech różnych „dostępów”. Liczby są w części 4.
+Przewaga wariantu B **nie** polega na mniejszej liczbie kliknięć: w typowych zadaniach jest ich tyle samo albo o jedno więcej, bo dochodzi poziom „osoba”. Opcjonalny skrót w menu na pasku skraca parowanie. Liczy się to, że każda rzecz ma jedno miejsce: 6 stron zamiast 15 widoków, bez kart segmentowych i bez trzech różnych „dostępów”. Liczby są w części 4.
 
 | | Teraz | Wariant A | Wariant B |
 |---|---|---|---|
 | Strony na pasku bocznym | 12 | 10 | **6** |
-| Widoki do przejrzenia (strony + karty segmentowe) | 15 | 12 | **6** (+ podstrony obiektów) |
-| Sekcje na stronach (bez arkuszy, około) | 45 | 40 | **26** |
+| Widoki do przejrzenia (strony + karty segmentowe) | 15 | 12 | **6** (+ 4 rodzaje podstron) |
+| Sekcje na stronach głównych (bez arkuszy) | ok. 30 | ok. 27 | **ok. 22** |
+| Sekcje razem z podstronami obiektów | ok. 30 (podstron nie ma) | ok. 37 | ok. 39 |
 | Miejsca, gdzie jest konto słuchacza | 4 strony | 1 | **1** |
 | Miejsca z kluczami telefonów | 2 (pod dwiema nazwami) | 2 | **1** (+ filtr w „Kluczach API”) |
 | Miejsca ze źródłami metadanych | 3 strony | 2 | **1** strona (+ ustawienie w bibliotece) |
@@ -42,7 +43,7 @@ Przewaga wariantu B to nie mniej kliknięć w typowych zadaniach (zmiana o −1 
 
 - **Strona:** pozycja na pasku bocznym okna „Ustawienia aplikacji”.
 - **Widok:** strona albo karta segmentowa na stronie.
-- **Sekcja:** `Section` widoczna na stronie, bez arkuszy.
+- **Sekcja:** grupa (`Section`) widoczna na stronie przy domyślnym stanie (np. sekcje OpenID tylko po włączeniu), bez arkuszy. Policzona ze zrzutów, osobno dla stron głównych i podstron.
 - **Arkusz:** `sheet`.
 - **Kliknięcia:** liczone od kliknięcia ikony na pasku menu, czyli ikona = 1. Wpisywanie tekstu nie jest kliknięciem, wybór folderu w panelu „Otwórz” to 1. Przyjmuję, że okno ustawień otwiera się na innej stronie niż potrzebna, a warunki wstępne (np. włączenie sieci lokalnej przed parowaniem) wliczam.
 - **Kontrolki:** policzone w kodzie jako deklaracje `Toggle`, `Picker`, `Button`, `TextField`, `SecureField`, `Stepper`, `DatePicker`, `Menu` i `DisclosureGroup` w plikach ustawień. Jest ich **ok. 265**, w tym przyciski w arkuszach i potwierdzeniach. Najwięcej mają „Powiadomienia i e-mail” (44), „Dostęp” (39), arkusz biblioteki (31) i „Użytkownicy” (23).
@@ -51,7 +52,7 @@ Przewaga wariantu B to nie mniej kliknięć w typowych zadaniach (zmiana o −1 
 
 - **12 stron.** Grupa „Aplikacja”: Ogólne, Udostępnianie, Źródła metadanych, Log serwera. Grupa „Serwer audiobookshelf”: Biblioteki, Konta, Użytkownicy, Ustawienia serwera, Dostęp, Aktywność, Powiadomienia i e-mail, Kopie zapasowe.
 - **3 strony z kartami segmentowymi:** Dostęp, Aktywność, Powiadomienia. Razem daje to **15 widoków**.
-- **Ok. 45 sekcji** na stronach.
+- **Ok. 30 sekcji** na stronach (+3 sekcje OpenID po jego włączeniu).
 - **11 arkuszy:**
   1. sparuj telefon
   2. kod z adresami
@@ -68,7 +69,7 @@ Przewaga wariantu B to nie mniej kliknięć w typowych zadaniach (zmiana o −1 
 
 ### 1.2 Zrzuty stanu obecnego
 
-Zrzuty pochodzą z testowej kopii (Debug z tej gałęzi, port 13431, pusty folder danych w scratchpadzie, konto słuchacza utworzone na potrzeby zrzutu). Są w [`ustawienia-nowy-uklad/obecne/`](ustawienia-nowy-uklad/obecne/).
+Zrzuty pochodzą z testowej kopii (Debug z tej gałęzi, port 13431, pusty folder danych w scratchpadzie, konto słuchacza utworzone na potrzeby zrzutu). Widać na nich lokalną nazwę logowania Maca (konto słuchacza dostało domyślną nazwę) i ścieżki tymczasowe, co warto mieć na uwadze, zanim gałąź trafi gdziekolwiek dalej. Przełącznik „Uruchamiaj przy logowaniu” pokazuje stan prawdziwej aplikacji, bo element logowania jest wspólny. Nie był przełączany. Są w [`ustawienia-nowy-uklad/obecne/`](ustawienia-nowy-uklad/obecne/).
 
 | | | |
 |---|---|---|
@@ -100,7 +101,7 @@ Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
 | M4 | Ustawienia aplikacji… ⌘, (⌥: Zarządzanie serwerem (web UI)…) | apl | K | – / R |
 | M5 | Uruchom serwer / Zatrzymaj serwer / Uruchom ponownie | srw | R | – |
 | M6 | Uruchamiaj przy logowaniu (przełącznik) + „Wymaga zgody — otwórz Ustawienia systemowe…” | apl | K | – |
-| M7 | O programie AudiobookSwift | apl | R | – |
+| M7 | O programie AudiobookSwift (okno: wersje, „Pokaż teksty licencji”, kod źródłowy, audiobookshelf.org) | apl | R | – |
 | M8 | Zakończ (pasek menu); w menu aplikacji „Zamknij okna (serwer działa dalej)” ⌘Q i „Zakończ AudiobookSwift i wyłącz serwer” | apl | R | – |
 
 #### Ogólne (`UI/Settings/GeneralSettingsPage.swift`)
@@ -177,7 +178,7 @@ Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
 | B6 | „Dodaj folder z audiobookami…” | bib | K | R |
 | B7 | „Dodaj folder z podcastami…” | bib | K | R |
 | B8 | Postęp tworzenia i skanu + „Otwórz bibliotekę” | bib | K | – |
-| B9 | Formularz hasła roota, gdy go brak (także w oknie powitalnym) | srw | R | S |
+| B9 | Formularz hasła roota, gdy go brak (także w oknie powitalnym); przy błędzie połączenia „Połącz ponownie” | srw | R | S |
 
 #### Arkusz ustawień biblioteki (`UI/Settings/LibrarySettingsSheet.swift`)
 
@@ -292,10 +293,11 @@ Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
 | X5 | Preferencje kontekstowe zapamiętane w `@AppStorage`: ustawienia czytnika, czcionka i skala tekstu książki, panel tekstu, „kopia przed osadzeniem metadanych” (`tools.embedBackup`), kraj wyszukiwania podcastów, region dopasowania autora, lista w zarządzaniu metadanymi | okna czytnika, tekstu, biblioteki |
 | X6 | „Ustawienia i log…” w oknie biblioteki i web UI przy błędzie serwera → otwiera Ogólne | `LibraryWindow.swift`, `WebUIWindow.swift` |
 | X7 | „Otwórz Ustawienia → Powiadomienia i e-mail” przy wysyłce na czytnik | `ItemActions.swift`, `ShareSheets.swift` |
+| X8 | Formularz „Utwórz konto użytkownika” (`UserAccountSetup`) w oknach Biblioteka i web UI, gdy nie ma konta słuchacza | `UserAccountSection.swift`, `LibraryWindow.swift`, `WebUIWindow.swift` |
 
-Zasada dla X3–X5 (zgodna z HIG): ustawienia związane z konkretnym zadaniem zostają przy nim, nie w oknie ustawień. Pozycje X1–X7 nie wymagają przeniesienia. X6 i X7 to wejścia do ustawień i zmieniają tylko cel.
+Zasada dla X3–X5 (zgodna z HIG): ustawienia związane z konkretnym zadaniem zostają przy nim, nie w oknie ustawień. Pozycje X1–X8 nie wymagają przeniesienia. X6 i X7 to wejścia do ustawień i zmieniają tylko cel.
 
-**Razem: 123 pozycje**, z czego 116 w oknie ustawień i menu oraz 7 poza nim.
+**Razem: 124 pozycje**, z czego 116 w oknie ustawień i menu oraz 8 poza nim. Etykiety wszystkich kontrolek z plików ustawień (`grep` po `Button`, `Toggle`, `Picker`, polach i `LabeledContent`) zostały zestawione z tym spisem; każda należy do którejś pozycji. Jedyna kontrolka bez nowego miejsca to przełącznik kart „Widok” na trzech stronach, który znika razem z kartami.
 
 ### 1.4 Duplikaty i niespójności
 
@@ -350,9 +352,9 @@ Zasada dla X3–X5 (zgodna z HIG): ustawienia związane z konkretnym zadaniem zo
 
 - **[HIG: Settings](https://developer.apple.com/design/human-interface-guidelines/settings).** Ostatnia zmiana 10 czerwca 2024.
 - **[HIG: Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars).** Zmiana z 8 czerwca 2026 dotyczy kolorów ikon i stylu „adaptable sidebar”, który HIG opisuje tylko dla iOS i iPadOS.
-- **Doniesienia o macOS 27.** Według prasy ([MacRumors](https://macrumors.com/2026/06/10/apple-lists-250-changes-ios-27-and-more/), [TechRadar](https://techradar.com/computing/mac-os/macos-27-golden-gate-announced-at-wwdc-2026-heres-everything-you-need-to-know)) macOS 27 to raczej poprawki niż nowy wygląd. Ustawienia systemowe dostały suwak przezroczystości Liquid Glass, a z paska bocznego znikło stopniowe rozmycie przy przewijaniu. **Nie znalazłem w dokumentacji Apple nowych zaleceń dla układu okna ustawień w macOS 27.** To, co tu piszę o macOS 27, opiera się na prasie, a nie na HIG.
+- **Doniesienia o macOS 27.** Według prasy ([MacRumors](https://macrumors.com/2026/06/10/apple-lists-250-changes-ios-27-and-more/), [TechRadar](https://techradar.com/computing/mac-os/macos-27-golden-gate-announced-at-wwdc-2026-heres-everything-you-need-to-know)) macOS 27 to raczej poprawki niż nowy wygląd. Ustawienia systemowe dostały suwak przezroczystości Liquid Glass, a w Ustawieniach systemowych znikło stopniowe rozmycie krawędzi przy przewijaniu. **Nie znalazłem w dokumentacji Apple nowych zaleceń dla układu okna ustawień w macOS 27.** To, co tu piszę o macOS 27, opiera się na prasie, a nie na HIG.
 
-**Wzorcowe okna ustawień i co z nich biorę:**
+**Wzorcowe okna ustawień i co z nich biorę.** Opisy są z pamięci; w tej sesji nie robiłem zrzutów tych aplikacji ani nie sprawdzałem ich wersji na macOS 27.
 
 - **Ustawienia systemowe.** Obiekt jako strona: „Użytkownicy i grupy” → osoba → wszystkie jej akcje. „Sieć” → usługa → szczegóły. Zaawansowane są w osobnym arkuszu albo na dole strony.
 - **Ustawienia systemowe › Apple ID i Rodzina.** Duże okrągłe awatary osób i strona osoby. Najbliższe „profilom z Netflixa”, a przy tym natywne dla Maca.
@@ -455,7 +457,7 @@ Ustawienia
 
 **Konto Maca i root, żeby nie dało się zrobić sobie krzywdy**
 
-- **Konto Maca** ma na kaflu odznakę z Makiem i telefonem, a na profilu podpis „Konto tego Maca”. Nie da się go dezaktywować, bo przełącznik „Aktywne” jest ukryty, tak jak dziś zablokowany. Rola jest zmienialna, ale tylko z ostrzeżeniem w stopce. Usuwanie jest na samym dole, z opisem skutków (zatrzyma odtwarzanie, wyloguje telefony, skasuje postęp) i potwierdzeniem, które powtarza nazwę konta.
+- **Konto Maca** ma na kaflu odznakę z Makiem i telefonem, a na profilu podpis „Konto tego Maca”. Nie da się go dezaktywować, bo przełącznik „Aktywne” jest ukryty, tak jak dziś zablokowany. Rola jest zmienialna, ale wybór „Administrator” pyta o potwierdzenie (jak dziś „Nadaj…”) i, tak jak obecne `setListenerAdmin`, włącza też „Edycję pozycji”, której serwer wymaga do pobierania odcinków. Usuwanie jest na samym dole, z opisem skutków (zatrzyma odtwarzanie, wyloguje telefony, skasuje postęp) i potwierdzeniem, które powtarza nazwę konta.
 - **Root nie jest w siatce domowników.** To wąski, szary kafel z kłódką pod siatką z opisem „Konto techniczne aplikacji. Nie trafia do telefonów, nie da się go usunąć.” Strona roota jest tylko do odczytu: stan logowania, informacja, że hasło jest w pęku kluczy, oraz pod „Zaawansowane” akcja „Zaloguj ponownie hasłem…” (dawne K3/B9). Brak akcji telefonów, roli i usuwania.
 - **Telefony są tylko na profilu konta Maca**, bo `PhonePairing` dziś paruje wyłącznie konto słuchacza. Na innych profilach sekcji „Telefony” nie ma. Parowanie telefonów innych domowników byłoby nową funkcją (pytanie 7).
 - **„Pokaż” i „Kopiuj” hasło są tylko tam, gdzie aplikacja zna hasło,** czyli na koncie Maca (pęk kluczy). Na innych profilach jest tylko „Zmień…”, bo serwer haseł nie zwraca.
@@ -468,6 +470,21 @@ Ustawienia
 - Znikają trzy szuflady bez wyraźnego obiektu: „Ustawienia serwera”, „Dostęp” i „Aktywność”. Ich zawartość trafia tam, czego dotyczy.
 - Trzy strony z kartami znikają. Druga karta przestaje być ukrytym miejscem.
 - Etapy wdrożenia są podobnej wielkości jak w A. Różnica to dwa etapy więcej (część 5).
+
+**Obszary z zadania → miejsce w wariancie B**
+
+| Obszar | Gdzie |
+|---|---|
+| Użytkownicy, konta, telefony | Użytkownicy (siatka, profil, root) |
+| Biblioteki | Biblioteki › lista i podstrona biblioteki |
+| Serwer i zdalny dostęp | Ogólne (stan, start/stop, adres) i Dostęp zdalny (sieć domowa, spoza domu, SSO, klucze API) |
+| Podcasty | Biblioteki: „Dodaj podcasty…”, sklep iTunes i źródło na podstronie biblioteki podcastów. Ustawienia pojedynczego podcastu (automatyczne pobieranie, harmonogram) i kolejka odcinków zostają w oknie Biblioteka (X3). Uprawnienie do pobierania z telefonu: profil konta Maca › Rola. |
+| Metadane | Biblioteki › Metadane (polskie źródła, własni dostawcy); źródło domyślne i źródła skanera na podstronie biblioteki; skaner i okładki wspólne › Zaawansowane |
+| Kopie zapasowe | Kopie zapasowe |
+| Powiadomienia | Powiadomienia (Apprise, e-mail na czytniki, SMTP pod „Zaawansowane”) |
+| Dziennik | Ogólne › Dziennik serwera; log tunelu w Dostęp zdalny › Zaawansowane; log źródeł w Biblioteki › Metadane |
+| Narzędzia | Narzędzia bibliotek (skan, pełny skan, dopasuj wszystkie, pliki metadata, pamięć podręczna): Biblioteki. Narzędzia pozycji (M4B, osadzanie metadanych, wsadowe): okno Biblioteka (X3), bez zmian. |
+| Wygląd i zachowanie aplikacji | Ogólne › Aplikacja (start przy logowaniu). Aplikacja nie ma dziś innych ustawień wyglądu; preferencje czytnika i tekstu książki zostają w swoich oknach (X5). Ikona w Docku pojawia się sama przy otwartym oknie i nie ma przełącznika. |
 
 ### 3.3 Makiety (wariant B)
 
@@ -505,6 +522,16 @@ Makiety to prawdziwe widoki SwiftUI z danymi przykładowymi, w samodzielnej apli
 
 W makietach nie ma podstrony biblioteki, arkuszy „Podłącz telefon” i „Zarządzaj rolą i dostępem” ani stron Ogólne, Powiadomienia i Kopie. Ich zawartość to dzisiejsze kontrolki ułożone według zasad z części 2.
 
+**Czego w makietach nie ma dziś w aplikacji** (zatwierdzenie wyglądu nie jest zatwierdzeniem tych prac):
+
+- **„Ostatnio dziś” przy telefonie.** Serwer v2.38.0 nie zapisuje ostatniego użycia klucza. Dziś widać tylko datę sparowania.
+- **„Słucha teraz …” na kaflu i w profilu.** Dane są (otwarte sesje), ale trzeba je pobierać dla siatki.
+- **Liczba telefonów ze starymi adresami w banerze.** Mac nie wie, który telefon zeskanował kod. Wymaga zapamiętania „adresy zmieniły się po ostatnim pokazaniu kodu” albo zgłaszania wersji adresów przez telefon.
+- **Awatary.** Kolor i inicjały liczone z nazwy nic nie kosztują. Wybór obrazka wymaga zapisu na Macu.
+- **Statystyki w profilu** (godziny w roku, ukończone, dni z rzędu). API statystyk jest (arkusz US2), ale wybór trzech liczb jest nowy.
+- **Przeciąganie kolejności bibliotek** zamiast przycisków Wyżej/Niżej.
+- **„Dane logowania do innych aplikacji…”** jako osobny arkusz. Dane są te same co dziś w „Udostępnianiu”.
+
 ---
 
 ## 4. Kliknięcia w typowych zadaniach
@@ -513,13 +540,13 @@ Liczone od kliknięcia ikony na pasku menu (1). Tekstu nie liczę.
 
 | Zadanie | Teraz | A | B | Uwagi |
 |---|---|---|---|---|
-| **Sparowanie telefonu** (sieć lokalna wyłączona) | 7: ikona › Ustawienia… › Udostępnianie › przełącznik sieci › Sparuj telefon… › Utwórz kod › odsłoń kod | 7 | **6** przez menu kontekstowe kafla, **7** przez profil | W B arkusz „Podłącz telefon” ma zaznaczone „Włącz udostępnianie w sieci domowej”, gdy nie ma żadnego adresu, więc nie trzeba wracać na inną stronę. Opcja: „Podłącz telefon…” w menu na pasku daje **4**. |
-| **Zmiana hasła konta Maca** | 5: ikona › Ustawienia… › Użytkownicy › ołówek › Zapisz | 6 | **6** przez profil, **5** przez menu kontekstowe | Przy innych kontach tak samo. |
-| **Skopiowanie hasła konta Maca do innej aplikacji** | 4: ikona › Ustawienia… › Udostępnianie › Kopiuj | 5 | **5** przez profil, **4** przez menu kontekstowe | |
+| **Sparowanie telefonu** (sieć lokalna wyłączona) | 7: ikona › Ustawienia… › Udostępnianie › przełącznik sieci › Sparuj telefon… › Utwórz kod › odsłoń kod | 7 | **8**: ikona › Ustawienia… › Użytkownicy › konto Maca (albo prawy klik na kaflu) › Podłącz telefon… › pole „Włącz w sieci domowej” › Utwórz kod › odsłoń | Pole w arkuszu jest świadomym wyborem z ostrzeżeniem o HTTP i restarcie, a nie domyślnie zaznaczonym skutkiem ubocznym. Przy włączonej sieci: teraz 6, B 7. Opcja: „Podłącz telefon…” w menu na pasku daje **5** (4 przy włączonej sieci). |
+| **Zmiana hasła konta Maca** | 5: ikona › Ustawienia… › Użytkownicy › ołówek › Zapisz | 6 | **6** przez profil albo menu kontekstowe kafla (prawy klik › Zmień hasło… › Zapisz) | Przy innych kontach tak samo. |
+| **Skopiowanie hasła konta Maca do innej aplikacji** | 4: ikona › Ustawienia… › Udostępnianie › Kopiuj | 5 | **5** przez profil albo menu kontekstowe | |
 | **Dodanie biblioteki** | 5: ikona › Ustawienia… › Biblioteki › Dodaj folder z audiobookami… › Otwórz | 5 | **5** | Dwa przyciski zostają. Menu „Dodaj bibliotekę ▾” dodałoby kliknięcie. |
-| **Włączenie dostępu spoza domu** (tunel, `cloudflared` jest) + aktualizacja adresów na telefonach | 7: ikona › Ustawienia… › Udostępnianie › Dostęp spoza domu › Cloudflare Tunnel › Zapisz (token) › Kod z adresami… | 7 | **6**: ikona › Ustawienia… › Dostęp zdalny › Cloudflare Tunnel (segment) › Zapisz › baner „Pokaż kod z adresami…” | Baner sam przypomina o telefonach. Dziś trzeba wiedzieć, że kod jest niżej w drugiej sekcji. |
+| **Włączenie dostępu spoza domu** (tunel, `cloudflared` jest, token jeszcze nie) + aktualizacja adresów na telefonach | 7: ikona › Ustawienia… › Udostępnianie › Dostęp spoza domu › Cloudflare Tunnel › Zapisz (token) › Kod z adresami… | 7 | **6**: ikona › Ustawienia… › Dostęp zdalny › Cloudflare Tunnel (segment) › Zapisz (pole tokenu w wierszu) › baner „Pokaż kod z adresami…” | Przy zmianie istniejącego tokenu (arkusz „Zmień…”) B ma 7. Baner sam przypomina o telefonach. Dziś trzeba wiedzieć, że kod jest niżej w innej sekcji. |
 
-Kliknięć nie ubywa dużo i to świadome: B dokłada poziom „osoba”, ale w zamian każda czynność jest tam, gdzie się jej szuka. Skróty w menu kontekstowym kafla wyrównują liczby.
+Wariant B nie oszczędza kliknięć: w czterech zadaniach z pięciu jest tak samo albo o jedno więcej, bo dochodzi poziom „osoba”. Zyskiem jest to, gdzie rzeczy są, a nie ile trzeba kliknąć. Jeśli kliknięcia przy parowaniu mają znaczenie, rozwiązuje to skrót w menu na pasku (pytanie 5).
 
 ---
 
@@ -543,7 +570,7 @@ Kliknięć nie ubywa dużo i to świadome: B dokłada poziom „osoba”, ale w 
 | G4 | Ogólne › Serwer | Ogólne › Zaawansowane (jedyne miejsce folderu danych) | Ogólne › Serwer |
 | G5 | Ogólne › Serwer | Ogólne › Serwer | Ogólne › Serwer |
 | G6 | Ogólne › Aplikacja | Ogólne › Aplikacja | Ogólne › Aplikacja |
-| U1 | Udostępnianie › Połącz telefon | Dostęp zdalny › Sieć domowa (+ pole w arkuszu „Podłącz telefon”) | Dostęp zdalny › Sieć lokalna |
+| U1 | Udostępnianie › Połącz telefon | Dostęp zdalny › Sieć domowa (→ skrót: gdy nie ma żadnego adresu, arkusz „Podłącz telefon” pokazuje **niezaznaczone** pole „Włącz udostępnianie w sieci domowej” z ostrzeżeniem o zwykłym HTTP i restarcie serwera) | Dostęp zdalny › Sieć lokalna |
 | U2 | Udostępnianie › Połącz telefon | Dostęp zdalny › Sieć domowa + „Skąd można słuchać” | Dostęp zdalny |
 | U3 | Udostępnianie › Połącz telefon | Dostęp zdalny › Spoza domu + „Skąd można słuchać” | Dostęp zdalny |
 | U4 | Udostępnianie › Połącz telefon | Użytkownicy › konto Maca › Hasło › „Dane logowania do innych aplikacji…” (arkusz: adres, nazwa, hasło) | Użytkownicy › profil |
@@ -552,7 +579,7 @@ Kliknięć nie ubywa dużo i to świadome: B dokłada poziom „osoba”, ale w 
 | U7 | Udostępnianie › Połącz telefon | Dostęp zdalny › Spoza domu › Własny adres | Dostęp zdalny |
 | U8 | Udostępnianie › Cloudflare | Dostęp zdalny › Spoza domu › Cloudflare Tunnel | Dostęp zdalny |
 | U9 | Udostępnianie › Cloudflare | Dostęp zdalny › Spoza domu › Token tunelu › „Zmień…” (arkusz z „Usuń token”) | Dostęp zdalny |
-| U10 | Udostępnianie › Cloudflare | Dostęp zdalny › Spoza domu › Token tunelu (arkusz z instrukcją) | Dostęp zdalny |
+| U10 | Udostępnianie › Cloudflare | Dostęp zdalny › Spoza domu › Token tunelu: pole w wierszu przy pierwszym ustawieniu, „Zmień…” (arkusz z instrukcją), gdy token już jest | Dostęp zdalny |
 | U11 | Udostępnianie › Cloudflare | Dostęp zdalny › Spoza domu › Stan + „Skąd można słuchać” | Dostęp zdalny |
 | U12 | Udostępnianie › Cloudflare | Dostęp zdalny › Zaawansowane › Log tunelu | Dostęp zdalny |
 | U13 | Udostępnianie › Cloudflare | Dostęp zdalny › Spoza domu (stopka i ostrzeżenie) | Dostęp zdalny |
@@ -561,7 +588,7 @@ Kliknięć nie ubywa dużo i to świadome: B dokłada poziom „osoba”, ale w 
 | P3 | Udostępnianie › Telefon | Użytkownicy › konto Maca › Telefony | Użytkownicy › profil |
 | P4 | Udostępnianie › Telefon | Użytkownicy › konto Maca › Telefony › „Odłącz…” | Użytkownicy › profil |
 | P5 | Udostępnianie › Telefon | Użytkownicy › konto Maca › „Kod z adresami…” (→ skrót: baner w Dostępie zdalnym) | Użytkownicy › profil |
-| P6 | Udostępnianie › Telefon | Użytkownicy › konto Maca › Rola i dostęp (Użytkownik/Administrator + stopka) | Użytkownicy › profil |
+| P6 | Udostępnianie › Telefon | Użytkownicy › konto Maca › Rola i dostęp: wybór „Administrator” pyta o potwierdzenie (jak dziś „Nadaj…”) i działa jak `setListenerAdmin` (włącza też „Edycję pozycji”); „Użytkownik” odbiera bez pytania | Użytkownicy › profil |
 | Z1 | Źródła metadanych | Biblioteki › Metadane | Metadane |
 | Z2 | Źródła metadanych | Biblioteki › Metadane (podpis wiersza + „Spróbuj ponownie”) | Metadane |
 | Z3 | Źródła metadanych | Biblioteki › Metadane › „Konfiguracja…” | Metadane |
@@ -652,6 +679,7 @@ Kliknięć nie ubywa dużo i to świadome: B dokłada poziom „osoba”, ale w 
 | X5 | Okna czytnika, tekstu, biblioteki | bez zmian | bez zmian |
 | X6 | Okno Biblioteka, web UI | cel: Ogólne (bez zmian) albo Ogólne › Dziennik serwera | cel: Ogólne |
 | X7 | Wysyłka na czytnik | cel: Powiadomienia › E-mail na czytniki | cel: Powiadomienia i e-mail |
+| X8 | Okna Biblioteka, web UI | bez zmian (ten sam formularz co kafel „Utwórz konto tego Maca”) | bez zmian |
 
 Kontrola kompletności: każdy identyfikator ze spisu (1.3) występuje w tej tabeli dokładnie raz. Sprawdza to skrypt w [`ustawienia-nowy-uklad/sprawdz-tabele.sh`](ustawienia-nowy-uklad/sprawdz-tabele.sh).
 
@@ -672,13 +700,14 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
 
 - **Zakres:** siatka profili, profil, strona roota, arkusze „Podłącz telefon”, „Zarządzaj rolą i dostępem”, „Zmień hasło”, „Dane logowania” i menu kontekstowe kafla.
 - **Znikają:** strona „Konta” i sekcja telefonu z „Udostępniania”. „Udostępnianie” zostaje tylko z siecią i tunelem, pod nazwą „Dostęp zdalny”.
-- **Uprawnienia administratora konta Maca:** jedna kontrolka. Rola z ostrzeżeniem zastępuje „Nadaj…/Odbierz” i zablokowany typ w edytorze.
+- **Uprawnienia administratora konta Maca:** jedna kontrolka. Rola zastępuje „Nadaj…/Odbierz” i zablokowany typ w edytorze. Wybór „Administrator” zachowuje potwierdzenie i działanie `setListenerAdmin` (typ `admin` + „Edycja pozycji”).
 - **Pozostałe zmiany:** znak uwagi z „Kont” przechodzi na „Użytkowników”, a teksty w aplikacji, które dziś odsyłają do „Kont”, odsyłają do roota w „Użytkownikach”. Teksty iOS — patrz część 7.
 - **Ryzyka:**
   - `PhonePairing.refresh` jest dziś wywoływane z `.task(id: listenerUsername)` w sekcji. Musi się przenieść do profilu.
   - Arkusz parowania czyści klucz z pamięci w `onDisappear`. Powrót z profilu zamyka arkusz i to jest dobre, ale trzeba to sprawdzić.
   - `UsersModel` i `ServerAccount` mają osobne pojęcie słuchacza (`isListener`, `listenerRevision`, `listenerCredentialsChanged`). Profil musi korzystać z obu tak samo jak dziś edytor.
   - Usunięcie i zmiana nazwy słuchacza w trakcie odtwarzania.
+  - Pole „Włącz udostępnianie w sieci domowej” w arkuszu parowania restartuje serwer. Arkusz musi poczekać na restart, zanim złoży kod z adresami, i pokazać, że to trwa.
 - **Do sprawdzenia ręcznie:**
   - telefon: parowanie z siecią wyłączoną (włączenie z arkusza), odłączenie, kod z adresami,
   - konto Maca: nadanie i odebranie administratora, zmiana hasła i nazwy w trakcie odtwarzania, usunięcie (prośba o nowe konto),
@@ -728,7 +757,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - Kopie z „Zaawansowane”,
   - przegląd słownictwa w całej aplikacji (README, napisy pomocy, komunikaty błędów),
   - nowe zrzuty do README,
-  - porównanie ze spisem: wszystkie 123 pozycje na miejscu.
+  - porównanie ze spisem: wszystkie 124 pozycje na miejscu.
 - **Do sprawdzenia:** powiadomienie testowe, e-mail testowy, czytnik, kopia, przywrócenie, harmonogram, zmiana folderu kopii.
 
 **Wariant A** to etapy 1, 2 i 5 (bez Aktywności) oraz uproszczony etap 3 (tylko zmiana nazwy „Udostępniania”).
@@ -750,7 +779,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
 | `WelcomeView.swift:24` | „Ustawienia aplikacji → Udostępnianie → „Sparuj telefon…”” | „Ustawienia → Użytkownicy → (konto Maca) → „Podłącz telefon…”” |
 | `WelcomeView.swift:88` | adres „w Ustawieniach → Udostępnianie”; klucz API „na podstronie „Dostęp”” | „Ustawienia → Dostęp zdalny”; „Dostęp zdalny → Zaawansowane → Klucze API” |
 | `SettingsView.swift:98` | „Ustawienia aplikacji → Udostępnianie → „Kod z adresami…”” | „Ustawienia → Dostęp zdalny → „Pokaż kod z adresami…” (albo profil konta Maca)” |
-| `PodcastStore.swift:175, 177` | „Udostępnianie → Aplikacja AudiobookSwift na telefonie → Uprawnienia administratora → „Nadaj…”” | „Użytkownicy → (konto Maca) → Rola: Administrator” |
+| `PodcastStore.swift:175, 177` | „Udostępnianie → Aplikacja AudiobookSwift na telefonie → Uprawnienia administratora → „Nadaj…”” | „Użytkownicy → (konto Maca) → Rola: Administrator” (włącza też „Edycję pozycji”) |
 | `SettingsView.swift:104`, `PairedServer.swift:62`, `AudiobookSwiftiOSApp.swift:75` | „usuń telefon z listy sparowanych”, „unieważniony na Macu” | słownictwo „odłącz” („Odłącz telefon na Macu”) |
 
 **Starsze wersje aplikacji iOS** będą pokazywać stare ścieżki do czasu aktualizacji. Proponuję:

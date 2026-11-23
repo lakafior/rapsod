@@ -267,8 +267,9 @@ struct ProfilePage: View {
             Section("Hasło") {
                 LabeledContent("Hasło") {
                     HStack {
-                        Text(showsPassword ? "przykładowe-hasło-xyz" : String(repeating: "•", count: 14))
+                        Text(showsPassword ? "przykładowe-hasło-xyz" : String(repeating: "•", count: 10))
                             .font(.callout.monospaced())
+                            .fixedSize()
                         Button(showsPassword ? "Ukryj" : "Pokaż") { showsPassword.toggle() }
                         Button("Kopiuj") {}
                         Button("Zmień…") {}
@@ -435,7 +436,7 @@ struct RemotePage: View {
                 Toggle("Udostępniaj w sieci domowej", isOn: .constant(true))
                 LabeledContent("Adres") {
                     HStack {
-                        Text("http://192.168.1.20:13378").font(.callout.monospaced())
+                        Text("http://192.168.1.20:13378").font(.callout.monospaced()).fixedSize()
                         Button("Kopiuj") {}
                     }
                 }
@@ -457,7 +458,7 @@ struct RemotePage: View {
                 }
                 LabeledContent("Adres") {
                     HStack {
-                        Text("https://ksiazki.example.com").font(.callout.monospaced())
+                        Text("https://ksiazki.example.com").font(.callout.monospaced()).fixedSize()
                         Button("Kopiuj") {}
                     }
                 }
