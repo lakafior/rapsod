@@ -368,3 +368,59 @@ struct SkipPlanTests {
         #expect(store.settings(podcastID: "p1") == .standard)
     }
 }
+
+@Suite("Źródła znaczników")
+struct SkipSourcesTests {
+    @Test func feedChapters() throws {
+        let xml = """
+        <rss version="2.0" xmlns:psc="http://podlove.org/simple-chapters" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>P</title>
+        <item><title>O1</title><enclosure url="https://x.invalid/1.mp3" type="audio/mpeg"/>
+        <psc:chapters version="1.2"><psc:chapter start="00:00:00.000" title="Wstęp"/><psc:chapter start="00:01:45" title="Autopromocja"/><psc:chapter start="00:03:45.500" title="Sprawa"/></psc:chapters>
+        <podcast:chapters url="https://x.invalid/1.json" type="application/json+chapters"/></item>
+        </channel></rss>
+        """
+        let episode = try #require(RSSFeedParser.parse(Data(xml.utf8)).episodes.first)
+        #expect(episode.chapters?.map(\.start) == [0, 105, 225.5])
+        #expect(episode.chaptersURL?.absoluteString == "https://x.invalid/1.json")
+        let ranges = RSSChapter.ranges(episode.chapters ?? [], duration: 600)
+        #expect(ranges.map(\.end) == [105, 225.5, 600])
+
+        let json = #"{"version":"1.2.0","chapters":[{"startTime":0,"title":"Intro"},{"startTime":60,"title":"Sponsor: X","toc":false,"endTime":90},{"startTime":120,"title":"Main"}]}"#
+        let parsed = RSSChapter.parseJSON(Data(json.utf8), duration: 600)
+        #expect(parsed.map { [$0.start, $0.end] } == [[0, 60], [60, 90], [120, 600]])
+        let result = SkipDetection.analyze(.init(description: nil, chapters: parsed, fileDuration: 600))
+        #expect(result.segments.map { [$0.start, $0.end] } == [[60, 90]])
+    }
+
+    @Test func locatesSkipFileNextToEpisode() throws {
+        let json = """
+        {"id":"li","libraryId":"lib","mediaType":"podcast","path":"/p/Pod",
+         "media":{"metadata":{"title":"Pod"},"episodes":[{"id":"ep1","title":"O1","audioFile":{"ino":"11","duration":600,"metadata":{"filename":"o1.mp3","path":"/p/Pod/o1.mp3","size":1000}}}]},
+         "libraryFiles":[{"ino":"11","metadata":{"filename":"o1.mp3","path":"/p/Pod/o1.mp3","size":1000},"fileType":"audio"},
+                         {"ino":"12","metadata":{"filename":"o1.skip.json","path":"/p/Pod/inny/o1.skip.json","size":10},"fileType":"metadata"},
+                         {"ino":"13","metadata":{"filename":"o1.skip.json","path":"/p/Pod/o1.skip.json","size":10},"fileType":"metadata"}]}
+        """
+        let item = try JSONDecoder().decode(AudiobookshelfClient.ItemDetail.self, from: Data(json.utf8))
+        let located = try #require(SkipMapLoader.locate(episodeID: "ep1", in: item))
+        #expect(located.skipFile?.ino == "13")
+        #expect(located.audioSize == 1000)
+        #expect(SkipMapLoader.locate(episodeID: "nie-ma", in: item) == nil)
+    }
+
+    @Test func phoneCorrectionsMerge() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "skipfix-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SkipCorrectionsStore(directory: directory)
+        var phone = SkipMapTests.map()
+        phone.remove(phone.segments[0])
+        try store.save(phone, key: "li#ep")
+        #expect(store.corrections(key: "li#ep", audio: SkipMapTests.audio)?.removed.count == 1)
+        // Inny plik — poprawki nie pasują.
+        #expect(store.corrections(key: "li#ep", audio: SkipAudioFingerprint(size: 5, duration: 600)) == nil)
+
+        var server = SkipMapTests.map()
+        server.add(start: 300, end: 330, kind: .sponsor)
+        let merged = SkipCorrectionsStore.merged(server, with: store.corrections(key: "li#ep", audio: SkipMapTests.audio))
+        #expect(merged.effectiveSegments.map(\.start) == [0, 300])
+    }
+}

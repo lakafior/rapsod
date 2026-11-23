@@ -61,6 +61,10 @@ public struct RSSEpisode: Codable, Sendable, Hashable, Identifiable {
     public var episodeType: String?
     public var imageURL: URL?
     public var explicit: Bool?
+    /// Rozdziały wpisane w kanał (Podlove Simple Chapters, `psc:chapters`) — etap 13a.
+    public var chapters: [RSSChapter]?
+    /// Plik rozdziałów Podcasting 2.0 (`podcast:chapters`, JSON) — etap 13a.
+    public var chaptersURL: URL?
 
     /// Stały klucz odcinka w obrębie kanału: guid, a bez niego adres pliku.
     public var id: String { Self.key(guid: guid, url: enclosure.url) }
@@ -91,6 +95,51 @@ public struct RSSEpisode: Codable, Sendable, Hashable, Identifiable {
 }
 
 /// Parser kanału RSS podcastu. Wywoływany poza aktorem głównym na gotowych bajtach.
+/// Rozdział z kanału: początek w sekundach i tytuł (koniec wynika z następnego rozdziału).
+public struct RSSChapter: Codable, Sendable, Hashable {
+    public var start: Double
+    public var title: String
+
+    public init(start: Double, title: String) {
+        self.start = start
+        self.title = title
+    }
+
+    /// Rozdziały z początkami → zakresy (ostatni do końca nagrania).
+    public static func ranges(_ chapters: [RSSChapter], duration: Double) -> [SkipDetection.Chapter] {
+        let sorted = chapters.sorted { $0.start < $1.start }
+        return sorted.enumerated().compactMap { index, chapter in
+            let end = index + 1 < sorted.count ? sorted[index + 1].start : duration
+            guard end > chapter.start else { return nil }
+            return SkipDetection.Chapter(start: chapter.start, end: end, title: chapter.title)
+        }
+    }
+
+    /// Plik rozdziałów JSON Podcasting 2.0: `{"chapters":[{"startTime":0,"title":"…","endTime":…}]}`.
+    /// Rozdziały bez spisu treści (`toc: false`) też — to często właśnie wstawki.
+    public static func parseJSON(_ data: Data, duration: Double) -> [SkipDetection.Chapter] {
+        struct File: Decodable {
+            struct Item: Decodable {
+                let startTime: Double?
+                let endTime: Double?
+                let title: String?
+            }
+            let chapters: [Item]?
+        }
+        guard let file = try? JSONDecoder().decode(File.self, from: data), let items = file.chapters else { return [] }
+        let starts = items.compactMap { item -> (Double, Double?, String)? in
+            guard let start = item.startTime, start.isFinite, start >= 0, let title = item.title, !title.isEmpty else { return nil }
+            return (start, item.endTime, title)
+        }.sorted { $0.0 < $1.0 }
+        return starts.enumerated().compactMap { index, item in
+            let next = index + 1 < starts.count ? starts[index + 1].0 : duration
+            let end = item.1.map { min($0, duration) } ?? next
+            guard end > item.0 else { return nil }
+            return SkipDetection.Chapter(start: item.0, end: end, title: item.2)
+        }
+    }
+}
+
 public enum RSSFeedParser {
     public enum ParseError: LocalizedError, Equatable {
         case notRSS
@@ -195,7 +244,7 @@ public enum RSSFeedParser {
     // MARK: Odczyt
 
     private enum Namespace {
-        case none, itunes, content, media, podcast, other
+        case none, itunes, content, media, podcast, psc, other
     }
 
     private final class Delegate: NSObject, XMLParserDelegate {
@@ -215,6 +264,15 @@ public enum RSSFeedParser {
         private var itemEnclosure: RSSEpisode.Enclosure?
         private var mediaEnclosure: RSSEpisode.Enclosure?
         private var itemImage: URL?
+        private var itemChapters: [RSSChapter] = []
+
+        /// Początek rozdziału `hh:mm:ss.mmm` (także zero, którego `FeedDuration` nie przyjmuje).
+        static func chapterStart(_ raw: String) -> Double? {
+            if let value = FeedDuration.seconds(raw) { return value }
+            let text = raw.trimmingCharacters(in: .whitespaces)
+            return !text.isEmpty && text.allSatisfy({ "0:.".contains($0) }) ? 0 : nil
+        }
+        private var itemChaptersURL: URL?
 
         private func resolve(_ qName: String) -> (Namespace, String) {
             guard let colon = qName.firstIndex(of: ":") else { return (.none, qName) }
@@ -226,6 +284,7 @@ public enum RSSFeedParser {
                 if uri.contains("purl.org/rss/1.0/modules/content") { return (.content, local) }
                 if uri.contains("search.yahoo.com/mrss") { return (.media, local) }
                 if uri.contains("podcastindex.org/namespace") { return (.podcast, local) }
+                if uri.contains("podlove.org/simple-chapters") { return (.psc, local) }
                 return (.other, local)
             }
             // Przedrostek bez deklaracji: zwyczajowe nazwy.
@@ -234,6 +293,7 @@ public enum RSSFeedParser {
             case "content": return (.content, local)
             case "media": return (.media, local)
             case "podcast": return (.podcast, local)
+            case "psc": return (.psc, local)
             default: return (.other, local)
             }
         }
@@ -254,6 +314,8 @@ public enum RSSFeedParser {
                 itemEnclosure = nil
                 mediaEnclosure = nil
                 itemImage = nil
+                itemChapters = []
+                itemChaptersURL = nil
                 return
             }
             if ns == .none, name == "image", !inItem, path.count >= 2, path[path.count - 2].name == "channel" {
@@ -268,6 +330,11 @@ public enum RSSFeedParser {
                     mediaEnclosure = .init(url: url, type: attributes["type"]?.nilIfBlank, length: attributes["fileSize"].flatMap { Int64($0) })
                 } else if ns == .itunes, name == "image", let href = attributes["href"] {
                     itemImage = RSSFeedParser.webURL(href)
+                } else if ns == .psc, name == "chapter", itemChapters.count < 500,
+                          let start = attributes["start"].flatMap(Self.chapterStart), let title = attributes["title"], !title.isEmpty {
+                    itemChapters.append(RSSChapter(start: start, title: String(title.prefix(300))))
+                } else if ns == .podcast, name == "chapters", itemChaptersURL == nil {
+                    itemChaptersURL = RSSFeedParser.webURL(attributes["url"])
                 }
             } else if sawChannel, ns == .itunes, name == "image", podcast.imageURL == nil || !imageFromITunes {
                 if let url = RSSFeedParser.webURL(attributes["href"]) {
@@ -354,7 +421,7 @@ public enum RSSFeedParser {
             guard let enclosure = itemEnclosure ?? mediaEnclosure else { return }
             let html = item["encoded"] ?? item["description"] ?? item["summary"]
             let title = item["title"] ?? item["itunesTitle"] ?? "Bez tytułu"
-            let episode = RSSEpisode(
+            var episode = RSSEpisode(
                 guid: item["guid"],
                 title: HTMLText.plain(title) ?? title,
                 subtitle: item["subtitle"].flatMap(HTMLText.plain),
@@ -369,6 +436,8 @@ public enum RSSFeedParser {
                 imageURL: itemImage,
                 explicit: item["explicit"].map { ["yes", "true", "explicit"].contains($0.lowercased()) }
             )
+            episode.chapters = itemChapters.isEmpty ? nil : itemChapters
+            episode.chaptersURL = itemChaptersURL
             podcast.episodes.append(episode)
         }
 
