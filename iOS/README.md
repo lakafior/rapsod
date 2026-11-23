@@ -49,3 +49,11 @@ listami, strona pozycji i podcastu z tłem z okładki (na iPadzie dwie kolumny),
 kategoriami (serie, autorzy, lektorzy, kolekcje, playlisty, pobrane) i widokiem siatka/lista,
 pełnoekranowy odtwarzacz wysuwany z mini-odtwarzacza. Kolor akcentu z ikony. Szczegóły w głównym
 `README.md` („Wygląd klienta iOS”).
+
+Etap 11b: tryb „Tekst” w pełnoekranowym odtwarzaczu — tekst książki z EPUB-a z podświetlonym
+bieżącym zdaniem przewijanym za nagraniem, dotknięcie zdania przenosi odtwarzanie, ręczne
+przewinięcie z „Wróć do bieżącego miejsca”, krój i rozmiar w menu „Aa”. Mapę tekstu liczy Mac
+(„Synchronizuj e-book”), telefon ją pobiera, także razem z książką do słuchania bez sieci. Model
+we wspólnym pakiecie (`TextFollowModel`, `TextSyncDocument`). Przy okazji: lista „Audiobooki”
+zostaje na miejscu po powrocie z podstrony, a strona pozycji nie przerysowuje się przy każdej
+synchronizacji postępu. Szczegóły w głównym `README.md` („Tekst w odtwarzaczu”).
