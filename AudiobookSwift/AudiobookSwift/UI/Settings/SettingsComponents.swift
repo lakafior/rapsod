@@ -56,17 +56,27 @@ struct AdvancedSection<Content: View, Footer: View>: View {
             DisclosureGroup(isExpanded: $isExpanded) {
                 content
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Zaawansowane")
-                    if !isExpanded {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                // Cały nagłówek jest przyciskiem: klik w tekst też rozwija, a z klawiatury działa spacja.
+                Button {
+                    withAnimation { isExpanded.toggle() }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Zaawansowane")
+                        if !isExpanded {
+                            Text(summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Zaawansowane")
+                .accessibilityValue(isExpanded ? "rozwinięte" : "zwinięte")
+                .accessibilityHint(summary)
             }
-            .accessibilityHint(summary)
         } footer: {
             footer
         }
@@ -196,7 +206,9 @@ struct PasswordRow: View {
                         .textSelection(.enabled)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .accessibilityLabel(isRevealed ? Text(password) : Text("ukryte"))
+                        // Bez własnej etykiety: w `LabeledContent` etykieta tekstu wskazywała na wiersz,
+                        // a wiersz na tekst, i AppKit wpadał w nieskończoną rekurencję (awaria przy VoiceOver).
+                        .accessibilityHidden(!isRevealed)
                     Button(isRevealed ? "Ukryj" : "Pokaż") { toggle() }
                         .accessibilityLabel(isRevealed ? "Ukryj hasło" : "Pokaż hasło")
                     Button("Kopiuj") { NSPasteboard.copy(password) }

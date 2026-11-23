@@ -2,6 +2,8 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
+**Stan wdrożenia (2026-11-23):** etapy **1** i **2** (2a, 2b, 2c bez resetu hasła roota, 2d na Macu) są wykonane na gałęzi `claude/ustawienia-etap-1-2-uzytkownicy-631ae4`; szczegóły, odstępstwa i zrzuty w [części 10](#10-wdrożenie-etapów-1-i-2). Etapy 3–6 czekają.
+
 **Decyzje użytkownika (2026-11-23):** wariant B; telefony dla każdego domownika; pełna kontrola nad kontem root (zmiana i reset hasła); skrót „Podłącz telefon…” na pasku menu tylko jako opcja; wygląd jak w makietach, z własnymi awatarami. Szczegóły i wpływ na plan: [część 9](#9-decyzje-z-2026-11-23-i-ich-skutki).
 
 ## Rekomendacja w skrócie
@@ -691,14 +693,14 @@ Kontrola kompletności: każdy identyfikator ze spisu (1.3) występuje w tej tab
 
 Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a stara znika w tym samym etapie. Nie ma okresu, w którym coś jest w dwóch miejscach albo nigdzie.
 
-**Etap 1 — fundament (bez widocznych zmian w treści)**
+**Etap 1 — fundament (bez widocznych zmian w treści)** — ✅ wykonany (część 10)
 
 - **Nawigacja:** `SettingsNavigation` dostaje ścieżkę podstron (`NavigationStack` w szczegółach) i cele typu `.user(id)`, `.library(id)`, `.serverLog`. Ostatnia strona zapisywana jest w `@AppStorage`.
 - **Wspólne komponenty:** wiersz obiektu z chevronem, sekcja „Zaawansowane” (zwinięta, ze streszczeniem), jeden komponent harmonogramu (dziś BS15 i KZ4), wiersz hasła (Pokaż/Kopiuj/Zmień), baner z akcją.
 - **Okno ustawień:** tytuł „Ustawienia”, bez zmian w treści stron.
 - **Do sprawdzenia:** wszystkie wejścia `openSettings(...)` (menu, okno biblioteki, web UI, wysyłka na czytnik) otwierają właściwą stronę, a strona przetrwa ponowne uruchomienie.
 
-**Etap 2 — Użytkownicy (największy)**
+**Etap 2 — Użytkownicy (największy)** — ✅ wykonany (2a, 2b, 2c bez resetu hasła, 2d na Macu; część 10)
 
 - **Zakres:** siatka profili, profil, strona roota, arkusze „Podłącz telefon”, „Zarządzaj rolą i dostępem”, „Zmień hasło”, „Dane logowania” i menu kontekstowe kafla.
 - **Znikają:** strona „Konta” i sekcja telefonu z „Udostępniania”. „Udostępnianie” zostaje tylko z siecią i tunelem, pod nazwą „Dostęp zdalny”.
@@ -869,3 +871,53 @@ Etap 2 dzieli się na:
 - **2d:** własne awatary.
 
 Etapy 2b–2d są od siebie niezależne. Do etapu 6 dochodzi opcja „Pokaż „Podłącz telefon…” na pasku menu”. Do spisu dochodzą nowe pozycje bez starego miejsca: parowanie dla innych kont, hasło roota (pokaż/kopiuj/zmień/resetuj), awatar i opcja skrótu. Nie są w tabeli przejścia, bo dziś nie istnieją.
+
+
+## 10. Wdrożenie etapów 1 i 2
+
+Gałąź `claude/ustawienia-etap-1-2-uzytkownicy-631ae4`, 2026-11-23. Nie scalona z `main`.
+
+**Etap 1.** `SettingsNavigation` ma ścieżkę podstron (`NavigationStack` w szczegółach) i miejsca `SettingsDestination` (`.user(id)`, `.root`, `.library(id)`, `.serverLog`; dwa ostatnie do etapów 4 i 5 otwierają swoją stronę). Ostatnia strona jest w UserDefaults (`settings.lastPage`), odczyt jest tolerancyjny (`accounts` → `users`, nieznana → Ogólne). Ścieżka podstron nie jest zapamiętywana — obiekt mógł w tym czasie zniknąć. Okno nazywa się „Ustawienia”. Wspólne komponenty są w `UI/Settings/SettingsComponents.swift`: `ObjectRow`, `AdvancedSection` (cały nagłówek jest przyciskiem), `ScheduleRows` (BS15 i KZ4; zapis zostaje po stronie wywołującego), `PasswordRow`, `ActionBanner`. Tryb sprawdzający: argument `-ABSSettingsTour YES` otwiera po kolei każdą stronę, profil każdej osoby i stronę roota, a na koniec wypisuje `TOUR OK`.
+
+**Etap 2.** Strona „Użytkownicy” (`UI/Users/`): siatka, profil, root, arkusze. „Konta” i sekcja telefonu z „Udostępniania” zniknęły, a „Udostępnianie” nazywa się „Dostęp zdalny”.
+
+### Zrzuty (testowa kopia, zmyślone konta)
+
+W [`ustawienia-nowy-uklad/wdrozenie-png/`](ustawienia-nowy-uklad/wdrozenie-png/), każdy w wersji `-light` i `-dark`:
+
+- `uzytkownicy`
+- `profil-konto-maca`
+- `profil-osoby`, `profil-osoby-dol` (z rozwiniętym „Zaawansowane”)
+- `arkusz-podlacz-telefon` (sieć domowa wyłączona)
+- `root`
+- `dostep-zdalny`
+
+Wersje jasne są wymuszone argumentem `-NSRequiresAquaSystemAppearance YES`, bo system był w trybie ciemnym. Okno na jasnych zrzutach jest nieaktywne, stąd szare przyciski.
+
+### Odstępstwa od części 3–6 i 9
+
+- **Rola: trzy segmenty** (Gość / Użytkownik / Administrator) zamiast dwóch z makiety, bo inaczej „Gość” (US3) nie miałby miejsca. Konto Maca ma dwa: gość nie zmieni sam hasła, a aplikacja zakłada dla Maca zwykłe konto.
+- **Przycisk „Zarządzaj dostępem…”** zamiast „Zarządzaj rolą i dostępem…”. Rola jest na samym profilu, a arkusz zawiera tylko uprawnienia i biblioteki, więc rola nie występuje w dwóch miejscach.
+- **„Nazwa konta”** jest w „Zaawansowane” jako pole z „Zmień nazwę”, nie jako arkusz.
+- **„Kod z adresami…” na stronie „Dostęp zdalny”** jest zwykłym przyciskiem, a nie banerem z liczbą telefonów (baner to etap 3). Otwiera ten sam arkusz co profil. Dzięki temu tekst iOS z części 7 mógł od razu wskazywać „Dostęp zdalny”.
+- **Teksty iOS z etapu 3** (`WelcomeView` o adresie, `SettingsView` o kodzie z adresami) zmieniły się już teraz, bo nazwa strony zmieniła się w etapie 2. Klucze API dalej są na stronie „Dostęp” (do etapu 3).
+- **Usuwanie konta:** potwierdzenie powtarza nazwę konta w tytule i na przycisku, bez wpisywania nazwy.
+- **Odznaka „Słucha teraz”, „ostatnio dziś”, statystyki w profilu i „Historia słuchania wszystkich…”** nie zostały wdrożone: to etap 5 albo praca niezatwierdzona. Profil ma „Statystyki słuchania…” (US2) i „Ostatnio: …” z `lastSeen`.
+- **Klucze API tej osoby w „Zaawansowane”** (filtr D1) nie zostały wdrożone, bo D1 przechodzi w etapie 3.
+- **B9** (formularz hasła roota na stronie „Biblioteki”) zostaje bez zmian, bo `LibrarySection` dzieli go z oknem powitalnym (etap 4). Inne strony administracyjne zamiast tekstu „podaj hasło na podstronie »Konta«” mają baner z przyciskiem do strony roota.
+- **2c: reset hasła roota przez bazę** nie został zrobiony (część 9, „ryzyko większe niż reszta etapu”). Jest „Pokaż / Kopiuj / Zmień…” (`PATCH /api/me/password`, najpierw serwer, potem pęk kluczy) i „Zaloguj ponownie hasłem…”.
+- **2d:** awatar to symbol na kolorze, zdjęcie (środek przycięty do kwadratu, 256 px) albo inicjały. Pliki leżą w `avatars/` folderu danych. Arkusz mówi, że kopia audiobookshelf ich nie obejmuje, a telefony ich nie widzą. Wersja na iOS przyjdzie później.
+
+### Ryzyka z części 6 — co zrobiono
+
+- **Odświeżanie listy telefonów** przeniosło się do strony „Użytkownicy”, profilu i „Dostępu zdalnego” (`.task(id: account.state)`). Lista to jedno zapytanie o klucze, pogrupowane po koncie.
+- **Klucz w pamięci:** arkusz czyści kod w `onDisappear` jak dawniej. Arkusz jest modalny, więc nie da się wrócić z profilu, póki jest otwarty.
+- **Dwa pojęcia słuchacza:** jedno porównanie `ServerAccount.isListener(username:)` (bez rozróżniania wielkości liter), używane przez `UsersModel`. `PhonePairing` nie ma już własnego pojęcia słuchacza. Jedna droga zmiany roli: `UsersModel.setRole`.
+- **Zmiana nazwy, hasła i usunięcie konta Maca w trakcie odtwarzania:** sprawdzone na testowej kopii (niżej).
+- **Restart przy włączeniu sieci domowej z arkusza:** `UsersModel` żyje w `AppDelegate`, a siatka i profil nie znikają przy rozłączeniu. Arkusz pokazuje postęp, czeka (do 90 s) na gotowe konto root i adresy, przeładowuje listę i dopiero wtedy tworzy klucz.
+
+### Znane braki
+
+- **Daty podłączenia telefonów** w testach wyświetlały się po angielsku, bo `formatted()` bierze język systemu. Tak samo było przed zmianą.
+- **Klawiatura:** kafle i nagłówek „Zaawansowane” są przyciskami. Tab do nich działa przy włączonym w systemie „Poruszaniu się po klawiaturze”, jak wszystkie przyciski w macOS. Nie sprawdzałem tego ręcznie.
+- **VoiceOver:** z mową nie był sprawdzany. Drzewo dostępności pokazuje kafle jako przyciski z etykietami, np. „tomek, Użytkownik · 1 telefon”.

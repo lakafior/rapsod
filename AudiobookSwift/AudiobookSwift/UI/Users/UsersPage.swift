@@ -64,6 +64,12 @@ struct UsersPage: View {
             await model.load()
             await models.pairing.refresh()
         }
+        // Konto tego Maca założone (kafel „Utwórz konto tego Maca”) albo zapomniane — nowa lista.
+        .onChange(of: account.userState) {
+            guard account.state == .ready else { return }
+            if case .ready = account.userState { model.notice = nil }
+            Task { await model.load() }
+        }
     }
 
     private var needsMacAccount: Bool {
