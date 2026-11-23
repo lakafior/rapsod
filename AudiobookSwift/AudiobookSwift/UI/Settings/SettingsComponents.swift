@@ -5,12 +5,14 @@ import SwiftUI
 
 // MARK: - Wiersz obiektu
 
-/// Wiersz prowadzący do podstrony obiektu (osoba, biblioteka): ikona lub awatar, nazwa, podpis
-/// i strzałka. Klik w cały wiersz przechodzi dalej — jak w Ustawieniach systemowych.
+/// Wiersz prowadzący do podstrony obiektu (root, w kolejnych etapach biblioteka): ikona, nazwa,
+/// podpis, opcjonalny znak uwagi i strzałka. Klik w cały wiersz przechodzi dalej — jak w Ustawieniach
+/// systemowych. Poza `Form` rysuje własne tło karty.
 struct ObjectRow<Icon: View>: View {
     let destination: SettingsDestination
     let title: String
     var subtitle: String?
+    var needsAttention = false
     @ViewBuilder var icon: Icon
 
     var body: some View {
@@ -22,15 +24,23 @@ struct ObjectRow<Icon: View>: View {
                     if let subtitle {
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(needsAttention ? .orange : .secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer(minLength: 0)
+                if needsAttention {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+                }
+                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }
+            .padding(10)
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
             .contentShape(.rect)
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(needsAttention ? "\(title), wymaga uwagi" : title)
         .accessibilityHint("Otwiera podstronę")
     }
 }

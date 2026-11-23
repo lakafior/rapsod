@@ -247,6 +247,12 @@ private struct ProfileContent: View {
             }
             .pickerStyle(.segmented)
             .disabled(!isReady)
+            if user.type == "admin", !user.permissions.update {
+                // Typ administratora nadany przed etapem 10e albo w web UI — telefon nie zleci pobrań.
+                ActionBanner(text: "Administrator bez „Edycji pozycji”: telefon nie zleci pobierania odcinków.", actionTitle: "Napraw") {
+                    perform("Nie udało się zmienić uprawnień") { _ = try await model.setRole("admin", of: user) }
+                }
+            }
             LabeledContent("Uprawnienia", value: permissionsSummary)
             LabeledContent("Biblioteki", value: librariesSummary)
             HStack {

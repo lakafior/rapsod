@@ -358,13 +358,17 @@ final class ServerAccount {
         var updated = current
         updated.password = password
         credentials = updated
-        let login = try await client.login(updated)
-        accessToken = login.accessToken
+        // Pęk kluczy od razu po zmianie na serwerze — nic, co może się nie udać (np. limit logowań),
+        // nie może stanąć między nimi, bo bez resetu hasła roota nie byłoby jak tego naprawić.
         do {
             try store.save(updated)
         } catch {
             logger.error("Zapis hasła roota w pęku kluczy: \(error.localizedDescription, privacy: .public)")
             throw RootPasswordError.keychain(error.localizedDescription, password: password)
+        }
+        // Ponowne logowanie nie jest konieczne: przy następnym 401 `authorized` zaloguje się nowym hasłem.
+        if let login = try? await client.login(updated) {
+            accessToken = login.accessToken
         }
         return password
     }

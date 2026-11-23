@@ -40,8 +40,16 @@ struct UsersPage: View {
                 }
                 .padding(.horizontal, 28)
 
-                RootTile(needsPassword: { if case .needsPassword = account.state { true } else { false } }()) {
-                    navigation.path = [.root]
+                ObjectRow(
+                    destination: .root,
+                    title: "Administrator serwera (root)",
+                    subtitle: needsRootPassword ? "Aplikacja nie zna aktualnego hasła — kliknij, aby je podać." : "Konto techniczne aplikacji. Nie trafia do telefonów, nie da się go usunąć.",
+                    needsAttention: needsRootPassword
+                ) {
+                    ZStack {
+                        Circle().fill(.quaternary).frame(width: 38, height: 38)
+                        Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal, 28)
 
@@ -70,6 +78,11 @@ struct UsersPage: View {
             if case .ready = account.userState { model.notice = nil }
             Task { await model.load() }
         }
+    }
+
+    private var needsRootPassword: Bool {
+        if case .needsPassword = account.state { return true }
+        return false
     }
 
     private var needsMacAccount: Bool {
@@ -213,39 +226,6 @@ private struct CreateMacAccountTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Utwórz konto tego Maca — wymaga uwagi")
-    }
-}
-
-private struct RootTile: View {
-    let needsPassword: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(.quaternary).frame(width: 38, height: 38)
-                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Administrator serwera (root)").font(.body.weight(.medium))
-                    Text(needsPassword ? "Aplikacja nie zna aktualnego hasła — kliknij, aby je podać." : "Konto techniczne aplikacji. Nie trafia do telefonów, nie da się go usunąć.")
-                        .font(.caption)
-                        .foregroundStyle(needsPassword ? .orange : .secondary)
-                }
-                Spacer()
-                if needsPassword {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-                }
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-            }
-            .padding(10)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(needsPassword ? "Administrator serwera (root), wymaga hasła" : "Administrator serwera (root)")
-        .accessibilityHint("Otwiera stronę konta root")
     }
 }
 

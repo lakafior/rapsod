@@ -918,6 +918,11 @@ Wersje jasne są wymuszone argumentem `-NSRequiresAquaSystemAppearance YES`, bo 
 
 ### Znane braki
 
+- **Reset hasła roota (decyzja z części 9, etap 2c) nie jest zrobiony.** To jedyna niespełniona decyzja. Jest zmiana hasła roota i „Zaloguj ponownie hasłem…”, ale nie ma wyjścia, gdy hasła roota nikt nie zna (np. po przywróceniu starej kopii na innym Macu). Propozycja: osobny etap. Zatrzymać serwer, zrobić kopię bazy, wygenerować skrót dołączonym Node i `bcryptjs` (koszt 8 jak `LocalAuthStrategy.hashPassword`), zapisać go w kolumnie `pash` roota, uruchomić serwer i zalogować się. Najpierw test na kopii danych.
+- **Zmiana hasła roota zapisuje nowe hasło w pęku kluczy zaraz po tym, jak serwer je przyjmie.** Ponowne logowanie przychodzi dopiero potem i jego błąd nie przerywa zmiany. Inaczej np. limit logowań mógłby zostawić roota z hasłem, którego nikt nie zna.
+- **Powrót z „Administratora” do „Użytkownika”** zabiera tylko „Edycję pozycji”, jak dawne `setListenerAdmin`. Usuwanie, wgrywanie i treści dla dorosłych zostają, ale można je wyłączyć w „Zarządzaj dostępem…”. Wyjątek to `createEreader` (podpięcie czytnika): przełącznika nie ma nigdzie, tak samo jak przed zmianą.
+- **Administrator bez „Edycji pozycji”** (nadany przed etapem 10e albo w web UI) ma przy roli baner z przyciskiem „Napraw”. Tej ścieżki nie dało się wywołać na testowej kopii.
+
 - **Daty podłączenia telefonów** w testach wyświetlały się po angielsku, bo `formatted()` bierze język systemu. Tak samo było przed zmianą.
 - **Klawiatura:** kafle i nagłówek „Zaawansowane” są przyciskami. Tab do nich działa przy włączonym w systemie „Poruszaniu się po klawiaturze”, jak wszystkie przyciski w macOS. Nie sprawdzałem tego ręcznie.
 - **VoiceOver:** z mową nie był sprawdzany. Drzewo dostępności pokazuje kafle jako przyciski z etykietami, np. „tomek, Użytkownik · 1 telefon”.
