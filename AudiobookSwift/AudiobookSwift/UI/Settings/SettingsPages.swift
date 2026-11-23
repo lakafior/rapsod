@@ -1,8 +1,7 @@
 import AudiobookshelfKit
 import SwiftUI
 
-/// Strona „Biblioteki” (etap 4 planu): lista bibliotek (wiersz → podstrona, przeciąganie zmienia
-/// kolejność), dodawanie, polskie źródła i własni dostawcy metadanych, a pod „Zaawansowane” wspólne
+/// Strona „Biblioteki” (etap 4 planu): lista bibliotek (wiersz → podstrona), dodawanie, polskie źródła i własni dostawcy metadanych, a pod „Zaawansowane” wspólne
 /// ustawienia skanera, okładek, zapisu w folderach, sortowania i pamięci podręcznej serwera.
 struct LibrariesSettingsPage: View {
     let models: AppModels
@@ -18,7 +17,7 @@ struct LibrariesSettingsPage: View {
             } header: {
                 Text("Biblioteki na serwerze")
             } footer: {
-                Text("Kliknij bibliotekę, aby zmienić jej ustawienia, harmonogram skanu albo ją usunąć. Kolejność zmienisz, przeciągając wiersze — jest taka sama w oknie „Biblioteka”, w telefonie i w web UI.")
+                Text("Kliknij bibliotekę, aby zmienić jej ustawienia, harmonogram skanu albo ją usunąć. Kolejność bibliotek (ta sama w oknie „Biblioteka”, w telefonie i w web UI) zmienisz na stronie biblioteki w „Zaawansowane”.")
             }
             Section {
                 MetadataSourcesSection(sources: models.metadataSources)
@@ -108,7 +107,6 @@ private struct LibraryListRows: View {
         ForEach(account.libraries) { library in
             row(library)
         }
-        .onMove(perform: move)
         if let error {
             Label(error, systemImage: "xmark.octagon")
                 .foregroundStyle(.red)
@@ -181,19 +179,6 @@ private struct LibraryListRows: View {
         let kind = library.mediaType == "podcast" ? "Podcasty" : "Audiobooki"
         let folders = library.folders.map(\.fullPath).joined(separator: ", ")
         return folders.isEmpty ? kind : "\(kind) · \(folders)"
-    }
-
-    private func move(from source: IndexSet, to destination: Int) {
-        var ids = account.libraries.map(\.id)
-        ids.move(fromOffsets: source, toOffset: destination)
-        error = nil
-        Task {
-            do {
-                try await account.reorderLibraries(ids)
-            } catch {
-                self.error = "Nie udało się zmienić kolejności bibliotek: \(error.localizedDescription)"
-            }
-        }
     }
 
     private func add(_ kind: ServerAccount.LibraryKind) {

@@ -60,6 +60,8 @@ struct LibraryPage: View {
             name = model.name
         }
         .onChange(of: model.draft) { model.draftChanged() }
+        // Nazwa wróciła z serwera (nieudany zapis, odczyt po zapisie) — pole pokazuje to, co zapisane.
+        .onChange(of: model.name) { if !nameFocused { name = model.name } }
         // Postęp skanu: odpytywanie zadań trwa, dopóki jest otwarta lista albo ta podstrona.
         .onAppear { tasks.appear() }
         .onDisappear {
@@ -283,7 +285,7 @@ struct LibraryPage: View {
                 .fixedSize()
                 .disabled(reordering)
             }
-            .help("Kolejność bibliotek — ta sama w oknie „Biblioteka”, w telefonie i w web UI. Na liście bibliotek można też przeciągać wiersze.")
+            .help("Kolejność bibliotek — ta sama w oknie „Biblioteka”, w telefonie i w web UI.")
         }
     }
 

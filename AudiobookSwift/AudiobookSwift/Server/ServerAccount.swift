@@ -520,7 +520,7 @@ final class ServerAccount {
         try await reorderLibraries(ids)
     }
 
-    /// Nowa kolejność wszystkich bibliotek (przeciąganie wierszy na stronie „Biblioteki”).
+    /// Nowa kolejność wszystkich bibliotek.
     func reorderLibraries(_ ids: [String]) async throws {
         guard state == .ready, ids != libraries.map(\.id) else { return }
         try await authorized { try await $0.reorderLibraries(ids, token: $1) }

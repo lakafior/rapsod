@@ -1061,7 +1061,6 @@ Gałąź `claude/ustawienia-etap-4-6` z `main` (`e1fd9eb`, po etapach 13a i 13b)
 - **Lista bibliotek** (`UI/Settings/SettingsPages.swift`, `LibraryListRows`):
   - wiersz z ikoną typu, nazwą i folderami; klik w nazwę albo strzałkę otwiera podstronę;
   - obok „Skanuj”, pod spodem wynik ostatniego skanu;
-  - kolejność przez przeciąganie (`onMove`, nowe `ServerAccount.reorderLibraries`);
   - „Dodaj audiobooki…” i „Dodaj podcasty…” (te same arkusze wyboru folderu co dotąd);
   - gdy aplikacja nie zna hasła roota, zamiast formularza jest baner „Podaj hasło…” do strony roota (B9).
 - **Podstrona biblioteki** (`UI/Settings/LibraryPage.swift`, cel `.library(id:)` jest teraz prawdziwą podstroną; dawny `LibrarySettingsSheet.swift` usunięty). Sekcje:
@@ -1123,7 +1122,7 @@ Do testów w bazie testowej kopii dopisana jest druga biblioteka audiobooków i 
 
 ### Tylko skompilowane albo przejrzane
 
-- **Przeciąganie wierszy** (`onMove` w formularzu) nie było przeciągane: test wymagałby przejęcia myszy. Na podstronie jest „Wyżej/Niżej”, sprawdzone.
+- **Przeciągania wierszy nie ma.** Pierwsza wersja miała `onMove`, ale w formularzu (`Form` w stylu grouped, wiersze bez `AXRow`) najpewniej nic by nie robiło, a nie dało się tego sprawdzić bez przejęcia myszy. Zamiast obiecywać przeciąganie, kolejność zmienia „Wyżej/Niżej” na podstronie biblioteki (sprawdzone). Przeciąganie zostaje do zrobienia (`draggable`/`dropDestination`) — odstępstwo od B2.
 - **Dodawanie biblioteki** z „Dodaj audiobooki…” / „Dodaj podcasty…” nie było klikane (panel wyboru folderu). Kod dodawania się nie zmienił, zmieniły się tylko nazwy przycisków.
 - **Polskie źródła i własny dostawca** nie były włączane ani dodawane. To ten sam kod co na dawnej stronie, w nowym miejscu.
 - **Okno powitalne:** sprawdzone przeglądem zmian, bez uruchomienia. Usunięte są tylko gałęzie dla ustawień.
@@ -1156,7 +1155,7 @@ Do testów w bazie testowej kopii dopisana jest druga biblioteka audiobooków i 
 - **Kanały RSS** (`FeedsContent`) przeszły do pliku „Dostępu zdalnego”, gdzie są używane.
 - **Nawigacja:**
   - wszystkie cele są podstronami, więc `isSubpage` zniknęło;
-  - klik w stronę na pasku bocznym zeruje ścieżkę podstron;
+  - wybór strony na pasku bocznym zeruje ścieżkę podstron. Klik w stronę, która już jest wybrana (np. „Ogólne” przy otwartym dzienniku), nie był sprawdzony prawdziwym kliknięciem; wybór przez dostępność go nie zmienia, więc wraca się strzałką wstecz;
   - tryb sprawdzający odwiedza historię (wszystkich i jednej osoby) i dziennik, a na końcu wraca na „Ogólne” bez podstrony.
 - **Otwieranie „Ogólnych” przy błędzie startu** zostało bez zmian (`MenuBarLabel` przy `.failed`, „Ustawienia i log…” w oknach Biblioteka i web UI).
 
@@ -1271,9 +1270,16 @@ Atrapy na tym Macu: serwer HTTP udający Apprise (`127.0.0.1:13499`) i serwer SM
 - **„Zapisz” w dwóch sekcjach Kopii** zapisuje ten sam formularz. Rozdzielenie zapisu harmonogramu od limitu wymagałoby dwóch zapytań do serwera i zmian w modelu.
 - **Wyszukiwanie w oknie ustawień** (część 7, opcjonalne) nie jest zrobione.
 
+### Zdarzenia przy testach (etapy 4–6)
+
+- W worktree brakowało odnośnika `build` do dołączonego Node, więc testowy serwer nie startował. Odnośnik `build → /Volumes/wew/audiobookswift/build` jest odtworzony; git go ignoruje.
+- Błędny indeks przycisku w narzędziu dostępności nacisnął „Pokaż w Finderze” i otworzył okno Findera z folderem testowym. Okno jest zamknięte.
+- Jeden raz poszło systemowe naciśnięcie Escape (zdarzenie klawiatury, nie dostępność), przy próbie zamknięcia menu.
+- **UserDefaults są wspólne z prawdziwą aplikacją.** Testy zapisały w nich `libraryWindow.library` (biblioteka testowej kopii) i `settings.lastPage`. Oba klucze są usunięte, a poprzednie wartości nie są znane: prawdziwa aplikacja wybierze przy następnym otwarciu pierwszą bibliotekę i stronę „Ogólne”. Klucz opcji menu `menu.showsPairPhone` też jest usunięty.
+
 ### Znane braki i pytania (etapy 4–6)
 
-- **Przeciąganie bibliotek** nie było przeciągane w teście (część 12).
+- **Przeciąganie bibliotek** (B2) nie jest zrobione; kolejność zmienia „Wyżej/Niżej” na podstronie (część 12).
 - **„Fragmenty sponsorowane” (13b)** zajmują dużo miejsca w „Ogólnych”. Propozycja z części 13: osobna podstrona.
 - **Zrzuty etapów 1–3** pokazują stary pasek boczny. Można je odświeżyć skryptami z części 10–11.
 - **VoiceOver** nie był słuchany z mową. Etykiety sprawdzone w drzewie dostępności.
