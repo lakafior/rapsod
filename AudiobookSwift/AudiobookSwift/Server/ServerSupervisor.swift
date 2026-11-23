@@ -28,6 +28,10 @@ final class ServerSupervisor {
 
     var hasProcess: Bool { process != nil }
 
+    /// Trwa praca na bazie zatrzymanego serwera (reset hasła roota): `start()` nic nie robi,
+    /// żeby menu, przełącznik sieci domowej ani nic innego nie uruchomiło serwera w trakcie.
+    var isMaintenanceLocked = false
+
     private static let logLimit = 500
     private static let readinessTimeout: Duration = .seconds(60)
     private static let stopTimeout: Duration = .seconds(8)
@@ -46,7 +50,7 @@ final class ServerSupervisor {
     @ObservationIgnored private var partialLine = Data()
 
     func start() {
-        guard process == nil else { return }
+        guard process == nil, !isMaintenanceLocked else { return }
 
         let environment: ServerEnvironment
         do {

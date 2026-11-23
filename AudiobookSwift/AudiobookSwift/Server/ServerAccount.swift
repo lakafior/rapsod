@@ -126,12 +126,7 @@ final class ServerAccount {
         let generation = generation
         self.environment = environment
         client = AudiobookshelfClient(baseURL: ServerEnvironment.baseURL)
-        store = CredentialStore(
-            service: ServerEnvironment.keychainService,
-            account: environment.keychainAccount,
-            label: "AudiobookSwift — konto root audiobookshelf",
-            legacyService: ServerEnvironment.legacyKeychainService
-        )
+        store = Self.rootStore(dataRoot: environment.dataRoot)
         userStore = CredentialStore(
             service: ServerEnvironment.userKeychainService,
             account: environment.keychainAccount,
@@ -166,6 +161,16 @@ final class ServerAccount {
             logger.error("Połączenie z serwerem: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// Pozycja pęku kluczy z danymi roota dla folderu danych (także dla resetu hasła przy zatrzymanym serwerze).
+    static func rootStore(dataRoot: URL) -> CredentialStore<AudiobookshelfClient.Credentials> {
+        CredentialStore(
+            service: ServerEnvironment.keychainService,
+            account: dataRoot.path,
+            label: "AudiobookSwift — konto root audiobookshelf",
+            legacyService: ServerEnvironment.legacyKeychainService
+        )
     }
 
     /// Łączy się od nowa z działającym serwerem — np. po przywróceniu kopii zapasowej,

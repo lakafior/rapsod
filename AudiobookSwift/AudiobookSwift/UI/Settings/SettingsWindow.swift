@@ -13,6 +13,7 @@ struct AppModels {
     let libraryTasks: LibraryTasks
     let users: UsersModel
     let avatars: AvatarStore
+    let rootReset: RootPasswordReset
 }
 
 /// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,
