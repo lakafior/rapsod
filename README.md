@@ -228,6 +228,7 @@ Zrzuty po etapie 6 (testowa kopia, zmyślone konta i adresy; więcej w części 
 | **Dostęp zdalny** | **Powiadomienia** | **Kopie zapasowe** |
 | ![](docs/ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-light.png) | ![](docs/ustawienia-nowy-uklad/wdrozenie-png/strona-powiadomienia-light.png) | ![](docs/ustawienia-nowy-uklad/wdrozenie-png/strona-kopie-light.png) |
 
+- **Wyszukiwanie.** Pole „Szukaj w ustawieniach” nad paskiem bocznym znajduje ustawienie po nazwie, słowie kluczowym albo dawnej nazwie strony („Udostępnianie”, „Konta”, „Aktywność”, „Sparuj”…) i otwiera właściwe miejsce, także rozwinięte „Zaawansowane”.
 - **Nawigacja.** Pasek boczny ze stronami, a w szczegółach stos podstron ze strzałką wstecz: profil osoby i strona roota. Okno pamięta ostatnią stronę między uruchomieniami. Wejścia z innych miejsc otwierają właściwe miejsce, np. „Ustawienia i log…” → Ogólne, wysyłka na czytnik → Powiadomienia, baner „wymaga konta root” → Administrator serwera.
 - **Użytkownicy („Kto słucha?”).** Siatka okrągłych profili z awatarami. Konto tego Maca ma odznakę, a pod kaflem liczbę telefonów, rolę i znacznik „nieaktywne”. Pozostałe kafle:
   - „Dodaj osobę”,

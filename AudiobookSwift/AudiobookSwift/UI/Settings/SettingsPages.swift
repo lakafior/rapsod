@@ -36,11 +36,9 @@ struct LibrariesSettingsPage: View {
         }
         .onAppear {
             models.libraryTasks.appear()
-            if navigation.pendingAdvanced == .libraries {
-                navigation.pendingAdvanced = nil
-                showsAdvanced = true
-            }
+            consumePendingAdvanced()
         }
+        .onChange(of: navigation.pendingAdvanced) { consumePendingAdvanced() }
         // Biblioteki mogły przybyć albo zniknąć poza aplikacją (web UI, inny administrator).
         .task(id: models.account.state) {
             guard models.account.state == .ready else { return }
@@ -55,6 +53,12 @@ struct LibrariesSettingsPage: View {
             await model.load()
         }
         .onDisappear { models.libraryTasks.disappear() }
+    }
+
+    private func consumePendingAdvanced() {
+        guard navigation.pendingAdvanced == .libraries else { return }
+        navigation.pendingAdvanced = nil
+        showsAdvanced = true
     }
 
     private struct AdvancedLoad: Equatable {

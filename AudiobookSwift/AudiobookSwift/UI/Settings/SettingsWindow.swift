@@ -229,6 +229,7 @@ struct SettingsWindow: View {
 
     let models: AppModels
     @Bindable var navigation: SettingsNavigation
+    @State private var query = ""
 
     var body: some View {
         NavigationSplitView {
@@ -237,9 +238,15 @@ struct SettingsWindow: View {
                 // Klik w bieżącą stronę wraca z podstrony (np. z dziennika do „Ogólnych”).
                 set: { if let page = $0 { navigation.page = page; navigation.path = [] } }
             )) {
-                // Jedna lista bez podziału na aplikację i serwer (etap 6 planu, pytanie 10).
-                ForEach(SettingsPage.allCases) { row($0) }
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // Jedna lista bez podziału na aplikację i serwer (etap 6 planu, pytanie 10).
+                    ForEach(SettingsPage.allCases) { row($0) }
+                } else {
+                    searchResults
+                }
             }
+            // Szuka też po dawnych nazwach stron („Udostępnianie”, „Konta”, „Aktywność”…).
+            .searchable(text: $query, placement: .sidebar, prompt: "Szukaj w ustawieniach")
             // Sama szerokość kolumny nie wystarcza: podział pamięta poprzednią szerokość.
             .frame(minWidth: 215)
             .navigationSplitViewColumnWidth(min: 215, ideal: 215, max: 280)
@@ -262,6 +269,29 @@ struct SettingsWindow: View {
         .environment(navigation)
         .onAppear { models.loginItem.refresh() }
         .task { await SettingsTour.runIfRequested(models: models, navigation: navigation) }
+    }
+
+    @ViewBuilder
+    private var searchResults: some View {
+        let results = SettingsSearchEntry.results(for: query)
+        if results.isEmpty {
+            Text("Brak wyników").foregroundStyle(.secondary)
+        }
+        ForEach(results) { entry in
+            Button {
+                navigation.open(entry.target)
+                query = ""
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                    Text(entry.path).font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(entry.title), \(entry.path)")
+        }
     }
 
     private func row(_ page: SettingsPage) -> some View {

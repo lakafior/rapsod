@@ -1043,7 +1043,7 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 
 - **Wiadomość na stronie logowania (D7)** jest w arkuszu „Ustawienia logowania…”, a na stronie widać tylko jej stan („brak” / „ustawiona”). Cały formularz logowania ma jeden zapis.
 - **Sekcja „Aplikacja AudiobookSwift na telefonie”** została na stronie, bo daje stałe miejsce na „Kod z adresami…”, także gdy banera nie ma. Makieta jej nie ma.
-- **Własny adres** ma pole z „Zapisz” i pod nim wiersz z „Kopiuj”, więc adres widać dwa razy.
+- **Własny adres** ma od części 16 jedno pole z „Zapisz” albo „Kopiuj”.
 
 ### Znane braki
 
@@ -1268,7 +1268,7 @@ Atrapy na tym Macu: serwer HTTP udający Apprise (`127.0.0.1:13499`) i serwer SM
 
 - **Własny cron kopii** (KZ4) jest w sekcji „Automatyczne kopie”, a nie pod „Zaawansowane”. Pokazuje się tylko wtedy, gdy harmonogram ustawiono w web UI, więc nie zaśmieca strony.
 - **„Zapisz” w dwóch sekcjach Kopii** zapisuje ten sam formularz. Rozdzielenie zapisu harmonogramu od limitu wymagałoby dwóch zapytań do serwera i zmian w modelu.
-- **Wyszukiwanie w oknie ustawień** (część 7, opcjonalne) nie jest zrobione.
+- **Wyszukiwanie w oknie ustawień** (część 7) dorobione po etapie 6 (część 16).
 
 ### Zdarzenia przy testach (etapy 4–6)
 
@@ -1305,4 +1305,30 @@ Decyzja użytkownika z 2026-11-23: oba punkty otwarte w części 14 zrobić od r
 |---|---|---|
 | Ogólne z wierszem fragmentów | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-dark.png) |
 | Fragmenty sponsorowane | ![](ustawienia-nowy-uklad/wdrozenie-png/fragmenty-sponsorowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/fragmenty-sponsorowane-dark.png) |
+
+## 16. Przed scaleniem: wyszukiwanie w ustawieniach i jeden wiersz własnego adresu
+
+- **Wyszukiwanie** (`UI/Settings/SettingsSearch.swift`, propozycja z części 7):
+  - pole „Szukaj w ustawieniach” nad paskiem bocznym (`.searchable`, miejsce `.sidebar`);
+  - zamiast stron lista wyników z tytułem i ścieżką, np. „Klucze API, logowanie (SSO, OpenID)… — Dostęp zdalny › Zaawansowane”;
+  - 20 wpisów ze słowami kluczowymi, także dawnymi nazwami: „Udostępnianie”, „Konta”, „Aktywność”, „Log serwera”, „Ustawienia serwera”, „Źródła metadanych”, „Powiadomienia i e-mail”, „Sparuj”;
+  - wielkość liter i polskie znaki nie mają znaczenia; każde słowo zapytania musi pasować;
+  - wynik otwiera stronę, podstronę (dziennik, root, historia słuchania, fragmenty sponsorowane) albo stronę z rozwiniętym „Zaawansowane” (Biblioteki, Dostęp zdalny); pole się czyści.
+  - Ogólne, Powiadomienia i Kopie mają „Zaawansowane” we własnym stanie sekcji, więc wynik otwiera tę stronę bez rozwinięcia, a ścieżka mówi „› Zaawansowane”.
+- **Własny adres** w „Dostępie zdalnym”: jedno pole. Obok niego jest „Zapisz”, gdy adres się zmienił, a „Kopiuj”, gdy pole pokazuje zapisany adres. Drugi wiersz z tym samym adresem zniknął.
+- **„Zaawansowane” na widocznej stronie:** „Dostęp zdalny” i „Biblioteki” reagują na prośbę o rozwinięcie także wtedy, gdy są już otwarte (wcześniej tylko przy pojawieniu się).
+- **Sprawdzone uruchomieniem** (testowa kopia, przez dostępność, bez myszy):
+  - „udostepnianie” → „Sieć domowa i dostęp spoza domu”, klik otwiera „Dostęp zdalny”;
+  - „sparuj” → telefony w profilu;
+  - „konta” → osoby i root;
+  - „aktywność” / „aktywnosc” → historia słuchania (klik otwiera podstronę);
+  - „klucz api” i „openid” → Dostęp zdalny z rozwiniętym „Zaawansowane”, także z tej samej strony;
+  - „cache” i „przedrostki” → Biblioteki z rozwiniętym „Zaawansowane”;
+  - „xyzzy” → „Brak wyników”;
+  - własny adres: po zmianie w polu jest „Zapisz”, po powrocie do zapisanego „Kopiuj”. „Kopiuj” nie był klikany, żeby nie nadpisać schowka.
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Wyszukiwanie („konta”) | ![](ustawienia-nowy-uklad/wdrozenie-png/szukanie-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/szukanie-dark.png) |
+| Dostęp zdalny | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-dark.png) |
 
