@@ -23,12 +23,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     // Aplikacja
     case general
     case sharing
-    case log
     // Serwer
     case libraries
     case users
-    case serverSettings
-    case activity
     case notifications
     case backups
 
@@ -43,6 +40,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case "access": self = .sharing
         // Etap 4: „Źródła metadanych” weszły do „Bibliotek”.
         case "metadata": self = .libraries
+        // Etap 5: „Log serwera” i „Ustawienia serwera” weszły do „Ogólnych”, „Aktywność” do „Użytkowników”.
+        case "log", "serverSettings": self = .general
+        case "activity": self = .users
         default: self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
         }
     }
@@ -54,9 +54,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "Użytkownicy"
         case .backups: "Kopie zapasowe"
         case .sharing: "Dostęp zdalny"
-        case .log: "Log serwera"
-        case .serverSettings: "Ustawienia serwera"
-        case .activity: "Aktywność"
         case .notifications: "Powiadomienia i e-mail"
         }
     }
@@ -64,7 +61,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     /// Grupa na pasku bocznym.
     var isServerPage: Bool {
         switch self {
-        case .general, .sharing, .log: false
+        case .general, .sharing: false
         default: true
         }
     }
@@ -76,9 +73,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "person.2.crop.square.stack"
         case .backups: "clock.arrow.circlepath"
         case .sharing: "globe"
-        case .log: "doc.text.magnifyingglass"
-        case .serverSettings: "server.rack"
-        case .activity: "waveform"
         case .notifications: "bell.badge"
         }
     }
@@ -91,9 +85,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: UsersPage(models: models)
         case .backups: BackupsSettingsPage(models: models)
         case .sharing: RemoteAccessPage(models: models)
-        case .log: LogSettingsPage(models: models)
-        case .serverSettings: ServerSettingsPage(models: models)
-        case .activity: ActivitySettingsPage(models: models)
         case .notifications: NotificationsSettingsPage(models: models)
         }
     }
@@ -122,14 +113,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             case .missing, .invalid: return true
             case .unknown, .ready: return false
             }
-        case .backups, .serverSettings, .activity, .notifications:
+        case .backups, .notifications:
             return false
         case .sharing:
             if case .failed = models.sharing.tunnel.state, models.sharing.externalAccess == .cloudflareTunnel { return true }
             return models.sharing.lastError != nil
                 || (!models.pairing.devices.isEmpty && models.sharing.phonesMayLackRemoteAddress)
-        case .log:
-            return false
         }
     }
 }
@@ -141,25 +130,19 @@ enum SettingsDestination: Hashable, Codable {
     case user(id: String)
     /// Konto root (Użytkownicy › Administrator serwera).
     case root
-    /// Dziennik serwera. Do etapu 5 planu to osobna strona („Log serwera”), nie podstrona.
+    /// Dziennik serwera (Ogólne › Dziennik serwera).
     case serverLog
+    /// Historia słuchania (Użytkownicy › „Historia słuchania wszystkich…”, albo jednej osoby z jej profilu).
+    case history(userID: String?)
     /// Biblioteka (Biblioteki › biblioteka).
     case library(id: String)
 
     /// Strona na pasku bocznym, pod którą leży to miejsce.
     var page: SettingsPage {
         switch self {
-        case .user, .root: .users
-        case .serverLog: .log
+        case .user, .root, .history: .users
+        case .serverLog: .general
         case .library: .libraries
-        }
-    }
-
-    /// Czy to podstrona (element ścieżki), czy na razie sama strona z paska bocznego.
-    var isSubpage: Bool {
-        switch self {
-        case .user, .root, .library: true
-        case .serverLog: false
         }
     }
 
@@ -169,8 +152,8 @@ enum SettingsDestination: Hashable, Codable {
         case .user(let id): UserProfilePage(models: models, userID: id)
         case .root: RootProfilePage(models: models)
         case .library(let id): LibraryPage(models: models, libraryID: id)
-        // Jeszcze nie podstrona (`isSubpage`): `show(_:)` otwiera jej stronę.
-        case .serverLog: EmptyView()
+        case .serverLog: ServerLogPage(models: models)
+        case .history(let userID): ListeningHistoryPage(models: models, userID: userID)
         }
     }
 }
@@ -205,13 +188,8 @@ final class SettingsNavigation {
         page = SettingsPage(storedValue: UserDefaults.standard.string(forKey: Self.lastPageKey))
     }
 
-    /// Przechodzi do miejsca: strona z paska bocznego, a dla podstron także ścieżka.
+    /// Przechodzi do podstrony: najpierw jej strona z paska bocznego, potem ścieżka.
     func show(_ destination: SettingsDestination) {
-        guard destination.isSubpage else {
-            page = destination.page
-            path = []
-            return
-        }
         if page == destination.page {
             path = [destination]
             return
@@ -258,7 +236,8 @@ struct SettingsWindow: View {
         NavigationSplitView {
             List(selection: Binding<SettingsPage?>(
                 get: { navigation.page },
-                set: { if let page = $0 { navigation.page = page } }
+                // Klik w bieżącą stronę wraca z podstrony (np. z dziennika do „Ogólnych”).
+                set: { if let page = $0 { navigation.page = page; navigation.path = [] } }
             )) {
                 Section("Aplikacja") {
                     ForEach(SettingsPage.allCases.filter { !$0.isServerPage }) { row($0) }

@@ -51,7 +51,7 @@ enum ServerLanguage {
 
 // MARK: - Ustawienia serwera
 
-/// Podstrona „Ustawienia serwera” (wzorzec: `client/pages/config/index.vue`). Każda zmiana idzie
+/// Ustawienia serwera (Biblioteki › Zaawansowane i Ogólne › Zaawansowane; wzorzec: `client/pages/config/index.vue`). Każda zmiana idzie
 /// od razu na serwer jako `PATCH /api/settings` z samym zmienionym polem, jak w web UI.
 @MainActor
 @Observable
@@ -253,8 +253,9 @@ final class SessionsModel {
     var pageIndex = 0
     var selection: Set<String> = []
 
-    init(account: ServerAccount) {
+    init(account: ServerAccount, userFilter: String? = nil) {
         self.account = account
+        self.userFilter = userFilter
     }
 
     /// Identyfikator urządzenia odtwarzacza na tym Macu (`ListeningController.deviceInfo`).

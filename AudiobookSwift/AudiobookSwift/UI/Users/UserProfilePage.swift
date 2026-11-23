@@ -37,6 +37,11 @@ struct UserProfilePage: View {
             if model.hasLoaded, model.user(id: userID) == nil, navigation.path.last == .user(id: userID) {
                 navigation.path.removeLast()
             }
+            // „Słucha teraz” w nagłówku, odświeżane, dopóki profil jest widoczny.
+            while !Task.isCancelled {
+                await model.refreshListeningNow()
+                try? await Task.sleep(for: .seconds(20))
+            }
         }
     }
 }
@@ -152,9 +157,15 @@ private struct ProfileContent: View {
                         if !user.isActive { Chip(text: "nieaktywne", systemImage: "moon", tint: .orange) }
                         if user.isLocked { Chip(text: "zablokowane", systemImage: "lock", tint: .orange) }
                     }
-                    Text(lastSeen)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let title = model.listeningNow[user.id] {
+                        Label("Słucha teraz: \(title)", systemImage: "headphones")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    } else {
+                        Text(lastSeen)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
             }
@@ -298,9 +309,13 @@ private struct ProfileContent: View {
 
     private var listening: some View {
         Section("Słuchanie") {
-            LabeledContent("Statystyki i ostatnie sesje") {
+            LabeledContent("Statystyki") {
                 Button("Statystyki słuchania…") { showingStats = true }
                     .disabled(!isReady)
+            }
+            NavigationLink(value: SettingsDestination.history(userID: user.id)) {
+                Text("Historia słuchania")
+                Text("Sesje tej osoby na wszystkich urządzeniach, zamykanie i usuwanie")
             }
         }
     }

@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Ogólne: stan i sterowanie serwerem, wersja, adres, folder danych, start przy logowaniu.
+/// Ogólne (etap 5 planu): stan i sterowanie serwerem z błędem startu, adres, dziennik serwera (podstrona),
+/// start przy logowaniu, wykrywanie fragmentów sponsorowanych, a pod „Zaawansowane” wersja audiobookshelf,
+/// folder danych, poziom logu i język serwera. Przy błędzie startu aplikacja otwiera tę stronę sama.
 struct GeneralSettingsPage: View {
     let models: AppModels
 
@@ -12,6 +14,9 @@ struct GeneralSettingsPage: View {
             serverSection
             loginItemSection
             SponsorDetectionSection(dataRoot: supervisor.dataRoot)
+            AdvancedSection(summary: "Wersja audiobookshelf, folder danych, poziom logu i język serwera") {
+                advancedRows
+            }
         }
     }
 
@@ -26,7 +31,6 @@ struct GeneralSettingsPage: View {
             if case .failed(let message) = supervisor.state {
                 FailureView(message: message, log: supervisor.recentLog)
             }
-            LabeledContent("Wersja audiobookshelf", value: supervisor.environment?.serverVersion ?? "—")
             LabeledContent("Adres na tym Macu") {
                 if let url = supervisor.webURL {
                     Link(url.absoluteString, destination: url)
@@ -34,18 +38,9 @@ struct GeneralSettingsPage: View {
                     Text("—")
                 }
             }
-            LabeledContent("Folder danych") {
-                HStack {
-                    Text(supervisor.dataRoot?.path ?? "—")
-                        .textSelection(.enabled)
-                        .truncationMode(.middle)
-                        .lineLimit(1)
-                    if let dataRoot = supervisor.dataRoot {
-                        Button("Pokaż w Finderze") {
-                            NSWorkspace.shared.activateFileViewerSelecting([dataRoot])
-                        }
-                    }
-                }
+            NavigationLink(value: SettingsDestination.serverLog) {
+                Text("Dziennik serwera")
+                Text(supervisor.state.isFailed ? "Pełny log — tam widać, dlaczego serwer nie wstał" : "Log na żywo z kopiowaniem")
             }
             HStack {
                 Spacer()
@@ -57,6 +52,27 @@ struct GeneralSettingsPage: View {
                     .disabled(!supervisor.state.canStop)
             }
         }
+    }
+
+    // MARK: Zaawansowane
+
+    @ViewBuilder
+    private var advancedRows: some View {
+        LabeledContent("Wersja audiobookshelf", value: supervisor.environment?.serverVersion ?? "—")
+        LabeledContent("Folder danych") {
+            HStack {
+                Text(supervisor.dataRoot?.path ?? "—")
+                    .textSelection(.enabled)
+                    .truncationMode(.middle)
+                    .lineLimit(1)
+                if let dataRoot = supervisor.dataRoot {
+                    Button("Pokaż w Finderze") {
+                        NSWorkspace.shared.activateFileViewerSelecting([dataRoot])
+                    }
+                }
+            }
+        }
+        ServerLogAndLanguageRows(account: models.account)
     }
 
     // MARK: Start przy logowaniu
@@ -117,6 +133,11 @@ private struct FailureView: View {
 }
 
 extension ServerState {
+    var isFailed: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+
     var shortTitle: String {
         switch self {
         case .stopped: "Zatrzymany"

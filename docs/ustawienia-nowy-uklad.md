@@ -2,7 +2,7 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
-**Stan wdrożenia (2026-11-23):** etapy **1**, **2** (2a–2d, z resetem hasła roota), **3** i **4** są wykonane. Etapy 1–3 i reset są scalone do `main`. Etap 4 jest na gałęzi `claude/ustawienia-etap-4-6`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2), [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota) i [część 12](#12-wdrożenie-etapu-4-biblioteki). Etapy 5–6 czekają.
+**Stan wdrożenia (2026-11-23):** etapy **1**, **2** (2a–2d, z resetem hasła roota), **3**, **4** i **5** są wykonane. Etapy 1–3 i reset są scalone do `main`. Etapy 4–5 są na gałęzi `claude/ustawienia-etap-4-6`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2), [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota) [część 12](#12-wdrożenie-etapu-4-biblioteki) i [część 13](#13-wdrożenie-etapu-5-ogólne-dziennik-historia-słuchania). Etap 6 czeka.
 
 **Decyzje użytkownika (2026-11-23):** wariant B; telefony dla każdego domownika; pełna kontrola nad kontem root (zmiana i reset hasła); skrót „Podłącz telefon…” na pasku menu tylko jako opcja; wygląd jak w makietach, z własnymi awatarami. Szczegóły i wpływ na plan: [część 9](#9-decyzje-z-2026-11-23-i-ich-skutki).
 
@@ -743,7 +743,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - Zapis w arkuszu biblioteki działa przez „Zapisz”, a na stronie zapis będzie natychmiastowy. Trzeba sprawdzić model `LibrarySettingsModel` pod kątem zapisu pojedynczych pól.
 - **Do sprawdzenia:** dodanie obu typów bibliotek, skan, pełny skan, dopasuj wszystkie, usunięcie, zmiana ustawień biblioteki i harmonogramu, obserwator globalny i per biblioteka, polskie źródła i własny dostawca.
 
-**Etap 5 — Ogólne, Dziennik, Aktywność**
+**Etap 5 — Ogólne, Dziennik, Aktywność** — ✅ wykonany (część 13)
 
 - **Zakres:**
   - Dziennik jako podstrona Ogólnych,
@@ -1103,4 +1103,64 @@ Do testów w bazie testowej kopii dopisana jest druga biblioteka audiobooków i 
 - **„Skanuj” w wierszu** to zwykły przycisk. Pełny skan i „Dopasuj wszystkie…” są tylko na podstronie (tabela przejścia, B3). Dawne menu przy „Skanuj” zniknęło.
 - **Wiersz biblioteki** to przycisk z własną strzałką, nie `NavigationLink`: formularz dorysowywał linkowi drugą strzałkę.
 - **Wyświetlanie i Zaawansowane:** „Tylko audiobooki” trafiło pod „Zaawansowane” podstrony razem z ASIN/ISBN i EPUB (BS8), zgodnie z tabelą przejścia.
+
+## 13. Wdrożenie etapu 5 („Ogólne”, dziennik, historia słuchania)
+
+### Co zrobiono
+
+- **Ogólne** (`UI/Settings/GeneralSettingsPage.swift`):
+  - Serwer: stan, błąd startu z ostatnimi wierszami logu, adres, wiersz „Dziennik serwera” (podstrona), Uruchom / Zatrzymaj / Uruchom ponownie;
+  - Aplikacja: start przy logowaniu;
+  - sekcje fragmentów sponsorowanych z etapu 13b bez zmian w logice i w kolejności;
+  - Zaawansowane: wersja audiobookshelf, folder danych z „Pokaż w Finderze”, poziom logu i język serwera (`ServerLogAndLanguageRows`, jeden model ustawień serwera, wczytywany dopiero po rozwinięciu).
+- **Dziennik serwera** (`UI/Settings/ServerLogPage.swift`, cel `.serverLog` jest prawdziwą podstroną „Ogólnych”):
+  - log na żywo, „Przewijaj automatycznie”, „Kopiuj log”;
+  - „Pokaż plik logu w Finderze” wskazuje najnowszy dzienny plik w `metadata/logs/daily` (L4: zamiast drugiego „Otwórz folder danych”);
+  - wybór poziomu logu przeszedł do Zaawansowanych.
+- **Historia słuchania** (`UI/Users/ListeningHistoryPage.swift`, dawna „Aktywność”, nowy cel `.history(userID:)`):
+  - „Historia słuchania wszystkich” jako wiersz pod kaflem roota;
+  - „Historia słuchania” na profilu osoby, z filtrem ustawionym na tę osobę;
+  - treść bez zmian: otwarte sesje z „Zamknij”, historia z filtrem, szczegóły, usuwanie.
+- **„Słucha teraz”:** `UsersModel.listeningNow` z otwartych sesji (`GET /api/sessions/open`), odświeżane co 20 s, dopóki widać siatkę albo profil. Na kaflu jest zielona linia ze słuchawkami i tytułem, w nagłówku profilu „Słucha teraz: …” zamiast „Ostatnio”. VoiceOver czyta to w etykiecie kafla.
+- **Znikają strony** „Log serwera”, „Ustawienia serwera” i „Aktywność”. Zapisane wartości `log` i `serverSettings` otwierają „Ogólne”, a `activity` otwiera „Użytkowników”. Pasek boczny ma teraz 6 stron.
+- **Kanały RSS** (`FeedsContent`) przeszły do pliku „Dostępu zdalnego”, gdzie są używane.
+- **Nawigacja:**
+  - wszystkie cele są podstronami, więc `isSubpage` zniknęło;
+  - klik w stronę na pasku bocznym zeruje ścieżkę podstron;
+  - tryb sprawdzający odwiedza historię (wszystkich i jednej osoby) i dziennik, a na końcu wraca na „Ogólne” bez podstrony.
+- **Otwieranie „Ogólnych” przy błędzie startu** zostało bez zmian (`MenuBarLabel` przy `.failed`, „Ustawienia i log…” w oknach Biblioteka i web UI).
+
+### Zrzuty
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Ogólne | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-dark.png) |
+| Ogólne › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-zaawansowane-dark.png) |
+| Użytkownicy ze „słucha teraz” | ![](ustawienia-nowy-uklad/wdrozenie-png/uzytkownicy-slucha-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/uzytkownicy-slucha-dark.png) |
+| Historia słuchania | ![](ustawienia-nowy-uklad/wdrozenie-png/historia-sluchania-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/historia-sluchania-dark.png) |
+
+### Sprawdzone uruchomieniem (testowa kopia)
+
+Do sesji użyta jest dopisana cicha książka testowa „Cisza” (2 min ciszy), żeby odtwarzanie nie wydawało dźwięku.
+
+- **Tryb sprawdzający:** `TOUR OK` ze wszystkimi nowymi podstronami.
+- **Błąd startu:** port 13461 zajęty przez inny proces. Okno samo otworzyło „Ogólne” z błędem EADDRINUSE i fragmentem logu, a z wiersza „Dziennik serwera” widać pełny log.
+- **Dziennik:** przełącznik „Przewijaj automatycznie” działa.
+- **Ogólne › Zaawansowane:** poziom logu (debug) i język (polski) zapisują się w `server-settings`. Oba przywrócone.
+- **„Słucha teraz”:** kafel konta Maca i etykieta VoiceOver pokazują tytuł odtwarzanej książki.
+- **Historia słuchania:**
+  - otwarta sesja widoczna, „Zamknij” przenosi ją do historii;
+  - zaznaczenie i „Usuń zaznaczone” z potwierdzeniem usuwa sesję z bazy;
+  - z profilu filtr pokazuje tę osobę.
+
+### Tylko skompilowane
+
+- **„Kopiuj log”** nie był klikany, żeby nie nadpisywać schowka użytkownika. Kod się nie zmienił.
+- **„Pokaż plik logu w Finderze”** nie był klikany. Wybór najnowszego pliku to prosta funkcja nad `metadata/logs/daily`.
+
+### Odstępstwa i propozycje
+
+- **„Fragmenty sponsorowane” (13b) zostały w „Ogólnych”** między „Aplikacją” a „Zaawansowanymi”, bez zmian. To ustawienie aplikacji, a nie serwera ani obiektu, więc w wariancie B „Ogólne” jest dla niego właściwym miejscem. Sekcja „Usługa modelu językowego” jest jednak długa i spycha „Zaawansowane” na dół strony. Propozycja do decyzji: przenieść ją do osobnej podstrony „Fragmenty sponsorowane ›” w „Ogólnych”, tak jak dziennik. Nie przenoszę bez decyzji.
+- **Folder danych** jest tylko w Zaawansowanych (G4), więc „Pokaż w Finderze” folderu danych nie ma już w dzienniku. Jest tam plik logu.
+- **Urządzenie sesji z tego Maca** pokazuje się w historii jako „Unknown 1.0.0 · iOS”. To dane urządzenia zapisane w sesji; wiersz sesji (`SessionRow`) przeniesiono bez zmian, więc ten etap tego nie zmienił. Do sprawdzenia osobno (follow-up).
 

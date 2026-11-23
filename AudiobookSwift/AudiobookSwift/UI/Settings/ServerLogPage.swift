@@ -1,30 +1,39 @@
 import SwiftUI
 
-/// Log serwera na żywo na całą wysokość okna.
-struct LogSettingsPage: View {
+/// Dziennik serwera (Ogólne › Dziennik serwera; etap 5 planu, dawna strona „Log serwera”): log na żywo
+/// na całą wysokość okna. Poziom logu jest w Ogólne › Zaawansowane.
+struct ServerLogPage: View {
     let models: AppModels
 
     var body: some View {
-        LogView(supervisor: models.supervisor, account: models.account)
+        LogView(supervisor: models.supervisor)
+            .navigationSubtitle("Dziennik serwera")
     }
 }
 
 /// Podgląd `ServerSupervisor.recentLog` z kopiowaniem.
 private struct LogView: View {
     let supervisor: ServerSupervisor
-    let account: ServerAccount
     @State private var followTail = true
     /// Tekst pokazany w oknie. Odświeżany najwyżej 4 razy na sekundę: przy skanie serwer dopisuje
     /// dziesiątki wierszy na sekundę, a każda zmiana to nowy układ całego tekstu.
     @State private var text = ""
     @State private var refreshScheduled = false
 
-    private var dataRoot: URL? { supervisor.dataRoot }
+    /// Najnowszy dzienny plik logu serwera (`metadata/logs/daily/<data>.txt`), a bez niego folder logów.
+    private var logFile: URL? {
+        guard let dataRoot = supervisor.dataRoot else { return nil }
+        let folder = dataRoot.appending(path: "metadata/logs/daily", directoryHint: .isDirectory)
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        if let newest = files.filter({ $0.pathExtension == "txt" }).max(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            return newest
+        }
+        return FileManager.default.fileExists(atPath: folder.path) ? folder : nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                ServerLogLevelPicker(account: account)
                 Spacer()
                 Toggle("Przewijaj automatycznie", isOn: $followTail)
                     .toggleStyle(.checkbox)
@@ -32,10 +41,11 @@ private struct LogView: View {
                     NSPasteboard.copy(supervisor.recentLog.joined(separator: "\n"))
                 }
                 .disabled(text.isEmpty)
-                if let dataRoot {
-                    Button("Otwórz folder danych") {
-                        NSWorkspace.shared.open(dataRoot)
+                if let file = logFile {
+                    Button("Pokaż plik logu w Finderze") {
+                        NSWorkspace.shared.activateFileViewerSelecting([file])
                     }
+                    .help("Dzienne pliki logu serwera w folderze danych (metadata/logs/daily)")
                 }
             }
             .padding(8)

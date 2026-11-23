@@ -26,6 +26,8 @@ final class UsersModel {
     private(set) var deleting: String?
     var error: String?
     var notice: String?
+    /// Kto słucha teraz: identyfikator konta → tytuł (otwarte sesje, `GET /api/sessions/open`).
+    private(set) var listeningNow: [String: String] = [:]
 
     init(account: ServerAccount) {
         self.account = account
@@ -76,6 +78,18 @@ final class UsersModel {
         } catch {
             self.error = ItemManager.message(for: error, action: "Nie udało się wczytać użytkowników")
         }
+    }
+
+    /// Odświeża „słucha teraz” (kafle i profile). Błąd zostawia poprzedni stan — to tylko podpowiedź.
+    func refreshListeningNow() async {
+        guard account.state == .ready,
+              let open = try? await account.withAdminToken({ try await $0.openSessions(token: $1) }) else { return }
+        var now: [String: String] = [:]
+        for session in open.sorted(by: { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }) {
+            guard let id = session.userId ?? session.user?.id else { continue }
+            now[id] = session.displayTitle ?? "—"
+        }
+        listeningNow = now
     }
 
     /// Szkic konta w arkuszu edycji.

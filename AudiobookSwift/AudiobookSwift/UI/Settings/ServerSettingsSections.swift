@@ -52,48 +52,6 @@ struct AdminPage<Model: AnyObject, Content: View>: View {
     }
 }
 
-/// Ustawienia serwera z `client/pages/config/index.vue`, które mają znaczenie przy serwerze
-/// na tym Macu. Pominięte (dotyczą tylko web UI): Chromecast, iframe, CORS, widok półki,
-/// format daty i godziny. Skaner, okładki, zapis w folderach, sortowanie i pamięć podręczna są
-/// w Biblioteki › Zaawansowane (`LibraryServerSettingsSections`); tu został język serwera,
-/// który w etapie 5 planu przejdzie do Ogólne › Zaawansowane.
-struct ServerSettingsPage: View {
-    let models: AppModels
-
-    var body: some View {
-        AdminPage(account: models.account, title: "Ustawienia serwera", make: { ServerSettingsModel(account: models.account) }, load: { await $0.load() }) { model in
-            ServerLanguageSection(model: model)
-        }
-    }
-}
-
-/// Język serwera (S10).
-struct ServerLanguageSection: View {
-    let model: ServerSettingsModel
-
-    var body: some View {
-        Section {
-            AdminStatusRows(status: model.status)
-            if let settings = model.settings {
-                Picker("Język serwera", selection: Binding(
-                    get: { settings.language },
-                    set: { value in Task { await model.update { $0.language = value } } }
-                )) {
-                    ForEach(ServerLanguage.options, id: \.code) { Text($0.label).tag($0.code) }
-                    if !ServerLanguage.options.contains(where: { $0.code == settings.language }) {
-                        Text(settings.language).tag(settings.language)
-                    }
-                }
-                .disabled(model.status.isBusy)
-            }
-        } header: {
-            Text("Język")
-        } footer: {
-            Text("Domyślny język web UI i tekstów, które serwer tworzy sam (np. nazwy półek). Aplikacja ma własny interfejs po polsku.")
-        }
-    }
-}
-
 /// Wspólne ustawienia serwera dla wszystkich bibliotek (Biblioteki › Zaawansowane): skaner i okładki,
 /// zapis w folderach pozycji, sortowanie i pamięć podręczna. Każda zmiana idzie od razu na serwer.
 struct LibraryServerSettingsSections: View {
@@ -216,8 +174,9 @@ struct LibraryServerSettingsSections: View {
     }
 }
 
-/// Poziom logowania serwera (`logLevel`) na podstronie „Log serwera”.
-struct ServerLogLevelPicker: View {
+/// Poziom logu i język serwera (Ogólne › Zaawansowane; L1 i S10). Ustawienia z `client/pages/config/index.vue`
+/// pominięte, bo dotyczą tylko web UI: Chromecast, iframe, CORS, widok półki, format daty i godziny.
+struct ServerLogAndLanguageRows: View {
     let account: ServerAccount
     @State private var model: ServerSettingsModel?
 
@@ -234,9 +193,26 @@ struct ServerLogLevelPicker: View {
                     Text("Ostrzeżenia").tag(3)
                     Text("Błędy").tag(4)
                 }
-                .fixedSize()
                 .disabled(model.status.isBusy)
-                .help(model.status.error ?? "Ile szczegółów serwer wypisuje do logu. Zmiana działa od razu i zostaje po ponownym uruchomieniu.")
+                .help("Ile szczegółów serwer wypisuje do dziennika. Zmiana działa od razu i zostaje po ponownym uruchomieniu.")
+                Picker("Język serwera", selection: Binding(
+                    get: { settings.language },
+                    set: { value in Task { await model.update { $0.language = value } } }
+                )) {
+                    ForEach(ServerLanguage.options, id: \.code) { Text($0.label).tag($0.code) }
+                    if !ServerLanguage.options.contains(where: { $0.code == settings.language }) {
+                        Text(settings.language).tag(settings.language)
+                    }
+                }
+                .disabled(model.status.isBusy)
+                .help("Domyślny język web UI i tekstów, które serwer tworzy sam (np. nazwy półek). Aplikacja ma własny interfejs po polsku.")
+                if let error = model.status.error {
+                    Label(error, systemImage: "xmark.octagon").foregroundStyle(.red).textSelection(.enabled)
+                }
+            } else if account.state == .ready {
+                ProgressView("Wczytywanie ustawień serwera…").controlSize(.small)
+            } else {
+                AdminUnavailableRow(account: account)
             }
         }
         .task(id: account.state) {
