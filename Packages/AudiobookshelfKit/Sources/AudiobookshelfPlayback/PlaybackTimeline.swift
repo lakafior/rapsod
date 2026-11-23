@@ -23,12 +23,16 @@ public struct PlaybackTrack: Sendable, Hashable {
         /// Plik wprost od wydawcy podcastu (adres `enclosure` z kanału RSS, etap 10e) —
         /// bez serwera, bez sesji i bez żadnego klucza w adresie.
         case remote(URL)
+        /// Plik pozycji serwera czytany prosto z dysku — serwer działa na tym samym komputerze
+        /// (aplikacja na Maca, etap 12). Postęp idzie przez sesję serwera jak przy `.sessionTrack`;
+        /// w odróżnieniu od `.file` to nie jest pozycja pobrana na urządzenie.
+        case serverFile(URL)
 
         /// Plik przez sesję serwera audiobookshelf (adres zależy od bieżącego adresu serwera).
         public var isServer: Bool {
             switch self {
             case .sessionTrack, .sessionStream: true
-            case .file, .remote: false
+            case .file, .remote, .serverFile: false
             }
         }
     }
@@ -215,15 +219,25 @@ public enum PlaybackTimeline {
     // MARK: Z sesji serwera
 
     /// Pliki z sesji. Przy transkodowaniu serwer zwraca jeden „plik” — strumień HLS.
-    public static func tracks(from session: AudiobookshelfClient.PlaybackSession) -> [PlaybackTrack] {
+    /// `localFile` — plik serwera dostępny na tym komputerze (ścieżka z serwera → adres pliku
+    /// do odczytu albo `nil`); wtedy dźwięk idzie prosto z dysku zamiast przez HTTP.
+    public static func tracks(from session: AudiobookshelfClient.PlaybackSession, localFile: ((String) -> URL?)? = nil) -> [PlaybackTrack] {
         let transcoded = session.playMethod == 2
         return session.audioTracks.map { track in
             let fileName = track.metadata?.path.map { ($0 as NSString).lastPathComponent }
+            let source: PlaybackTrack.Source
+            if transcoded {
+                source = .sessionStream
+            } else if let path = track.metadata?.path, let url = localFile?(path) {
+                source = .serverFile(url)
+            } else {
+                source = .sessionTrack(index: track.index)
+            }
             return PlaybackTrack(
                 startOffset: track.startOffset,
                 duration: track.duration,
                 title: track.title ?? fileName ?? "Plik \(track.index)",
-                source: transcoded ? .sessionStream : .sessionTrack(index: track.index)
+                source: source
             )
         }
     }

@@ -18,7 +18,7 @@ let package = Package(
         .library(name: "AudiobookshelfKit", targets: ["AudiobookshelfKit"]),
         // Odtwarzacz strumienia z serwera (etap 10c): kolejka plików, rozdziały, synchronizacja
         // postępu, „Teraz odtwarzane”. AVFoundation i MediaPlayer — osobny cel, żeby sam klient
-        // API został bez nich. Na razie używa go tylko aplikacja iOS.
+        // API został bez nich. Od etapu 12 używają go obie aplikacje (Mac i iOS).
         .library(name: "AudiobookshelfPlayback", targets: ["AudiobookshelfPlayback"]),
     ],
     targets: [

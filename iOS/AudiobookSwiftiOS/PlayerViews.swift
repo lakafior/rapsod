@@ -310,14 +310,14 @@ struct PlayerScreen: View {
             Menu {
                 Picker("Prędkość", selection: Binding(get: { player.rate }, set: { player.rate = $0 })) {
                     ForEach(AudiobookPlayer.rates, id: \.self) { rate in
-                        Text(Self.rateLabel(rate)).tag(rate)
+                        Text(PlaybackFormat.rate(rate)).tag(rate)
                     }
                 }
             } label: {
-                Text(Self.rateLabel(player.rate)).font(.subheadline.weight(.semibold).monospacedDigit())
+                Text(PlaybackFormat.rate(player.rate)).font(.subheadline.weight(.semibold).monospacedDigit())
                     .frame(minWidth: 44, minHeight: 44)
             }
-            .accessibilityLabel(Text("Prędkość: \(Self.rateLabel(player.rate))"))
+            .accessibilityLabel(Text("Prędkość: \(PlaybackFormat.rate(player.rate))"))
             Spacer()
             Button {
                 player.skip(by: -AudiobookPlayer.skipBack)
@@ -496,13 +496,13 @@ struct PlayerScreen: View {
             Menu {
                 Picker("Prędkość", selection: Binding(get: { player.rate }, set: { player.rate = $0 })) {
                     ForEach(AudiobookPlayer.rates, id: \.self) { rate in
-                        Text(Self.rateLabel(rate)).tag(rate)
+                        Text(PlaybackFormat.rate(rate)).tag(rate)
                     }
                 }
             } label: {
-                Label(Self.rateLabel(player.rate), systemImage: "gauge.with.dots.needle.67percent")
+                Label(PlaybackFormat.rate(player.rate), systemImage: "gauge.with.dots.needle.67percent")
             }
-            .accessibilityLabel(Text("Prędkość: \(Self.rateLabel(player.rate))"))
+            .accessibilityLabel(Text("Prędkość: \(PlaybackFormat.rate(player.rate))"))
             .frame(maxWidth: .infinity)
 
             SleepTimerMenu(player: player)
@@ -518,10 +518,6 @@ struct PlayerScreen: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    static func rateLabel(_ rate: Float) -> String {
-        rate.formatted(.number.precision(.fractionLength(0...2))) + "×"
     }
 }
 
@@ -550,9 +546,9 @@ private struct ChapterScrubber: View {
             .accessibilityValue(Text("\(TimeText.long(elapsed)) z \(TimeText.long(position.length))"))
 
             HStack {
-                Text(TimeText.clock(elapsed))
+                Text(PlaybackFormat.clock(elapsed))
                 Spacer()
-                Text("−" + TimeText.clock(max(0, position.length - elapsed)))
+                Text("−" + PlaybackFormat.clock(max(0, position.length - elapsed)))
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
@@ -560,7 +556,7 @@ private struct ChapterScrubber: View {
 
             if position.chapter != nil, !compact {
                 let bookTime = position.start + elapsed
-                Text("Całość: \(TimeText.clock(bookTime)) z \(TimeText.clock(player.duration)) · zostało \(TimeText.long((player.duration - bookTime) / Double(player.rate)))")
+                Text("Całość: \(PlaybackFormat.clock(bookTime)) z \(PlaybackFormat.clock(player.duration)) · zostało \(TimeText.long((player.duration - bookTime) / Double(player.rate)))")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -582,7 +578,7 @@ private struct SleepTimerMenu: View {
         } label: {
             if let deadline = player.sleepDeadline {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Label(TimeText.clock(deadline.timeIntervalSince(context.date)), systemImage: "moon.zzz.fill")
+                    Label(PlaybackFormat.clock(deadline.timeIntervalSince(context.date)), systemImage: "moon.zzz.fill")
                         .monospacedDigit()
                 }
             } else if player.sleepTimer == .endOfChapter {
@@ -621,7 +617,7 @@ private struct ChapterList: View {
                                 .foregroundStyle(isCurrent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                                 .fontWeight(isCurrent ? .semibold : .regular)
                             Spacer()
-                            Text(TimeText.clock(chapter.duration))
+                            Text(PlaybackFormat.clock(chapter.duration))
                                 .font(.footnote.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
