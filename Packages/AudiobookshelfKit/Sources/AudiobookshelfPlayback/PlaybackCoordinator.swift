@@ -89,6 +89,50 @@ public final class PlaybackCoordinator {
 
     public static let syncInterval: Duration = .seconds(15)
 
+    // MARK: Segmenty sponsorowane (etap 13a)
+
+    /// Znaczniki bieżącego odcinka: plik znaczników, odcisk odtwarzanego pliku i skąd są.
+    public struct SkipContext: Sendable {
+        public enum Origin: Sendable, Equatable {
+            /// Plik `.skip.json` obok odcinka na serwerze.
+            case server
+            /// Kopia pobrana z odcinkiem na telefon (bez sieci).
+            case downloaded
+            /// Policzone na urządzeniu z kanału RSS (odcinek prosto od wydawcy).
+            case feed
+        }
+
+        public var podcastID: String
+        public var map: SkipMap?
+        /// Odcisk pliku, który właśnie gra.
+        public var actual: SkipAudioFingerprint
+        public var origin: Origin
+        /// Poprawki zapisują się w pliku na serwerze (Mac) — `false`: tylko na tym urządzeniu.
+        public var savesToServer: Bool
+
+        public init(podcastID: String, map: SkipMap?, actual: SkipAudioFingerprint, origin: Origin, savesToServer: Bool) {
+            self.podcastID = podcastID
+            self.map = map
+            self.actual = actual
+            self.origin = origin
+            self.savesToServer = savesToServer
+        }
+
+        public var match: SkipAudioFingerprint.Match? { map.map { $0.audio.match(actual) } }
+    }
+
+    /// Wczytuje znaczniki odcinka (Mac: plik obok odcinka; iOS: plik z serwera, kopia na telefonie
+    /// albo opis z kanału). `external` — odcinek grany prosto z kanału.
+    @ObservationIgnored public var skipLoader: (@MainActor (_ book: PlaybackBook, _ external: ExternalEpisode?) async -> SkipContext?)?
+    /// Zapisuje poprawione znaczniki (Mac: plik na serwerze; iOS: na telefonie).
+    @ObservationIgnored public var skipSaver: (@MainActor (_ book: PlaybackBook, _ context: SkipContext) async throws -> Void)?
+    /// Ustawienia pomijania podcastu.
+    @ObservationIgnored public var skipSettings: @MainActor (_ podcastID: String) -> SkipSettings = { _ in .standard }
+    /// Znaczniki bieżącego odcinka (`nil` — książka albo jeszcze nie wczytane).
+    public private(set) var skipContext: SkipContext?
+    @ObservationIgnored private var skipLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var currentExternal: ExternalEpisode?
+
     @ObservationIgnored private let device: AudiobookshelfClient.DeviceInfo
     @ObservationIgnored private var session: (id: String, key: String)?
     @ObservationIgnored private var reopenTask: Task<Void, any Error>?
@@ -250,6 +294,7 @@ public final class PlaybackCoordinator {
             if chosen { player.isDirty = true }
             startSyncLoop()
             loadArtwork(book)
+            reloadSkips()
         } catch {
             logger.error("Start odtwarzania: \(error.localizedDescription, privacy: .public)")
             loadError = AddressSelection.isConnectionError(error) ? unreachableMessage : error.localizedDescription
@@ -267,6 +312,48 @@ public final class PlaybackCoordinator {
         redirected = [:]
         redirectedDurations = [:]
         externalTemplate = nil
+        skipLoadTask?.cancel()
+        skipLoadTask = nil
+        skipContext = nil
+        currentExternal = nil
+    }
+
+    // MARK: - Segmenty sponsorowane
+
+    /// Wczytuje (od nowa) znaczniki bieżącego odcinka — po starcie, po przeliczeniu na Macu,
+    /// po pobraniu odcinka na telefon. Książki nie mają znaczników.
+    public func reloadSkips() {
+        skipLoadTask?.cancel()
+        guard let book = player.book, book.episodeID != nil || book.feedKey != nil, let skipLoader else {
+            skipContext = nil
+            player.setSkipPlan(.empty)
+            return
+        }
+        let external = book.feedKey != nil ? currentExternal : nil
+        skipLoadTask = Task { [weak self] in
+            let context = await skipLoader(book, external)
+            guard !Task.isCancelled, let self, self.player.book?.key == book.key else { return }
+            self.skipContext = context
+            self.refreshSkipPlan()
+        }
+    }
+
+    /// Plan pomijania od nowa z bieżących znaczników i ustawień (np. po zmianie ustawień podcastu).
+    public func refreshSkipPlan() {
+        guard let context = skipContext, player.book != nil else {
+            player.setSkipPlan(.empty)
+            return
+        }
+        player.setSkipPlan(SkipPlan(map: context.map, actual: context.actual, settings: skipSettings(context.podcastID)))
+    }
+
+    /// Poprawione znaczniki bieżącego odcinka: od razu w odtwarzaczu, potem zapis.
+    public func saveSkips(_ map: SkipMap) async throws {
+        guard var context = skipContext, let book = player.book else { return }
+        context.map = map
+        skipContext = context
+        refreshSkipPlan()
+        try await skipSaver?(book, context)
     }
 
     // MARK: - Pozycja pobrana na telefon
@@ -297,6 +384,7 @@ public final class PlaybackCoordinator {
         if chosen { player.isDirty = true }
         startSyncLoop()
         loadArtwork(book)
+        reloadSkips()
         if chosen || journal.unsentCount > 0 { Task { await uploadJournal() } }
     }
 
@@ -351,8 +439,11 @@ public final class PlaybackCoordinator {
         public var published: Date?
         /// Długość według kanału — tylko gdy plik jej nie poda (prawdziwa jest w pliku).
         public var feedDuration: Double?
+        /// Opis odcinka jako czysty tekst — znaczniki segmentów sponsorowanych bez serwera (etap 13a).
+        public var summary: String?
 
-        public init(itemID: String, feedKey: String, title: String, podcastTitle: String?, guid: String?, enclosureURL: String, published: Date?, feedDuration: Double?) {
+        public init(itemID: String, feedKey: String, title: String, podcastTitle: String?, guid: String?, enclosureURL: String, published: Date?, feedDuration: Double?, summary: String? = nil) {
+            self.summary = summary
             self.itemID = itemID
             self.feedKey = feedKey
             self.title = title
@@ -444,6 +535,8 @@ public final class PlaybackCoordinator {
             if stored == nil { journal.save(record) }
             startSyncLoop()
             loadArtwork(book)
+            currentExternal = episode
+            reloadSkips()
         } catch {
             logger.error("Odcinek z kanału: \(error.localizedDescription, privacy: .public)")
             loadError = error.localizedDescription
@@ -551,6 +644,9 @@ public final class PlaybackCoordinator {
         player.stop()
         redirected = [:]
         redirectedDurations = [:]
+        skipLoadTask?.cancel()
+        skipContext = nil
+        currentExternal = nil
     }
 
     /// Oznacza bieżącą książkę jako ukończoną.
@@ -589,6 +685,10 @@ public final class PlaybackCoordinator {
         redirected = [:]
         redirectedDurations = [:]
         externalTemplate = nil
+        skipLoadTask?.cancel()
+        skipLoadTask = nil
+        skipContext = nil
+        currentExternal = nil
     }
 
     /// Połączenie z serwerem wróciło albo zmienił się jego adres.

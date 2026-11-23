@@ -23,4 +23,11 @@ public enum PlaybackFormat {
     public static func rate(_ rate: Float) -> String {
         rate.formatted(.number.precision(.fractionLength(0...2))) + "×"
     }
+
+    /// Długość słownie dla VoiceOver: „58 sekund”, „1 minuta i 5 sekund”.
+    public static func spokenDuration(_ seconds: Double) -> String {
+        let total = Int(max(0, seconds.isFinite ? seconds : 0).rounded())
+        return Duration.seconds(total).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide)
+            .locale(Locale(identifier: "pl_PL")))
+    }
 }

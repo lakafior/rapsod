@@ -238,7 +238,7 @@ extension Stubbed {
 @Suite @MainActor struct ExternalEpisodeTests {
     init() { StubServer.reset() }
 
-    private func makeCoordinator(_ store: ProgressJournal) -> PlaybackCoordinator {
+    func makeCoordinator(_ store: ProgressJournal) -> PlaybackCoordinator {
         let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
         let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
         let coordinator = PlaybackCoordinator(device: device) { auth }
@@ -247,7 +247,7 @@ extension Stubbed {
         return coordinator
     }
 
-    private let episode = PlaybackCoordinator.ExternalEpisode(
+    let episode = PlaybackCoordinator.ExternalEpisode(
         itemID: "li", feedKey: "g:ep1", title: "Odcinek", podcastTitle: "Podcast", guid: "ep1",
         enclosureURL: "https://wydawca.invalid/ep1.mp3", published: nil, feedDuration: 590
     )
@@ -335,4 +335,38 @@ extension Stubbed {
         #expect(PlaybackCoordinator.streamError(URLError(.fileDoesNotExist)) == .notFound)
     }
 }
+}
+
+/// Segmenty sponsorowane (etap 13a): znaczniki wczytywane dla odcinków, plan z ustawień podcastu.
+extension Stubbed.ExternalEpisodeTests {
+    @Test func skipMarkersForExternalEpisode() async throws {
+        let coordinator = makeCoordinator(ProgressJournal(fileURL: nil))
+        var summaries: [String?] = []
+        let map = SkipMap(episode: .init(itemID: "li"), audio: SkipAudioFingerprint(duration: 600),
+                          segments: [SkipSegment(id: "a", start: 100, end: 160, kind: .sponsor, source: .description, confidence: 0.85)])
+        coordinator.skipLoader = { book, external in
+            summaries.append(external?.summary)
+            return .init(podcastID: book.itemID, map: map, actual: SkipAudioFingerprint(duration: 600.4), origin: .feed, savesToServer: false)
+        }
+        var described = episode
+        described.summary = "1:40 Sponsor\n2:40 Dalej"
+        await coordinator.play(external: described)
+        for _ in 0..<100 where coordinator.skipContext == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(summaries == ["1:40 Sponsor\n2:40 Dalej"])
+        #expect(coordinator.player.skipPlan.entries.map(\.id) == ["a"])
+
+        coordinator.skipSettings = { _ in SkipSettings(enabled: false) }
+        coordinator.refreshSkipPlan()
+        #expect(coordinator.player.skipPlan.isEmpty)
+
+        // Poprawka: usunięty segment znika z planu od razu.
+        coordinator.skipSettings = { _ in .standard }
+        var edited = map
+        edited.remove(map.segments[0])
+        try await coordinator.saveSkips(edited)
+        #expect(coordinator.player.skipPlan.isEmpty)
+        #expect(coordinator.skipContext?.map?.corrections.removed.count == 1)
+        await coordinator.stop()
+        #expect(coordinator.skipContext == nil)
+    }
 }
