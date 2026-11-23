@@ -1,4 +1,4 @@
-// Pochodzenie: kod własny projektu (etap 13a).
+// Pochodzenie: kod własny projektu (etap 13a, kolejka modelu — 13b).
 
 import AudiobookshelfKit
 import AudiobookshelfPlayback
@@ -17,20 +17,39 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Audioboo
 /// oraz przyciskiem na stronie podcastu. Jedno zadanie naraz, z niskim priorytetem: odcinek to dwa
 /// fragmenty pliku po 64 KiB, kanał RSS (raz na podcast na pół godziny) i — dla Megaphone —
 /// zapytanie o jeden bajt.
+///
+/// **Model (13b).** Gdy w ustawieniach jest włączone „Wykrywaj fragmenty sponsorowane” (adres, model,
+/// zgoda dla tej usługi), po wykrywaniu bez modelu odcinek trafia do drugiej kolejki: transkrypcja na
+/// tym Macu (`DictationTranscriber`, pamięć podręczna z 11a), okna transkrypcji do usługi, scalenie,
+/// docięcie do ciszy i zapis segmentów `model` w tym samym pliku. Jedno zadanie naraz; kolejka jest
+/// w pliku `sponsor-queue.json` w folderze danych serwera, a wyniki okien w punkcie kontrolnym, więc po
+/// ponownym uruchomieniu aplikacja kończy przerwane zadanie bez wysyłania drugi raz policzonych okien.
+/// Bez tej konfiguracji nic z tej części się nie dzieje i nic nie jest wysyłane.
 @MainActor
 @Observable
 final class SkipController {
     enum Phase: Equatable {
         case queued
         case running
+        /// Transkrypcja na tym Macu (ułamek nagrania).
+        case transcribing(Double)
+        /// Okna wysłane do modelu: gotowe z wszystkich.
+        case classifying(Int, Int)
         case done(String)
         case failed(String)
+
+        var isActive: Bool {
+            switch self {
+            case .queued, .running, .transcribing, .classifying: true
+            case .done, .failed: false
+            }
+        }
     }
 
     /// Stan wykrywania według klucza odcinka (`ListeningController.key`).
-    private(set) var phases: [String: Phase] = [:]
+    var phases: [String: Phase] = [:]
     /// Rośnie po zapisie znaczników pozycji — strona podcastu odświeża wtedy podsumowania.
-    private(set) var revision: [String: Int] = [:]
+    var revision: [String: Int] = [:]
 
     /// Pełna pozycja z serwera (konto do słuchania).
     @ObservationIgnored var fetchItem: (@MainActor (_ itemID: String) async throws -> AudiobookshelfClient.ItemDetail)?
@@ -41,11 +60,22 @@ final class SkipController {
     /// Znaczniki odcinka zmieniły się na dysku (np. gra właśnie ten odcinek).
     @ObservationIgnored var onChanged: (@MainActor (_ itemID: String, _ episodeID: String) -> Void)?
 
+    /// Kolejka modelu (13b) — zapisana w folderze danych, przeżywa ponowne uruchomienie.
+    var modelJobs: [ModelJob] = []
+    /// Kolejka modelu stoi, dopóki użytkownik nie poprawi ustawień (np. odrzucony klucz).
+    var modelPause: String?
+    @ObservationIgnored var modelPauseRevision = 0
+    @ObservationIgnored var modelFailures: [String: ModelFailure] = [:]
+    @ObservationIgnored var modelTask: Task<Void, Never>?
+    @ObservationIgnored var runningModelKey: String?
+    @ObservationIgnored var userCancelled: Set<String> = []
+    @ObservationIgnored var dataRoot: URL?
+
     @ObservationIgnored private var queue: [(itemID: String, episodeID: String?, force: Bool)] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var sweeper: Task<Void, Never>?
     @ObservationIgnored private var feeds: [String: (date: Date, podcast: RSSPodcast)] = [:]
-    @ObservationIgnored private let session: URLSession = {
+    @ObservationIgnored let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpAdditionalHeaders = ["User-Agent": "AudiobookSwift (podcast reader)"]
         configuration.timeoutIntervalForRequest = 30
@@ -120,6 +150,12 @@ final class SkipController {
 
     // MARK: - Kolejka
 
+    func setPhase(_ key: String, _ phase: Phase) {
+        guard phases[key] != phase else { return }
+        phases[key] = phase
+        if key == runningModelKey { publishModelStatus() }
+    }
+
     func phase(itemID: String, episodeID: String) -> Phase? {
         phases[ListeningController.key(itemID, episodeID)]
     }
@@ -137,6 +173,8 @@ final class SkipController {
     /// Przegląd najnowszych odcinków: liczy te pobrane w ostatnich dniach, które nie mają znaczników.
     func startSweeping() {
         guard sweeper == nil else { return }
+        // Zadania modelu z poprzedniego uruchomienia (albo sprzed zatrzymania serwera).
+        if !modelJobs.isEmpty { startWorker() }
         sweeper = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.sweep()
@@ -145,9 +183,12 @@ final class SkipController {
         }
     }
 
+    /// Serwer przestał działać: przegląd i bieżące zadanie stają. Zadania modelu zostają w pliku kolejki
+    /// i ruszają przy następnym starcie serwera (także po ponownym uruchomieniu aplikacji).
     func stopSweeping() {
         sweeper?.cancel()
         sweeper = nil
+        modelTask?.cancel()
         worker?.cancel()
         worker = nil
         queue = []
@@ -170,10 +211,13 @@ final class SkipController {
             var items: Set<String> = []
             for episode in episodes {
                 guard let itemID = episode.libraryItemId, let audio = Self.audioURL(episode),
-                      !FileManager.default.fileExists(atPath: Self.skipURL(forAudio: audio).path),
                       let modified = try? audio.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                       modified > cutoff else { continue }
-                items.insert(itemID)
+                if !FileManager.default.fileExists(atPath: Self.skipURL(forAudio: audio).path) {
+                    items.insert(itemID)
+                } else if needsModel(itemID: itemID, episodeID: episode.id, audio: audio) {
+                    enqueueModel(ModelJob(itemID: itemID, episodeID: episode.id, requested: false))
+                }
             }
             for itemID in items { queue.append((itemID, nil, false)) }
             if !items.isEmpty { startWorker() }
@@ -182,12 +226,18 @@ final class SkipController {
         }
     }
 
-    private func startWorker() {
+    func startWorker() {
         guard worker == nil else { return }
         worker = Task(priority: .utility) { [weak self] in
-            while let self, !Task.isCancelled, !self.queue.isEmpty {
-                let job = self.queue.removeFirst()
-                await self.run(itemID: job.itemID, episodeID: job.episodeID, force: job.force)
+            while let self, !Task.isCancelled {
+                if !self.queue.isEmpty {
+                    let job = self.queue.removeFirst()
+                    await self.run(itemID: job.itemID, episodeID: job.episodeID, force: job.force)
+                } else if let job = self.nextModelJob() {
+                    await self.runModel(job)
+                } else {
+                    break
+                }
             }
             self?.worker = nil
         }
@@ -208,9 +258,13 @@ final class SkipController {
             guard let audio = Self.audioURL(episode) else { return false }
             if let episodeID { return episode.id == episodeID }
             if force { return true }
-            guard !FileManager.default.fileExists(atPath: Self.skipURL(forAudio: audio).path) else { return false }
             let modified = try? audio.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-            return (modified ?? .distantPast) > cutoff
+            guard (modified ?? .distantPast) > cutoff else { return false }
+            guard FileManager.default.fileExists(atPath: Self.skipURL(forAudio: audio).path) else { return true }
+            if needsModel(itemID: itemID, episodeID: episode.id, audio: audio) {
+                enqueueModel(ModelJob(itemID: itemID, episodeID: episode.id, requested: false))
+            }
+            return false
         }
         if let episodeID, targets.isEmpty {
             phases[ListeningController.key(itemID, episodeID)] = .failed("Pliku odcinka nie ma na tym Macu.")
@@ -233,6 +287,10 @@ final class SkipController {
                 phases[key] = .done(Self.summary(map))
                 logger.info("Znaczniki \(audio.lastPathComponent, privacy: .public): \(map.segments.count) segm.")
                 onChanged?(itemID, episode.id)
+                // Model: odcinek wskazany przyciskiem zawsze (od nowa), pozostałe — gdy model go jeszcze nie liczył.
+                if modelEnabled, episodeID != nil || map.modelRun == nil, episodeID != nil || !recentlyFailed(key) {
+                    enqueueModel(ModelJob(itemID: itemID, episodeID: episode.id, requested: episodeID != nil))
+                }
             } catch {
                 phases[key] = .failed(error.localizedDescription)
                 logger.error("Znaczniki \(episode.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -245,7 +303,7 @@ final class SkipController {
     }
 
     /// Kanał podcastu (w pamięci przez pół godziny); bez kanału wykrywanie działa na opisie z serwera.
-    private func feed(for item: AudiobookshelfClient.ItemDetail) async -> RSSPodcast? {
+    func feed(for item: AudiobookshelfClient.ItemDetail) async -> RSSPodcast? {
         guard let address = item.media.metadata.feedUrl, let url = RSSFeedParser.webURL(address) else { return nil }
         if let cached = feeds[address], Date.now.timeIntervalSince(cached.date) < 30 * 60 { return cached.podcast }
         do {

@@ -130,6 +130,9 @@ final class ListeningController {
                 logger.notice("Skan po zapisie znaczników: \(error.localizedDescription, privacy: .public)")
             }
         }
+        NotificationCenter.default.addObserver(forName: SkipSettingsStore.categoryDefaultsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.skipDefaultsChanged() }
+        }
         skip.onChanged = { [weak self] itemID, episodeID in
             guard let self, let book = player.book, book.itemID == itemID, book.episodeID == episodeID else { return }
             playback.reloadSkips()
@@ -144,10 +147,15 @@ final class ListeningController {
         }
     }
 
-    /// Ustawienia pomijania podcastu zmienione na stronie podcastu.
-    func setSkipSettings(_ settings: SkipSettings, podcastID: String) {
-        skipSettings.set(settings, podcastID: podcastID)
+    /// Ustawienie pomijania podcastu (wyjątek od domyślnych) zmienione na stronie podcastu.
+    func setSkipPreference(_ preference: SkipPreference, podcastID: String) {
+        skipSettings.setPreference(preference, podcastID: podcastID)
         if player.book?.itemID == podcastID { playback.refreshSkipPlan() }
+    }
+
+    /// Domyślne działanie kategorii zmienione w Ustawieniach (13b) — plan bieżącego odcinka od nowa.
+    func skipDefaultsChanged() {
+        if player.book?.episodeID != nil { playback.refreshSkipPlan() }
     }
 
     /// Stały identyfikator tego Maca dla serwera (nowa sesja tego samego urządzenia zamyka poprzednią).
@@ -195,6 +203,7 @@ final class ListeningController {
         if ready, availability != .ready {
             guard let environment = supervisor.environment else { return }
             openJournal(dataRoot: environment.dataRoot)
+            skip.open(dataRoot: environment.dataRoot)
             auth = ListeningAuth(client: AudiobookshelfClient(baseURL: ServerEnvironment.baseURL)) { [account] in
                 try await account.webSession(.listening)
             }

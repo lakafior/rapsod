@@ -11,6 +11,7 @@ struct GeneralSettingsPage: View {
         SettingsForm {
             serverSection
             loginItemSection
+            SponsorDetectionSection(dataRoot: supervisor.dataRoot)
         }
     }
 

@@ -92,12 +92,16 @@ public struct SkipSettingsStore: Sendable {
         return value
     }
 
+    /// Powiadomienie po zmianie domyślnych (odtwarzacz przelicza plan bieżącego odcinka).
+    public static let categoryDefaultsChanged = Notification.Name("SkipSettingsStore.categoryDefaultsChanged")
+
     public func setCategoryDefaults(_ settings: SkipSettings) {
         if settings == .standard {
             defaults.removeObject(forKey: Self.defaultsKey)
         } else if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: Self.defaultsKey)
         }
+        NotificationCenter.default.post(name: Self.categoryDefaultsChanged, object: nil)
     }
 
     public func preference(podcastID: String) -> SkipPreference {
