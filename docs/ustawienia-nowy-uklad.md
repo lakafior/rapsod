@@ -1001,7 +1001,12 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 - **Logowanie:** zapis wiadomości przetrwał ponowne otwarcie arkusza. „Anuluj” odrzuciło włączenie OpenID. Formularz OpenID się rysuje.
 - **Sieć domowa:** włączenie i wyłączenie (restart serwera; nasłuch `*` / `127.0.0.1`).
 - **Baner:** pojawia się po zmianie adresu spoza domu (także znak przy „Dostępie zdalnym”) i znika po pokazaniu „Kodu z adresami”.
-- **Tunel bez tokenu** z atrapą `cloudflared`.
+- **Tunel z atrapą `cloudflared`** (`-ABSCloudflared`; aplikacja nie łączy się z Cloudflare sama, uruchamia tylko wskazany program). Sprawdzone z tokenami zmyślonymi, ale w poprawnym formacie:
+  - token wpisany w pole i zapisany daje „zapisany w pęku kluczy” i stan „Łączenie…”, a działa tylko atrapa;
+  - „Zmień…” podmienia token (tunel `…0001` → `…0002`);
+  - „Usuń token…” z potwierdzeniem daje „Brak tokenu”, a atrapa się zatrzymuje.
+- **Własny adres wpisany w pole:** błędny pokazuje komunikat nad sekcjami, poprawny się zapisuje, a baner reaguje na zmianę.
+- **OpenID:** niepełny formularz kończy się komunikatem z listą brakujących pól. Pełny (zmyślone adresy) zapisuje się jako „włączone”, wartości są po ponownym otwarciu, a wyłączenie przywraca stan.
 - **Tryb sprawdzający** z rozwiniętym „Zaawansowane” i zrzut drzewa dostępności rozwiniętej strony: bez awarii.
 
 ### Odstępstwa
@@ -1012,10 +1017,6 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 
 ### Znane braki
 
-- **Tekstu z klawiatury nie wpisywałem.** Najpierw ekran był zablokowany, potem ktoś pracował przy Macu, a testy wymagały przejęcia klawiatury i myszy. Dlatego:
-  - zapis tokenu tunelu i arkusz „Zmień…” tokenu są tylko skompilowane;
-  - tryb tunelu sprawdzony jest bez tokenu, z atrapą `cloudflared` (`-ABSCloudflared`);
-  - własny adres ustawiłem w `sharing.json` testowej kopii, a nie polem.
 - **Pierwsza wersja banera** może raz pokazać fałszywy alarm, np. przy zmianie adresu tam i z powrotem przed pokazaniem kodu.
 - **Punkt odniesienia banera** w instalacji sprzed etapu 3 ustala się dopiero przy pierwszym otwarciu „Dostępu zdalnego” po wczytaniu telefonów. Zmiana adresu przed tą chwilą zostanie przyjęta bez alarmu.
 - **Reset w układzie wydania** (`Contents/Resources/Server`): ścieżki do `bcryptjs` i `sqlite3` w paczce sprawdzone tylko listingiem, reset nie był uruchamiany na zainstalowanej aplikacji.
