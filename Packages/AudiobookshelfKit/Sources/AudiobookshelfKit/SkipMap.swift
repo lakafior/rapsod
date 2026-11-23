@@ -124,12 +124,42 @@ public struct SkipMap: Codable, Sendable, Equatable {
 
     // MARK: - Segmenty po poprawkach
 
-    /// Segmenty do użycia: wykryte bez odrzuconych, plus dodane przez użytkownika, posortowane.
+    /// Segmenty do użycia: wykryte bez odrzuconych i bez zastąpionych przez model, plus dodane przez
+    /// użytkownika, posortowane.
+    ///
+    /// **Model a zakresy z opisu i rozdziałów (13b).** Czas z opisu ma dokładność wpisu w opisie, a koniec
+    /// to często następny znacznik czasu (zakresy dłuższe niż 3 min są tylko znacznikiem). Segment z modelu
+    /// ma granice z transkrypcji docięte do przerwy w mowie. Gdzie model wyznaczył segment nachodzący na
+    /// zakres z opisu albo rozdziałów, zostaje tylko segment modelu — zakres z opisu nie jest dublowany ani
+    /// łączony z nim w jeden skok. Gdzie model nic nie znalazł, zakres z opisu zostaje jak w 13a (model trafia
+    /// ok. 7 na 10 segmentów, opis bywa pewniejszy). Sloty Megaphone zostają zawsze (położenie z bajtów pliku).
+    /// Liczy się przy odczycie, nie przy zapisie: ponowne wykrywanie z opisu niczego nie przywraca.
+    /// Model zastępuje zakres także wtedy, gdy użytkownik odrzucił segment modelu — odrzucenie znaczy
+    /// „tu nie ma reklamy”, więc zakres z opisu nie wraca.
     public var effectiveSegments: [SkipSegment] {
-        let detected = segments.filter { segment in !corrections.removed.contains { $0.rejects(segment) } }
+        let model = segments.filter { $0.source == .model }
+        let detected = segments.filter { segment in
+            !corrections.removed.contains { $0.rejects(segment) }
+                && !(Self.supersededSources.contains(segment.source) && model.contains { Self.supersedes($0, segment) })
+        }
         return (detected + corrections.added)
             .filter { $0.end > $0.start }
             .sorted { ($0.start, $0.end) < ($1.start, $1.end) }
+    }
+
+    /// Źródła, których zakresy segment modelu zastępuje (patrz `effectiveSegments`).
+    static let supersededSources: Set<SkipSource> = [.description, .chapters]
+
+    /// Segment modelu nachodzi na zakres z opisu: co najmniej 5 s wspólnego czasu albo połowa
+    /// krótszego z nich (krótkie autopromocje).
+    static func supersedes(_ model: SkipSegment, _ other: SkipSegment) -> Bool {
+        let overlap = max(0, min(model.end, other.end) - max(model.start, other.start))
+        return overlap >= min(5, 0.5 * min(model.duration, other.duration)) && overlap > 0
+    }
+
+    /// Ostatnie uruchomienie modelu (13b), jeśli było.
+    public var modelRun: SkipRun? {
+        runs.last { $0.source == .model }
     }
 
     /// Wynik wykrywania jednego źródła zastępuje jego poprzednie segmenty; reszta (inne źródła,

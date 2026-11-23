@@ -171,7 +171,10 @@ public enum SkipDetection {
                             notices: result.notices, runs: result.runs, generatedAt: now)
         guard let previous else { return fresh }
         let ranNow: Set<SkipSource> = Set(result.runs.map(\.source))
-        let keep = Set(previous.segments.map(\.source)).union(previous.runs.map(\.source)).subtracting(ranNow)
+        var keep = Set(previous.segments.map(\.source)).union(previous.runs.map(\.source)).subtracting(ranNow)
+        // Segmenty modelu (13b) mają czasy z transkrypcji konkretnego pliku: po wymianie pliku (ponowne
+        // pobranie, inny zestaw reklam wstawionych) nie przechodzą — model policzy od nowa.
+        if previous.audio.match(audio) != .exact { keep.remove(.model) }
         return fresh.carryingOver(from: previous, keeping: keep)
     }
 }

@@ -51,9 +51,32 @@ public struct SkipSettings: Codable, Sendable, Equatable {
     }
 }
 
-/// Ustawienia pomijania per podcast w `UserDefaults` (klucz: id podcastu na serwerze).
+/// Ustawienie jednego podcastu względem domyślnych (etap 13b): `nil` w kategorii = jak w ustawieniach
+/// aplikacji. Zapis z 13a (`SkipSettings` z obiema kategoriami) czyta się jako jawny wybór obu.
+public struct SkipPreference: Codable, Sendable, Equatable {
+    public var enabled: Bool
+    public var sponsor: SkipAction?
+    public var selfPromo: SkipAction?
+
+    public init(enabled: Bool = true, sponsor: SkipAction? = nil, selfPromo: SkipAction? = nil) {
+        self.enabled = enabled
+        self.sponsor = sponsor
+        self.selfPromo = selfPromo
+    }
+
+    public static let inherit = SkipPreference()
+    public var isInherited: Bool { self == .inherit }
+
+    public func resolved(defaults: SkipSettings) -> SkipSettings {
+        SkipSettings(enabled: enabled && defaults.enabled, sponsor: sponsor ?? defaults.sponsor, selfPromo: selfPromo ?? defaults.selfPromo)
+    }
+}
+
+/// Ustawienia pomijania w `UserDefaults`: domyślne dla kategorii (ustawienia aplikacji, 13b) i wyjątki
+/// per podcast (klucz: id podcastu na serwerze). Podcast bez wyjątku idzie za domyślnymi.
 public struct SkipSettingsStore: Sendable {
     public static let prefix = "skipSettings."
+    static let defaultsKey = prefix + "default"
     private let suiteName: String?
 
     public init(suiteName: String? = nil) {
@@ -62,17 +85,46 @@ public struct SkipSettingsStore: Sendable {
 
     private var defaults: UserDefaults { suiteName.flatMap(UserDefaults.init(suiteName:)) ?? .standard }
 
-    public func settings(podcastID: String) -> SkipSettings {
-        guard let data = defaults.data(forKey: Self.prefix + podcastID),
+    /// Domyślne działanie dla kategorii (bez zapisu: obie pomijane, jak w ustaleniu użytkownika).
+    public var categoryDefaults: SkipSettings {
+        guard let data = defaults.data(forKey: Self.defaultsKey),
               let value = try? JSONDecoder().decode(SkipSettings.self, from: data) else { return .standard }
         return value
     }
 
-    public func set(_ settings: SkipSettings, podcastID: String) {
+    public func setCategoryDefaults(_ settings: SkipSettings) {
         if settings == .standard {
-            defaults.removeObject(forKey: Self.prefix + podcastID)
+            defaults.removeObject(forKey: Self.defaultsKey)
         } else if let data = try? JSONEncoder().encode(settings) {
+            defaults.set(data, forKey: Self.defaultsKey)
+        }
+    }
+
+    public func preference(podcastID: String) -> SkipPreference {
+        guard let data = defaults.data(forKey: Self.prefix + podcastID),
+              let value = try? JSONDecoder().decode(SkipPreference.self, from: data) else { return .inherit }
+        return value
+    }
+
+    public func setPreference(_ preference: SkipPreference, podcastID: String) {
+        if preference.isInherited {
+            defaults.removeObject(forKey: Self.prefix + podcastID)
+        } else if let data = try? JSONEncoder().encode(preference) {
             defaults.set(data, forKey: Self.prefix + podcastID)
+        }
+    }
+
+    /// Ustawienie obowiązujące dla podcastu: wyjątek albo domyślne.
+    public func settings(podcastID: String) -> SkipSettings {
+        preference(podcastID: podcastID).resolved(defaults: categoryDefaults)
+    }
+
+    /// Zapis pełnego ustawienia (iOS, 13a): równe domyślnym — bez wyjątku; inne — jawny wybór obu kategorii.
+    public func set(_ settings: SkipSettings, podcastID: String) {
+        if settings == categoryDefaults {
+            setPreference(.inherit, podcastID: podcastID)
+        } else {
+            setPreference(SkipPreference(enabled: settings.enabled, sponsor: settings.sponsor, selfPromo: settings.selfPromo), podcastID: podcastID)
         }
     }
 }
