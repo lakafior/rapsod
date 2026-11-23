@@ -512,6 +512,8 @@ Przeliczanie jest w pakiecie (`EbookAudioSync`, testy), żeby Mac mógł z niego
 
 **Dokładność:** zdanie (na „W pustyni i w puszczy” I–IV: 7:00 → strona z tym zdaniem, strona zaczęta w środku zdania 70 → 6:22, czyli jego początek). **Gdy mapa nie pasuje** (inne wydanie e-booka, strona spoza mapy, za mało tekstu): komunikat „Tej strony nie ma w mapie tekstu…” i brak skoku; gdy pliki zmieniły się od synchronizacji (odciski w mapie), menu pokazuje ostrzeżenie, ale przejścia działają, dopóki tekst się zgadza. Powtarzające się krótkie zdania (np. „— Dlaczego?”) rozróżnia numer wystąpienia; dopasowanie strony bierze pierwsze pasujące zdanie rozdziału.
 
+**Plan podświetlania (krok 3 etapu 11c, niezaczęty):** `TextFollowModel` (jak w trybie „Tekst”) podaje bieżące zdanie z czasu odtwarzacza; strona czytnika dostaje klucz zdania i jego długość (bez odstępów), w indeksie znaków rozdziału (zbudowanym raz na rozdział, nie przy każdym zdaniu) wyznacza zakres całego zdania i podświetla go `rendition.annotations.highlight` (CFI zakresu; poprzednie podświetlenie zdejmowane). Podążanie: gdy zdanie zaczyna się za początkiem następnej strony (ta sama poprawka co przy „Czytaj od miejsca słuchania”), kartka dalej — w trybie stronicowanym bez przewijania, więc bez skoków układu i bez animacji przy „Ogranicz ruch”. Ręczna zmiana strony wstrzymuje podążanie do „Wróć do bieżącego miejsca”. Koszt: ok. jednej sesji; ryzyko — wydajność podświetleń epub.js na długich rozdziałach i ta sama niedokładność prostokątów WebKit przy wyznaczaniu strony.
+
 ## Segmenty sponsorowane w podcastach (etap 13a)
 
 Oznaczanie i pomijanie reklam, „partnerów odcinka” i autopromocji przy odtwarzaniu, na Macu i iOS — bez transkrypcji i bez modelu (to 13b). Pliku audio nie wycinamy.
