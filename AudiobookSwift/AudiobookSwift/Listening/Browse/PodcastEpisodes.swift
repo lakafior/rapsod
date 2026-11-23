@@ -44,6 +44,7 @@ struct EpisodeRow: View {
                     } else {
                         Text(Formats.duration(episode.length))
                     }
+                    EpisodeSkipBadge(skip: listening.skip, itemID: itemID, episode: episode)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -65,6 +66,8 @@ struct EpisodeRow: View {
             if progress != nil {
                 Button("Wyzeruj postęp") { Task { await listening.resetProgress(itemID: itemID, episodeID: episode.id) } }
             }
+            Button("Wykryj segmenty sponsorowane") { listening.skip.analyze(itemID: itemID, episodeID: episode.id) }
+                .disabled(SkipController.audioURL(episode) == nil)
             AddToPlaylistMenu(browser: browser, entry: .init(libraryItemId: itemID, episodeId: episode.id), libraryID: libraryID)
             EpisodeManageMenu(browser: browser, episode: episode, editing: $editing, removing: $removing)
         }

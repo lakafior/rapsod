@@ -39,6 +39,8 @@ struct ChapterScrubber: View {
             .controlSize(.small)
             .disabled(player.book == nil)
             .accessibilityIdentifier("player.scrubber")
+            SkipMarkersBar(plan: player.skipPlan, range: start...end)
+                .padding(.horizontal, 6)
             HStack {
                 Text(PlaybackFormat.clock(shown - start, rounding: .toNearestOrEven))
                 Spacer()

@@ -45,6 +45,11 @@ struct MiniPlayerBar: View {
                 .accessibilityLabel(Text("Odtwarzacz: \(book.title)"))
                 .accessibilityHint(Text("Otwiera pełny ekran odtwarzacza"))
 
+                if player.lastSkip != nil {
+                    Button("Cofnij") { player.undoSkip() }
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityLabel(Text("Cofnij pominięcie"))
+                }
                 PlayPauseButton(player: player, size: .title3)
                 if placement != .inline {
                     Button {
@@ -109,6 +114,7 @@ struct PlayerScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var cover: UIImage?
     @State private var showsChapters = false
+    @State private var showsSkips = false
     /// Tryb „Tekst” (etap 11b): tekst książki zamiast dużej okładki.
     @AppStorage("player.showsText") private var showsText = false
     @State private var text = TextFollowModel()
@@ -136,6 +142,7 @@ struct PlayerScreen: View {
                                     topBar
                                     info(book)
                                     ChapterScrubber(player: player)
+                                    SkipBanner(player: player)
                                     controls
                                     options
                                 }
@@ -156,6 +163,7 @@ struct PlayerScreen: View {
                                     .padding(.vertical, 8)
                                 info(book)
                                 ChapterScrubber(player: player)
+                                SkipBanner(player: player)
                                 controls
                                 options
                             }
@@ -191,6 +199,9 @@ struct PlayerScreen: View {
         .environment(\.colorScheme, .dark)
         .sheet(isPresented: $showsChapters) {
             ChapterList(player: player)
+        }
+        .sheet(isPresented: $showsSkips) {
+            SkipEditorSheet(playback: model.playback)
         }
         // Ekran nie gaśnie, gdy czyta się tekst w trakcie słuchania; blokada znika po pauzie i wyjściu.
         .onChange(of: textMode && player.isPlaying, initial: true) { _, keepAwake in
@@ -380,6 +391,10 @@ struct PlayerScreen: View {
                     Task { await model.playback.markFinished() }
                     dismiss()
                 }
+                if player.book.map({ $0.episodeID != nil || $0.feedKey != nil }) == true {
+                    Button("Segmenty sponsorowane", systemImage: "forward.end.alt") { showsSkips = true }
+                        .disabled(model.playback.skipContext == nil)
+                }
                 Button("Zakończ słuchanie", systemImage: "stop.circle", role: .destructive) {
                     Task { await model.playback.stop() }
                     dismiss()
@@ -544,6 +559,8 @@ private struct ChapterScrubber: View {
             }
             .accessibilityLabel(Text(position.chapter == nil ? "Pozycja w książce" : "Pozycja w rozdziale"))
             .accessibilityValue(Text("\(TimeText.long(elapsed)) z \(TimeText.long(position.length))"))
+            SkipMarkersBar(plan: player.skipPlan, range: position.start...(position.start + max(position.length, 1)))
+                .padding(.horizontal, 2)
 
             HStack {
                 Text(PlaybackFormat.clock(elapsed))

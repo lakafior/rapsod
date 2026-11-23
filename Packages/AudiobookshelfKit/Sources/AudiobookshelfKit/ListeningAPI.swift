@@ -116,6 +116,8 @@ extension AudiobookshelfClient {
         public let audioFile: AudioFile?
         public let duration: Double?
         public let size: Double?
+        /// Rozdziały odcinka (z pliku audio albo kanału) — etap 13a.
+        public var chapters: [AudiobookshelfClient.ItemDetail.Media.Chapter]? = nil
         /// Tylko w „Najnowszych odcinkach”.
         public let libraryItemId: String?
         public let podcast: PodcastInfo?

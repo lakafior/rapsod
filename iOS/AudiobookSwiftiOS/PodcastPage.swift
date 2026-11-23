@@ -203,6 +203,7 @@ struct PodcastPage: View {
     @AppStorage("orderDownloadWhenStreaming") private var orderWhenStreaming = true
     /// Odcinek ze strumienia nie ruszył (ATS, brak zakresów bajtów, plik zniknął…).
     @State private var streamFailure: (row: PodcastEpisodeRow, message: String)?
+    @State private var showsSkipSettings = false
 
     init(item: Client.ItemDetail, model: AppModel, session: ServerSession) {
         self.model = model
@@ -251,6 +252,10 @@ struct PodcastPage: View {
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(isPresented: $showsSkipSettings) {
+            PodcastSkipSettingsSheet(playback: model.playback, podcastID: item.id)
+                .presentationDetents([.medium, .large])
+        }
         .refreshable { await refresh(force: true) }
         .task(id: session.id) { await refresh(force: false) }
         // Serwer pobrał odcinek albo zmienił pozycję — przeładowanie w tle, lista zostaje na miejscu.
@@ -372,6 +377,10 @@ struct PodcastPage: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button("Segmenty sponsorowane", systemImage: "forward.end.alt") { showsSkipSettings = true }
+                .accessibilityIdentifier("podcast.skip")
+        }
         if page.rows.contains(where: { $0.server != nil }) {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Pobierz na telefon", systemImage: "arrow.down.circle") {
@@ -442,7 +451,7 @@ struct PodcastPage: View {
             let episode = PlaybackCoordinator.ExternalEpisode(
                 itemID: item.id, feedKey: feedKey, title: row.title, podcastTitle: item.title,
                 guid: row.feed?.guid ?? row.localOnly?.guid, enclosureURL: url, published: row.published,
-                feedDuration: row.feed?.durationSeconds ?? row.localOnly?.duration
+                feedDuration: row.feed?.durationSeconds ?? row.localOnly?.duration, summary: row.feed?.summary
             )
             let wasPlaying = model.playback.nowPlayingKeys.contains(PlaybackTimeline.feedKey(item.id, feedKey))
             await model.playback.play(external: episode)

@@ -65,3 +65,11 @@ gdy lektor do niego dochodzi, jedną ciągłą animacją; jasność zdań zmieni
 (tylko Debug) do nagrań i pomiarów bez serwera: `xcrun simctl launch booted net.smigi.abswift.ios
 -BookTextDemo <folder z *.m4a i *.sync.json> [-BookTextDemoStart s] [-BookTextDemoRate r]
 [-BookTextDemoScript plik]`. Szczegóły w głównym `README.md` („Płynny ruch tekstu”).
+
+Etap 13a: segmenty sponsorowane w podcastach — znaczniki pod suwakiem, automatyczne pomijanie
+z „Cofnij” (komunikat w pełnym odtwarzaczu, „Cofnij” też w mini-odtwarzaczu), „Pomiń” po
+przewinięciu w środek segmentu, lista segmentów z poprawkami (zapisywanymi na telefonie) i
+ustawienie per podcast w pasku strony podcastu. Znaczniki: z serwera (liczy je Mac po pobraniu
+odcinka), pobrane razem z odcinkiem (działają bez sieci), a dla odcinków prosto z kanału —
+liczone na telefonie z opisu odcinka (`SkipSupport.swift`, `SkipViews.swift`). Szczegóły w
+głównym `README.md` („Segmenty sponsorowane w podcastach”).

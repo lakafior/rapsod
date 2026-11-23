@@ -143,6 +143,7 @@ final class AppModel {
         }
         playback.isReachable = { [weak self] in self?.isOffline != true }
         playback.offlineBook = { [weak self] itemID, episodeID in self?.downloads.playbackBook(itemID: itemID, episodeID: episodeID) }
+        SkipSupport.configure(self)
         downloads.manager.authorization = { [weak self] in self?.apiKey }
         downloads.manager.onConnectionError = { [weak self] in self?.connectionTroubled() }
         downloads.backgroundWake = { [weak self] in

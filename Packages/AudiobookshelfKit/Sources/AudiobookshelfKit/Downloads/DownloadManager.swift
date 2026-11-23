@@ -186,6 +186,25 @@ public final class DownloadManager: NSObject {
         }
     }
 
+    /// Znaczniki segmentów sponsorowanych pobrane z odcinkiem (etap 13a); `nil`, gdy ich nie ma.
+    public func skipData(itemID: String, episodeID: String) -> Data? {
+        guard let item = items[ProgressJournal.key(itemID, episodeID)] else { return nil }
+        return try? Data(contentsOf: directory.appending(path: item.folder).appending(path: DownloadedItem.skipFileName))
+    }
+
+    /// Zapisuje (albo podmienia) znaczniki pobranego odcinka. Odcinek spoza pobranych — nic.
+    public func storeSkip(_ data: Data, itemID: String, episodeID: String) {
+        guard let item = items[ProgressJournal.key(itemID, episodeID)] else { return }
+        let url = directory.appending(path: item.folder).appending(path: DownloadedItem.skipFileName)
+        if let existing = try? Data(contentsOf: url), existing == data { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            logger.error("Zapis znaczników pobranego odcinka: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Zajęte miejsce (pobrane pliki i okładki); `scope == nil` — wszystkich serwerów.
     public func usedBytes(scope: String? = nil) -> Int64 {
         _ = revision

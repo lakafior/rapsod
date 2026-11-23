@@ -26,6 +26,9 @@ struct MiniPlayerBar: View {
                     Text(player.currentChapter?.title ?? book.author ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                if player.lastSkip != nil {
+                    SkipBanner(player: player, compact: true).fixedSize()
+                }
                 TransportControls(player: player)
                 Button { showsPlayer.toggle() } label: { Image(systemName: "sidebar.trailing") }
                     .buttonStyle(.borderless)

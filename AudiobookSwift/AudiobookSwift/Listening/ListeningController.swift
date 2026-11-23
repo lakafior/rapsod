@@ -53,6 +53,9 @@ final class ListeningController {
     let textSync = TextSyncController()
     /// Tekst bieżącej książki w odtwarzaczu (etap 11b) — wspólny dla panelu i okna tekstu.
     let text = TextFollowModel()
+    /// Znaczniki segmentów sponsorowanych w podcastach (etap 13a).
+    let skip = SkipController()
+    @ObservationIgnored let skipSettings = SkipSettingsStore()
     /// Rośnie po zmianie okładki pozycji — `AsyncCover` wczytuje ją wtedy od nowa.
     private(set) var coverRevision: [String: Int] = [:]
     /// Kolejka playlisty: po ukończeniu bieżącej pozycji gra następna.
@@ -96,6 +99,55 @@ final class ListeningController {
         playback.coverLoader = { [weak self] itemID, path in await self?.cover(for: itemID, path: path, size: 300) }
         playback.onProgressSaved = { [weak self] record in self?.updateLocalProgress(record) }
         playback.onFinished = { [weak self] book in await self?.bookFinished(book) }
+        configureSkips()
+    }
+
+    /// Segmenty sponsorowane (etap 13a): znaczniki z pliku obok odcinka, zapis poprawek, wykrywanie.
+    private func configureSkips() {
+        let settings = skipSettings
+        playback.skipSettings = { settings.settings(podcastID: $0) }
+        playback.skipLoader = { book, _ in await SkipController.context(for: book) }
+        playback.skipSaver = { [weak self] book, context in
+            guard let self, let map = context.map, let audio = book.tracks.first.flatMap(Self.localAudio) else { return }
+            try await skip.save(map, audio: audio, itemID: book.itemID)
+        }
+        skip.fetchItem = { [weak self] id in
+            guard let self else { throw CancellationError() }
+            return try await api { try await $0.item(id: id, token: $1) }
+        }
+        skip.recentEpisodes = { [weak self] in
+            guard let self else { return [] }
+            var episodes: [AudiobookshelfClient.PodcastEpisode] = []
+            for library in libraries where library.mediaType == "podcast" {
+                episodes += try await api { try await $0.recentEpisodes(libraryID: library.id, page: 0, limit: 30, token: $1) }
+            }
+            return episodes
+        }
+        skip.rescan = { [account] itemID in
+            do {
+                _ = try await account.withAdminToken { try await $0.scanItem(id: itemID, token: $1) }
+            } catch {
+                logger.notice("Skan po zapisie znaczników: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        skip.onChanged = { [weak self] itemID, episodeID in
+            guard let self, let book = player.book, book.itemID == itemID, book.episodeID == episodeID else { return }
+            playback.reloadSkips()
+        }
+    }
+
+    /// Plik odcinka na dysku tego Maca.
+    nonisolated private static func localAudio(_ track: PlaybackTrack) -> URL? {
+        switch track.source {
+        case .serverFile(let url), .file(let url): url
+        default: nil
+        }
+    }
+
+    /// Ustawienia pomijania podcastu zmienione na stronie podcastu.
+    func setSkipSettings(_ settings: SkipSettings, podcastID: String) {
+        skipSettings.set(settings, podcastID: podcastID)
+        if player.book?.itemID == podcastID { playback.refreshSkipPlan() }
     }
 
     /// Stały identyfikator tego Maca dla serwera (nowa sesja tego samego urządzenia zamyka poprzednią).
@@ -149,8 +201,10 @@ final class ListeningController {
             availability = .ready
             await playback.uploadJournal()
             await refresh()
+            skip.startSweeping()
         } else if !ready, availability == .ready {
             availability = .unavailable
+            skip.stopSweeping()
             serverStopped()
         }
     }
@@ -268,6 +322,7 @@ final class ListeningController {
             Task { await refresh() }
         case .episodeDownload(let download, let phase):
             episodeDownloads.apply(download, phase)
+            if case .finished = phase, download.failed != true { skip.episodeDownloaded(itemID: download.libraryItemId) }
         case .downloadQueueCleared(let itemID):
             episodeDownloads.clear(itemID: itemID)
         case .connected, .task, .taskProgress, .trackStarted:

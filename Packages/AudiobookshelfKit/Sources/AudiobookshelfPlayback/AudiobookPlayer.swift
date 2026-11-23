@@ -102,6 +102,29 @@ public final class AudiobookPlayer {
     private static let nowPlayingInterval: TimeInterval = 10
     @ObservationIgnored private var retriedRemote = false
 
+    // MARK: Segmenty sponsorowane (etap 13a)
+
+    /// Segmenty bieżącego odcinka: znaczniki na pasku postępu i pomijanie. Ustawia je koordynator
+    /// (plik znaczników, ustawienia podcastu, zgodność pliku); pusty dla książek.
+    public private(set) var skipPlan: SkipPlan = .empty
+    /// Ostatnie pominięcie — komunikat z „Cofnij” (znika po `skipUndoWindow`).
+    public private(set) var lastSkip: SkipEvent?
+    /// Jak długo „Cofnij” jest dostępne (dłużej przy VoiceOver — ustawia aplikacja).
+    @ObservationIgnored public var skipUndoWindow: Duration = .seconds(10)
+    /// Segmenty po „Cofnij” — grane do końca, dopóki pozycja z nich nie wyjdzie.
+    @ObservationIgnored private var skipSuppressed: Set<String> = []
+    /// Poprzednia pozycja do decyzji o pominięciu (po przewinięciu — cel przewinięcia).
+    @ObservationIgnored private var skipPrevious: Double?
+    /// Miejsce ostatniego przewinięcia albo startu.
+    @ObservationIgnored private var skipAnchor: Double = 0
+    @ObservationIgnored private var skipBoundary: Any?
+    @ObservationIgnored private var lastSkipExpiry: Task<Void, Never>?
+    /// Ostatnie przewinięcie w toku: zegar do jego końca podaje jeszcze starą pozycję (pominięcie albo
+    /// „Cofnij” liczyłyby się od niej), więc wtedy go nie czytamy. Tylko ostatnie (wcześniejsze kończą
+    /// się razem z nim), zerowane przy ładowaniu pliku i zamknięciu — zawieszone przewinięcie nie
+    /// zatrzyma zegara na stałe.
+    @ObservationIgnored private var pendingSeek: UUID?
+
     private static let rateKey = "listeningRate"
     public static let rates: [Float] = [0.8, 1, 1.1, 1.2, 1.3, 1.5, 1.75, 2, 2.5, 3]
     public static let skipBack: Double = 15
@@ -223,6 +246,8 @@ public final class AudiobookPlayer {
         artwork = nil
         error = nil
         cancelSleepTimer()
+        resetSkips()
+        pendingSeek = nil
         nowPlayingUpdated = nil
         nowPlayingChapterID = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -251,6 +276,7 @@ public final class AudiobookPlayer {
         guard let book, !book.tracks.isEmpty else { return }
         let target = PlaybackTimeline.clamp(time, duration: book.duration)
         isDirty = true
+        markSkipAnchor(target)
         let index = PlaybackTimeline.trackIndex(in: book.tracks, at: target)
         // Strumień HLS przewijamy, budując element od nowa: przewinięcie trwającego strumienia
         // potrafiło nigdy się nie zakończyć, a start od zadanej pozycji działa zawsze.
@@ -258,8 +284,11 @@ public final class AudiobookPlayer {
         if !isStream, index == trackIndex, let item = player.currentItem, itemTracks[ObjectIdentifier(item)] == index, item.status == .readyToPlay {
             currentTime = target
             let local = PlaybackTimeline.localTime(target, in: book.tracks[index])
+            let token = UUID()
+            pendingSeek = token
             Task {
                 await player.seek(to: CMTime(seconds: local, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+                if pendingSeek == token { pendingSeek = nil }
                 updateNowPlaying()
             }
         } else {
@@ -349,6 +378,8 @@ public final class AudiobookPlayer {
         currentTime = time
         isLoading = true
         lastTick = nil
+        pendingSeek = nil
+        markSkipAnchor(time)
         updateItemEndAction()
         loadTask = Task {
             defer { if !Task.isCancelled { isLoading = false } }
@@ -374,6 +405,9 @@ public final class AudiobookPlayer {
                 }
                 syncPlayingState()
                 enqueue(after: index)
+                installSkipBoundaries()
+                // Odcinek zaczyna się reklamą (np. pre-roll) — pomija od razu, bez pół sekundy reklamy.
+                checkSkip(at: time)
             } catch {
                 guard !Task.isCancelled else { return }
                 // Pozycja zostaje: następne „Odtwarzaj” spróbuje od tego samego miejsca.
@@ -469,6 +503,7 @@ public final class AudiobookPlayer {
         currentTime = startsAt
         isDirty = true
         updateItemEndAction()
+        installSkipBoundaries()
         if let current = player.currentItem, itemTracks[ObjectIdentifier(current)] == next {
             enqueue(after: next)
         } else {
@@ -511,7 +546,7 @@ public final class AudiobookPlayer {
     // MARK: - Zegar
 
     private func tick(_ time: CMTime) {
-        guard let book, !isLoading, let item = player.currentItem,
+        guard let book, !isLoading, pendingSeek == nil, let item = player.currentItem,
               let index = itemTracks[ObjectIdentifier(item)], book.tracks.indices.contains(index)
         else { return }
         trackIndex = index
@@ -524,8 +559,10 @@ public final class AudiobookPlayer {
             lastTick = now
             isDirty = true
             retriedRemote = false
+            checkSkip(at: currentTime)
         } else {
             lastTick = nil
+            skipPrevious = currentTime
             return
         }
         if let sleepDeadline, now >= sleepDeadline {
@@ -554,6 +591,115 @@ public final class AudiobookPlayer {
             return
         }
         updateNowPlaying()
+    }
+
+    // MARK: - Segmenty sponsorowane
+
+    /// Nowy plan segmentów bieżącego odcinka (po wczytaniu znaczników, zmianie ustawień albo poprawce).
+    public func setSkipPlan(_ plan: SkipPlan) {
+        guard plan != skipPlan else { return }
+        skipPlan = plan
+        skipSuppressed = plan.stillSuppressed(skipSuppressed, at: currentTime)
+        installSkipBoundaries()
+        // Znaczniki przyszły chwilę po starcie: start sprzed segmentu (albo na jego początku)
+        // liczy się jak przejście przez początek.
+        if currentTime >= skipAnchor, currentTime - skipAnchor < 5 { skipPrevious = skipAnchor }
+        checkSkip(at: currentTime)
+    }
+
+    /// Wraca na początek pominiętego fragmentu i gra go do końca.
+    public func undoSkip() {
+        guard let event = lastSkip, book != nil else { return }
+        lastSkipExpiry?.cancel()
+        lastSkip = nil
+        skipSuppressed.formUnion(event.skippedIDs)
+        seek(to: event.undoTime)
+    }
+
+    /// „Pomiń” — segment pod bieżącą pozycją (tylko znacznik albo po przewinięciu w jego środek).
+    public func skipCurrentSegment() {
+        guard book != nil, let entry = skipPlan.entry(at: currentTime) else { return }
+        performSkip(entry: entry, undoTime: currentTime, to: entry.end, skippedIDs: [entry.id], automatic: false)
+    }
+
+    /// Chowa komunikat o pominięciu.
+    public func dismissLastSkip() {
+        lastSkipExpiry?.cancel()
+        lastSkip = nil
+    }
+
+    private func resetSkips() {
+        skipPlan = .empty
+        lastSkipExpiry?.cancel()
+        lastSkip = nil
+        skipSuppressed = []
+        skipPrevious = nil
+        skipAnchor = 0
+        removeSkipBoundaries()
+    }
+
+    private func markSkipAnchor(_ time: Double) {
+        skipAnchor = time
+        skipPrevious = time
+    }
+
+    /// Decyzja o pominięciu przy pozycji `current` (zegar, obserwator granic, koniec ładowania).
+    private func checkSkip(at current: Double) {
+        guard !skipPlan.isEmpty, book != nil, !isLoading, wantsToPlay else {
+            skipPrevious = current
+            return
+        }
+        skipSuppressed = skipPlan.stillSuppressed(skipSuppressed, at: current)
+        let previous = skipPrevious ?? current
+        skipPrevious = current
+        guard let decision = skipPlan.decide(from: previous, to: current, suppressed: skipSuppressed) else { return }
+        var target = decision.target
+        // Wyłącznik „do końca rozdziału”: nie przeskakujemy za koniec rozdziału — tam zatrzyma zegar.
+        if sleepTimer == .endOfChapter, let sleepChapter, sleepChapter.end > current, target > sleepChapter.end {
+            target = sleepChapter.end
+        }
+        performSkip(entry: decision.entry, undoTime: decision.entry.start, to: target, skippedIDs: decision.skippedIDs, automatic: true)
+    }
+
+    private func performSkip(entry: SkipPlan.Entry, undoTime: Double, to target: Double, skippedIDs: [String], automatic: Bool) {
+        lastSkipExpiry?.cancel()
+        lastSkip = SkipEvent(entry: entry, undoTime: undoTime, target: target, skippedIDs: skippedIDs, automatic: automatic)
+        // Koniec pliku: przewinięcie tuż przed koniec, dalej zwykłe zakończenie odcinka.
+        seek(to: target)
+        let window = skipUndoWindow
+        let id = lastSkip?.id
+        lastSkipExpiry = Task { [weak self] in
+            try? await Task.sleep(for: window)
+            guard !Task.isCancelled, let self, self.lastSkip?.id == id else { return }
+            self.lastSkip = nil
+        }
+    }
+
+    /// Obserwator granic na początkach segmentów bieżącego pliku: pominięcie bez czekania na zegar
+    /// (co 0,5 s, czyli do 1,5 s reklamy przy 3×).
+    private func installSkipBoundaries() {
+        removeSkipBoundaries()
+        guard let book, book.tracks.indices.contains(trackIndex) else { return }
+        let track = book.tracks[trackIndex]
+        let times: [NSValue] = skipPlan.entries.filter { $0.action == .skip }.compactMap { entry in
+            let local = entry.start - track.startOffset
+            guard local > 0.05, local < track.duration else { return nil }
+            return NSValue(time: CMTime(seconds: local, preferredTimescale: 600))
+        }
+        guard !times.isEmpty else { return }
+        skipBoundary = player.addBoundaryTimeObserver(forTimes: times, queue: .main) { [weak self] in
+            MainActor.assumeIsolated { self?.skipBoundaryReached() }
+        }
+    }
+
+    private func removeSkipBoundaries() {
+        if let skipBoundary { player.removeTimeObserver(skipBoundary) }
+        skipBoundary = nil
+    }
+
+    private func skipBoundaryReached() {
+        guard pendingSeek == nil, let book, let item = player.currentItem, let index = itemTracks[ObjectIdentifier(item)], book.tracks.indices.contains(index) else { return }
+        checkSkip(at: PlaybackTimeline.bookTime(local: player.currentTime().seconds, in: book.tracks[index]))
     }
 
     // MARK: - System
