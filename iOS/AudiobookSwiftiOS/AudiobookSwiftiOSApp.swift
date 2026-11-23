@@ -30,12 +30,24 @@ struct AudiobookSwiftiOSApp: App {
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 
+    private var root: some View {
+        RootView(model: model)
+            // Adres `abswift://pair?d=…` z aparatu systemowego albo z innej aplikacji.
+            .onOpenURL { model.handle(url: $0) }
+            .task { await model.start() }
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootView(model: model)
-                // Adres `abswift://pair?d=…` z aparatu systemowego albo z innej aplikacji.
-                .onOpenURL { model.handle(url: $0) }
-                .task { await model.start() }
+            #if DEBUG
+            if let folder = BookTextDemo.folder {
+                BookTextDemoView(folder: folder)
+            } else {
+                root
+            }
+            #else
+            root
+            #endif
         }
         .onChange(of: scenePhase) { old, new in
             // Powrót do aplikacji (np. po wyjściu z domu): adres od nowa, najpierw lokalny.

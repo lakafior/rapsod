@@ -130,6 +130,7 @@ private struct BookTextScroll: View {
         // tekst mieściłby dwa słowa w wierszu; dalsze powiększenie daje menu „Aa”.
         let size = min(baseSize, 34) * scale * (sizeClass == .regular ? 1.15 : 1)
         let dimmed = contrast == .increased ? 0.62 : 0.4
+        let _ = RenderCounter.tick("BookTextScroll")
         GeometryReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: size * 0.85) {
@@ -296,6 +297,7 @@ private struct ParagraphText: View, @MainActor Equatable {
     }
 
     var body: some View {
+        let _ = RenderCounter.tick("ParagraphText")
         VStack(alignment: .leading, spacing: 0) {
             if paragraph.startsSection { SectionBreak(size: size) }
             text
