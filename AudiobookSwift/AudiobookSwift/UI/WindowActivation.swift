@@ -39,6 +39,13 @@ struct ReleasedWhenClosed<Content: View>: View {
 /// Systemowe okno wyboru folderu biblioteki.
 @MainActor
 func chooseLibraryFolder(for kind: ServerAccount.LibraryKind = .audiobooks) async -> URL? {
+    #if DEBUG
+    // Testowa kopia (argument `-ABSTestLibraryFolder <ścieżka>`): folder bez systemowego panelu, którego
+    // automatyzacja po PID nie obsłuży (panel działa w osobnym procesie systemu).
+    if let path = UserDefaults.standard.string(forKey: "ABSTestLibraryFolder"), !path.isEmpty {
+        return URL(filePath: path, directoryHint: .isDirectory)
+    }
+    #endif
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
