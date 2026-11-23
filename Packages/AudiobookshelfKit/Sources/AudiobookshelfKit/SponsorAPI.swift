@@ -279,6 +279,34 @@ public struct SponsorClassifier: Sendable {
         self.systemPrompt = systemPrompt
     }
 
+    /// Drugi krok: kategoria każdego bloku (sponsor / autopromocja) krótkim pytaniem. Błąd pytania zostawia
+    /// kategorię „sponsor” zamiast przerywać odcinek (wykrywanie już się udało); przerwanie i odrzucony klucz
+    /// idą dalej.
+    public func categorize(_ candidates: [SponsorClassification.Candidate], lines: [SponsorClassification.Line]) async throws
+        -> (candidates: [SponsorClassification.Candidate], requests: Int, promptTokens: Int, completionTokens: Int) {
+        var result = candidates
+        var requests = 0, prompt = 0, completion = 0
+        for index in result.indices {
+            try Task.checkCancellation()
+            let text = SponsorClassification.blockText(result[index], lines: lines)
+            guard !text.isEmpty else { continue }
+            do {
+                let reply = try await client.complete(system: SponsorClassification.categoryPrompt, user: text, maxTokens: 20)
+                requests += 1
+                prompt += reply.promptTokens ?? 0
+                completion += reply.completionTokens ?? 0
+                if let kind = SponsorClassification.parseCategory(reply.content) { result[index].kind = kind }
+            } catch let error as SponsorAPIError where error.needsSettingsChange {
+                throw error
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                continue
+            }
+        }
+        return (result, requests, prompt, completion)
+    }
+
     /// `done` — wyniki okien z poprzedniego przerwanego przebiegu (indeks okna → segmenty).
     /// `onWindow` — po każdym oknie (zapis punktu kontrolnego, postęp).
     /// Okno, które po ponowieniu nadal ma zły format, przerywa całość: częściowy wynik pominąłby reklamy

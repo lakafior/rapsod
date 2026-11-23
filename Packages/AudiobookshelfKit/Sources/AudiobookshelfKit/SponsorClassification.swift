@@ -13,7 +13,7 @@ import Foundation
 /// Czyste funkcje — sieć jest w `SponsorAPIClient`, dźwięk (poziomy głośności) czyta Mac.
 public enum SponsorClassification {
     /// Wersja promptu i reguł (zapisywana w `SkipRun.detail` obok nazwy modelu).
-    public static let version = "13b.2"
+    public static let version = "13b.3"
 
     // MARK: - Wiersze
 
@@ -89,24 +89,13 @@ public enum SponsorClassification {
 
     // MARK: - Prompt
 
-    /// Instrukcja dla modelu: instrukcja z rozpoznania (Mistral Small: 7/10, 0 fałszywych obszarów), rozdzielona na
-    /// dwie kategorie. Po angielsku z przykładami polskich i angielskich zwrotów — ten sam prompt dla obu języków.
-    /// Pierwsza wersja 13b (segmenty z kategorią i pewnością, długa lista wyjątków) dawała z tym samym modelem
-    /// 0/10 — model odpowiadał pustą listą w każdym oknie (ocena 2026-11-23, README).
+    /// Instrukcja wykrywania: instrukcja z rozpoznania bez zmian (lista numerów wierszy, bez kategorii i pewności).
+    /// Po angielsku z przykładami polskich i angielskich zwrotów — ten sam prompt dla obu języków. Ocena z kluczem
+    /// użytkownika (Mistral Small, 6 odcinków, 2026-11-23, README): 7/10, 0 fałszywych obszarów, 45 s treści pominiętej
+    /// błędnie. Pierwsza wersja 13b (segmenty z kategorią i pewnością) dawała 0/10, a wersja z dwiema listami (sponsor,
+    /// autopromocja) 7/10, ale z 2 fałszywymi obszarami i rozbitymi blokami — kategorię ustala osobne pytanie
+    /// (`categoryPrompt`).
     public static let systemPrompt = """
-    You label podcast transcripts. A transcript fragment is given as lines "ID [mm:ss] text" (Polish or English, from speech \
-    recognition with errors). Return the IDs of every line that is part of a sponsored segment, in two lists:
-    - "sponsor_line_ids": advertisements and sponsor reads: "this episode is sponsored by", "partnerem odcinka jest", brand \
-    descriptions, offers, discount codes, URLs to buy something, calls to action to sign up or buy.
-    - "selfpromo_line_ids": host self-promotion of their own products, books, courses, newsletters, paid community, Patronite \
-    or Patreon.
-    Include the whole block from first to last line. Do NOT include normal conversation, even if it mentions companies. \
-    Answer ONLY with JSON: {"sponsor_line_ids": [..], "selfpromo_line_ids": [..]} (empty lists if none).
-    """
-
-    /// Wariant instrukcji z rozpoznania (2026-11-23, Mistral Small, cała transkrypcja: 7/10): lista numerów
-    /// wierszy bez kategorii i pewności. Do porównania w `SkipEvaluation` — wynik bez kategorii to „sponsor”.
-    public static let lineListPrompt = """
     You label podcast transcripts. A transcript fragment is given as lines "ID [mm:ss] text" (Polish or English, from speech \
     recognition with errors). Return the IDs of every line that is part of an advertisement or sponsor read: "this episode is \
     sponsored by", "partnerem odcinka jest", brand descriptions, offers, discount codes, URLs to buy something, calls to action \
@@ -125,7 +114,30 @@ public enum SponsorClassification {
     }
 
     /// Przypomnienie po odpowiedzi w złym formacie (jedna ponowna próba).
-    public static let formatReminder = "Your previous answer was not valid. Answer ONLY with JSON in the form {\"sponsor_line_ids\": [..], \"selfpromo_line_ids\": [..]}, using line IDs from this fragment."
+    public static let formatReminder = "Your previous answer was not valid. Answer ONLY with JSON in the form {\"ad_line_ids\": [..]}, using line IDs from this fragment."
+
+    /// Kategoria znalezionego bloku (drugie, krótkie pytanie dla każdego bloku).
+    public static let categoryPrompt = """
+    The podcast transcript fragment below (speech recognition, Polish or English) was identified as promotional. Decide \
+    which kind it is:
+    - "sponsor": paid advertising for a company, product or service (an ad read by the host or an inserted ad).
+    - "selfpromo": the host promoting their own products, books, games, courses, newsletter, paid community, \
+    Patronite or Patreon, live events or their other shows.
+    Answer ONLY with JSON: {"category": "sponsor"} or {"category": "selfpromo"}.
+    """
+
+    /// Tekst bloku do pytania o kategorię (najwyżej `limit` znaków).
+    public static func blockText(_ candidate: Candidate, lines: [Line], limit: Int = 4000) -> String {
+        let text = lines.filter { $0.end > candidate.start && $0.start < candidate.end }.map(\.text).joined(separator: " ")
+        return text.count > limit ? String(text.prefix(limit)) : text
+    }
+
+    /// Odpowiedź na pytanie o kategorię (`nil` — nie do odczytania).
+    public static func parseCategory(_ content: String) -> SkipKind? {
+        guard let open = content.firstIndex(of: "{"), let close = content.lastIndex(of: "}"), open < close,
+              let object = try? JSONSerialization.jsonObject(with: Data(content[open...close].utf8)) as? [String: Any] else { return nil }
+        return category(object["category"] ?? object["kind"])
+    }
 
     static func clock(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
@@ -168,7 +180,7 @@ public enum SponsorClassification {
               let object = try? JSONSerialization.jsonObject(with: Data(content[open...close].utf8)) as? [String: Any] else {
             throw InvalidResponse(reason: "to nie jest JSON")
         }
-        // Listy numerów wierszy (prompt 13b.2; `ad_line_ids` — instrukcja z rozpoznania, bez kategorii):
+        // Listy numerów wierszy (`ad_line_ids` — prompt wykrywania; listy z kategorią — wersja 13b.2, tolerowane):
         // kolejne numery to jeden segment. Model nie podaje pewności — stała `listConfidence`.
         let lists: [(String, SkipKind)] = [("sponsor_line_ids", .sponsor), ("selfpromo_line_ids", .selfPromo), ("ad_line_ids", .sponsor)]
         if lists.contains(where: { object[$0.0] != nil }) {
