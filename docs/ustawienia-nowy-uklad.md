@@ -2,6 +2,8 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
+**Decyzja użytkownika (2026-11-23): wariant B.** Pytania 2–10 z części 8 są jeszcze otwarte.
+
 ## Rekomendacja w skrócie
 
 Rekomenduję **wariant B, „obiekty zamiast kategorii”**. Ma 6 stron zamiast 12:
@@ -790,7 +792,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
 
 ## 8. Pytania do użytkownika
 
-1. **Wariant B czy A?** Rekomenduję B.
+1. ~~**Wariant B czy A?**~~ Rozstrzygnięte: **wariant B**.
 2. **Nagłówek siatki** „Kto słucha?” (jak w makiecie) czy bez nagłówka, sam tytuł „Użytkownicy”?
 3. **Awatary:** gradient z inicjałami (makieta), wybór z kilku symboli lub emoji, czy zdjęcie? Audiobookshelf nie trzyma awatarów, więc byłyby zapisane tylko na Macu i nie trafiłyby do telefonu.
 4. **Kafel roota:** pod siatką (makieta) czy całkiem schowany pod „Zaawansowane” na stronie Użytkownicy?
