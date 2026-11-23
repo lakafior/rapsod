@@ -21,8 +21,10 @@ import QuartzCore
 /// Tu wszystko jest synchroniczne: położenie każdego wiersza jest znane przed klatką,
 /// a przesunięcie przewijania ustawia wyłącznie ten kontroler.
 ///
-/// Każdy wiersz to osobna warstwa z bitmapą (przewijanie przesuwa warstwy, bez rysowania);
-/// przy zmianie zdania przerysowują się tylko wiersze z dwoma zdaniami, których jasność się zmienia.
+/// Każdy wiersz to osobna warstwa z bitmapą całego wiersza w przygaszonym kolorze (przewijanie
+/// przesuwa warstwy, bez rysowania). Bieżące zdanie to nakładka z tym samym tekstem w pełnej
+/// jasności i z poświatą warstwy (GPU), a przejście jasności zmienia tylko jej krycie — żadnego
+/// rysowania w trakcie animacji: przygaszone α + (1 − α)·w to dokładnie nałożenie nakładki o kryciu w.
 @MainActor
 public final class TextFlowController {
     public struct Appearance: Equatable {
@@ -83,6 +85,9 @@ public final class TextFlowController {
     private var animating = false
     /// Trwa aktualizacja warstw — zgłoszenia przewinięcia od własnego `setOffset` pomijamy.
     private var updating = false
+    private var settingOffset = false
+    /// Nakładki bieżącego (i gasnącego) zdania w widocznych wierszach.
+    private var overlays: [LineKey: [Int: TextLineLayer]] = [:]
     /// Licznik przerysowań wierszy (pomiar w wersji Debug).
     public private(set) var redraws = 0
 
@@ -139,7 +144,8 @@ public final class TextFlowController {
             sync(forceJump: true)
             scheduleIdleLayout()
         } else if restyle {
-            for layer in layers.values { layer.appearance = appearance; layer.setNeedsDisplay() }
+            for layer in layers.values { layer.appearance = appearance }
+            redrawAll()
         }
         updateLayers()
     }
@@ -162,7 +168,7 @@ public final class TextFlowController {
             let instant = lastSentence == nil || appearance?.reduceMotion == true && jump
             lastSentence = sentence
             fader.setCurrent(sentence, instant: instant)
-            if instant { redrawAll() }
+            if instant { refreshOverlays() }
             startAnimating()
         }
         guard following else { return }
@@ -242,7 +248,7 @@ public final class TextFlowController {
             busy = !follower.isSettled
         }
         let changed = fader.step(dt)
-        if !changed.isEmpty { redraw(sentences: changed) }
+        if !changed.isEmpty { updateOverlays(sentences: changed) }
         busy = busy || fader.isAnimating
         if !busy { stopAnimating() }
         return busy
@@ -271,13 +277,18 @@ public final class TextFlowController {
         let scale = appearance?.scale ?? 2
         // Do pełnych pikseli ekranu — tekst ostry także w ruchu.
         let y = (min(max(0, value), maxOffset) * scale).rounded() / scale
-        if abs((host?.offset() ?? 0) - y) > 0.001 { host?.setOffset(y) }
+        if abs((host?.offset() ?? 0) - y) > 0.001 {
+            // Powiadomienie widoku o przewinięciu przyjdzie w trakcie — warstwy uzupełniamy raz, tutaj.
+            settingOffset = true
+            host?.setOffset(y)
+            settingOffset = false
+        }
         updateLayers()
     }
 
     /// Widok platformy przewinął się (palcem, kółkiem, paskiem albo przez `setOffset`).
     public func viewportScrolled() {
-        updateLayers()
+        if !settingOffset { updateLayers() }
     }
 
     /// Dokładny układ akapitów wokół `paragraph`; różnicę wysokości akapitów nad górną krawędzią
@@ -342,7 +353,9 @@ public final class TextFlowController {
         var wanted = Set<LineKey>()
         var p = first
         while p < layout.count, layout.top(of: p) < bottom {
-            if let paragraph = layout.existingLayout(p) {
+            // Wysokość już dokładna, więc ponowny skład (po zwolnieniu pamięci) niczego nie przesuwa.
+            if layout.isExact(p) {
+                let paragraph = layout.layout(p).0
                 let base = layout.top(of: p)
                 for (index, line) in paragraph.lines.enumerated() where base + line.top + line.height >= top && base + line.top <= bottom {
                     wanted.insert(LineKey(paragraph: p, line: index))
@@ -356,6 +369,8 @@ public final class TextFlowController {
             layer.line = nil
             pool.append(layer)
             layers[key] = nil
+            for overlay in overlays[key]?.values ?? [:].values { overlay.removeFromSuperlayer() }
+            overlays[key] = nil
         }
         for key in wanted where layers[key] == nil {
             guard let paragraph = layout.existingLayout(key.paragraph), let frame = frame(for: key) else { continue }
@@ -364,36 +379,88 @@ public final class TextFlowController {
             layer.contentsScale = appearance.scale
             layer.line = paragraph.lines[key.line]
             layer.size = layout.style.size
-            layer.weight = { [weak self] in self?.fader.weight(of: $0) ?? 0 }
+            layer.only = nil
             layer.frame = frame
             layer.setNeedsDisplay()
             redraws += 1
             container.addSublayer(layer)
             layers[key] = layer
+            for run in paragraph.lines[key.line].runs where fader.weight(of: run.sentence) > 0 {
+                setOverlay(key, sentence: run.sentence)
+            }
         }
         if range != visibleRange {
             visibleRange = range
+            // Pamięć: składy daleko od ekranu zwalniamy (dokładne wysokości zostają).
+            layout.evict(keeping: max(0, range.lowerBound - 150)..<min(layout.count, range.upperBound + 150))
             host?.visibleChanged()
         }
     }
 
-    private func redraw(sentences: Set<Int>) {
+    /// Krycie nakładek zdań, których waga się zmieniła (tworzy brakujące, usuwa wygaszone).
+    private func updateOverlays(sentences: Set<Int>) {
         guard let layout else { return }
         for sentence in sentences {
             guard let p = layout.document.paragraph(ofSentence: sentence), let paragraph = layout.existingLayout(p) else { continue }
             for index in paragraph.sentenceLines[sentence] ?? [] {
-                if let layer = layers[LineKey(paragraph: p, line: index)] { layer.setNeedsDisplay(); redraws += 1 }
+                let key = LineKey(paragraph: p, line: index)
+                if layers[key] != nil { setOverlay(key, sentence: sentence) }
             }
         }
     }
 
+    private func setOverlay(_ key: LineKey, sentence: Int) {
+        guard let base = layers[key], let appearance else { return }
+        let weight = fader.weight(of: sentence)
+        if weight <= 0 {
+            overlays[key]?[sentence]?.removeFromSuperlayer()
+            overlays[key]?[sentence] = nil
+            return
+        }
+        let overlay: TextLineLayer
+        if let existing = overlays[key]?[sentence] {
+            overlay = existing
+        } else {
+            overlay = TextLineLayer()
+            overlay.appearance = appearance
+            overlay.contentsScale = appearance.scale
+            overlay.line = base.line
+            overlay.size = base.size
+            overlay.only = sentence
+            overlay.frame = base.bounds
+            if let glow = appearance.glow {
+                overlay.shadowColor = glow.copy(alpha: 1)
+                overlay.shadowOpacity = Float(glow.alpha)
+                overlay.shadowRadius = appearance.glowRadius
+                overlay.shadowOffset = .zero
+            }
+            overlay.setNeedsDisplay()
+            redraws += 1
+            base.addSublayer(overlay)
+            overlays[key, default: [:]][sentence] = overlay
+        }
+        overlay.opacity = Float(HighlightFader.eased(weight))
+    }
+
     private func redrawAll() {
         for layer in layers.values { layer.setNeedsDisplay() }
+        refreshOverlays()
+    }
+
+    private func refreshOverlays() {
+        for (key, layer) in layers {
+            for overlay in overlays[key]?.values ?? [:].values { overlay.removeFromSuperlayer() }
+            overlays[key] = nil
+            if let line = layer.line {
+                for run in line.runs where fader.weight(of: run.sentence) > 0 { setOverlay(key, sentence: run.sentence) }
+            }
+        }
     }
 
     private func removeAllLayers() {
         for layer in layers.values { layer.removeFromSuperlayer() }
         layers.removeAll()
+        overlays.removeAll()
         pool.removeAll()
         visibleRange = 0..<0
     }
@@ -418,6 +485,8 @@ public final class TextFlowController {
                 }
                 guard let low = picked.min(), let high = picked.max() else { return }
                 self.makeExact(low..<(high + 1))
+                let visible = self.visibleRange
+                layout.evict(keeping: max(0, visible.lowerBound - 150)..<min(layout.count, visible.upperBound + 150))
             }
         }
     }
@@ -457,7 +526,8 @@ final class TextLineLayer: CALayer {
     var line: ParagraphLayout.Line?
     var appearance: TextFlowController.Appearance?
     var size: CGFloat = 17
-    var weight: (Int) -> Double = { _ in 0 }
+    /// Nakładka jednego zdania w pełnej jasności; `nil` — cały wiersz przygaszony.
+    var only: Int?
 
     override init() {
         super.init()
@@ -497,16 +567,9 @@ final class TextLineLayer: CALayer {
         _ = ctLine
         ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         ctx.setAllowsFontSmoothing(true)
-        let baseAlpha = appearance.ink.alpha
-        for run in line.runs {
-            let w = HighlightFader.eased(weight(run.sentence))
-            let alpha = (appearance.dimmed + (1 - appearance.dimmed) * w) * baseAlpha
-            ctx.setFillColor(appearance.ink.copy(alpha: alpha) ?? appearance.ink)
-            if let glow = appearance.glow, w > 0.02 {
-                ctx.setShadow(offset: .zero, blur: appearance.glowRadius * contentsScale, color: glow.copy(alpha: glow.alpha * w))
-            } else {
-                ctx.setShadow(offset: .zero, blur: 0, color: nil)
-            }
+        let alpha = only == nil ? appearance.dimmed * appearance.ink.alpha : appearance.ink.alpha
+        ctx.setFillColor(appearance.ink.copy(alpha: alpha) ?? appearance.ink)
+        for run in line.runs where only == nil || run.sentence == only {
             ctx.textPosition = CGPoint(x: pad, y: pad + line.ascent)
             CTRunDraw(run.run, ctx, CFRange(location: 0, length: 0))
         }

@@ -118,6 +118,10 @@ public final class TextFlowLayout {
     private var tops: [CGFloat]
     private var validTops = 0
     public private(set) var exactCount = 0
+    /// Wysokość akapitu jest dokładna (skład mógł zostać potem zwolniony).
+    private var exact: [Bool]
+    /// Akapity z zachowanym składem (do zwalniania pamięci).
+    private var cached = Set<Int>()
 
     /// Atrybut zdania w tekście akapitu.
     static let sentenceKey = NSAttributedString.Key("net.smigi.abswift.sentence")
@@ -132,6 +136,7 @@ public final class TextFlowLayout {
         layouts = Array(repeating: nil, count: count)
         heights = Array(repeating: 0, count: count)
         tops = Array(repeating: 0, count: count + 1)
+        exact = Array(repeating: false, count: count)
         for index in 0..<count { heights[index] = estimate(index) }
     }
 
@@ -163,7 +168,7 @@ public final class TextFlowLayout {
     }
 
     public func height(of index: Int) -> CGFloat { heights[index] }
-    public func isExact(_ index: Int) -> Bool { layouts[index] != nil }
+    public func isExact(_ index: Int) -> Bool { exact[index] }
 
     /// Akapit pod punktem `y` (współrzędne treści).
     public func paragraph(atY y: CGFloat) -> Int {
@@ -182,6 +187,9 @@ public final class TextFlowLayout {
         if let layout = layouts[index] { return (layout, 0) }
         let layout = make(index)
         layouts[index] = layout
+        cached.insert(index)
+        guard !exact[index] else { return (layout, 0) }
+        exact[index] = true
         exactCount += 1
         let delta = layout.height - heights[index]
         if delta != 0 {
@@ -189,6 +197,15 @@ public final class TextFlowLayout {
             validTops = min(validTops, index)
         }
         return (layout, delta)
+    }
+
+    /// Zwalnia składy akapitów poza `range` (wysokości zostają dokładne; skład wróci na żądanie).
+    public func evict(keeping range: Range<Int>) {
+        guard cached.count > range.count + 100 else { return }
+        for index in cached where !range.contains(index) {
+            layouts[index] = nil
+            cached.remove(index)
+        }
     }
 
     public func existingLayout(_ index: Int) -> ParagraphLayout? { layouts[index] }
