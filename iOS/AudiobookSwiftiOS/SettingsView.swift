@@ -111,7 +111,7 @@ struct SettingsView: View {
                     Button("Rozłącz i usuń pobrane", role: .destructive) { model.disconnect(removingDownloads: true) }
                 }
             } message: {
-                Text("Klucz dostępu zostanie usunięty z telefonu. Pobrane pliki zostają, chyba że wybierzesz ich usunięcie — po ponownym sparowaniu z tym serwerem będą znowu dostępne.")
+                Text("Klucz dostępu zostanie usunięty z telefonu. Pobrane pliki zostają, chyba że wybierzesz ich usunięcie — po ponownym podłączeniu do tego serwera będą znowu dostępne.")
             }
             .onChange(of: wifiOnly) { model.updateDownloadGate() }
             .onChange(of: allowsTunnel) { model.updateDownloadGate() }

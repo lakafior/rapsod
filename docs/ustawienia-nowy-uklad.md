@@ -2,7 +2,7 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
-**Stan wdrożenia (2026-11-23):** etapy **1**, **2** (2a–2d, z resetem hasła roota) i **3** są wykonane. Etapy 1–2 są scalone do `main`. Etap 3 i reset hasła roota są na gałęzi `claude/ustawienia-etap-3-reset-roota`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2) i [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota). Etapy 4–6 czekają.
+**Stan wdrożenia (2026-11-23):** wszystkie etapy **1–6** (z 2a–2d i resetem hasła roota) są wykonane. Etapy 1–3 i reset są scalone do `main`. Etapy 4–6 są na gałęzi `claude/ustawienia-etap-4-6`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2), [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota) [część 12](#12-wdrożenie-etapu-4-biblioteki) [część 13](#13-wdrożenie-etapu-5-ogólne-dziennik-historia-słuchania) i [część 14](#14-wdrożenie-etapu-6-powiadomienia-kopie-porządki).
 
 **Decyzje użytkownika (2026-11-23):** wariant B; telefony dla każdego domownika; pełna kontrola nad kontem root (zmiana i reset hasła); skrót „Podłącz telefon…” na pasku menu tylko jako opcja; wygląd jak w makietach, z własnymi awatarami. Szczegóły i wpływ na plan: [część 9](#9-decyzje-z-2026-11-23-i-ich-skutki).
 
@@ -300,6 +300,25 @@ Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
 | X8 | Formularz „Utwórz konto użytkownika” (`UserAccountSetup`) w oknach Biblioteka i web UI, gdy nie ma konta słuchacza | `UserAccountSection.swift`, `LibraryWindow.swift`, `WebUIWindow.swift` |
 
 Zasada dla X3–X5 (zgodna z HIG): ustawienia związane z konkretnym zadaniem zostają przy nim, nie w oknie ustawień. Pozycje X1–X8 nie wymagają przeniesienia. X6 i X7 to wejścia do ustawień i zmieniają tylko cel.
+
+#### Dopisane po spisie (etapy 2–6 planu, reset hasła roota, etapy 13a i 13b)
+
+Pozycje, których w chwili spisu nie było. Liczone osobno, żeby 124 pozycje spisu pierwotnego dało się porównać 1:1.
+
+| ID | Pozycja | Dotyczy | Częst. | Zależn. |
+|---|---|---|---|---|
+| NW1 | Telefony każdej osoby: lista, „Podłącz telefon…”, „Odłącz…” (etap 2b) | uż | K | R |
+| NW2 | Hasło roota: Pokaż, Kopiuj, Zmień… (etap 2c) | uż | R | S |
+| NW3 | „Zresetuj hasło roota…” z kopią bazy, gdy hasło nieznane (etap 2c) | uż | R | S |
+| NW4 | Awatar osoby: symbol, zdjęcie, inicjały (etap 2d) | uż | R | – |
+| NW5 | Baner „Adres spoza domu zmienił się” z „Pokaż kod z adresami…” (etap 3) | uż | R | – |
+| NW6 | „Słucha teraz” na kaflu i w nagłówku profilu (etap 5) | uż | K | R |
+| NW7 | Opcja „„Podłącz telefon…” w menu na pasku menu” (etap 6, decyzja z części 9) | apl | R | – |
+| NW8 | Wykrywaj fragmenty sponsorowane (przełącznik, etap 13b) | apl | R | – |
+| NW9 | Działanie dla kategorii: Reklamy i sponsorzy, Autopromocja (etapy 13a i 13b) | apl | R | – |
+| NW10 | Usługa modelu językowego: adres API, model, klucz API (Zapisz / Zmień… / Usuń), „Sprawdź połączenie”, zgoda na wysyłanie transkrypcji (etap 13b) | apl | R | – |
+| NW11 | Kolejka analizy: stan, „Wznów” (etap 13b) | apl | R | NW8 |
+| NW12 | Pomijanie w jednym podcaście i edycja segmentów (strona podcastu, odtwarzacz; etap 13a) — poza oknem ustawień | apl | R | – |
 
 **Razem: 124 pozycje**, z czego 116 w oknie ustawień i menu oraz 8 poza nim. Etykiety wszystkich kontrolek z plików ustawień (`grep` po `Button`, `Toggle`, `Picker`, polach i `LabeledContent`) zostały zestawione z tym spisem; każda należy do którejś pozycji. Jedyna kontrolka bez nowego miejsca to przełącznik kart „Widok” na trzech stronach, który znika razem z kartami.
 
@@ -684,7 +703,18 @@ Wariant B nie oszczędza kliknięć: w czterech zadaniach z pięciu jest tak sam
 | X6 | Okno Biblioteka, web UI | cel: Ogólne (bez zmian) albo Ogólne › Dziennik serwera | cel: Ogólne |
 | X7 | Wysyłka na czytnik | cel: Powiadomienia › E-mail na czytniki | cel: Powiadomienia i e-mail |
 | X8 | Okna Biblioteka, web UI | bez zmian (ten sam formularz co kafel „Utwórz konto tego Maca”) | bez zmian |
-
+| NW1 | — (nowe) | Użytkownicy › profil osoby › Telefony | — |
+| NW2 | — (nowe) | Użytkownicy › Administrator serwera › Hasło | — |
+| NW3 | — (nowe) | Użytkownicy › Administrator serwera › Reset hasła (tylko gdy hasło nieznane) | — |
+| NW4 | — (nowe) | Użytkownicy › profil osoby › nagłówek (klik w awatar) | — |
+| NW5 | — (nowe) | Dostęp zdalny › baner pod „Skąd można słuchać” | — |
+| NW6 | — (nowe) | Użytkownicy › kafel i nagłówek profilu | — |
+| NW7 | — (nowe) | Ogólne › Aplikacja | — |
+| NW8 | — (13b) | Ogólne › Fragmenty sponsorowane › (podstrona) | — |
+| NW9 | — (13a/13b) | Ogólne › Fragmenty sponsorowane › (podstrona) | — |
+| NW10 | — (13b) | Ogólne › Fragmenty sponsorowane › Usługa modelu językowego | — |
+| NW11 | — (13b) | Ogólne › Fragmenty sponsorowane › (podstrona) | — |
+| NW12 | — (13a) | bez zmian: strona podcastu i odtwarzacz w oknie „Biblioteka” (jak X3) | — |
 Kontrola kompletności: każdy identyfikator ze spisu (1.3) występuje w tej tabeli dokładnie raz. Sprawdza to skrypt w [`ustawienia-nowy-uklad/sprawdz-tabele.sh`](ustawienia-nowy-uklad/sprawdz-tabele.sh).
 
 ---
@@ -730,7 +760,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - Baner potrzebuje wiedzy, które telefony mają stare adresy. Dziś jej nie ma. Pierwsza wersja może pokazywać baner po każdej zmianie adresów do czasu pokazania kodu. To założenie, sprawdzić z zachowaniem iOS.
 - **Do sprawdzenia:** włączenie i wyłączenie sieci domowej (restart serwera), własny adres, tunel z tokenem testowym (bez ruszania tunelu użytkownika), klucze API: klucz telefonu oznaczony i nie da się go przypadkiem usunąć bez ostrzeżenia, OpenID zapis i przywrócenie.
 
-**Etap 4 — Biblioteki**
+**Etap 4 — Biblioteki** — ✅ wykonany (część 12)
 
 - **Zakres:**
   - arkusz biblioteki staje się podstroną,
@@ -743,7 +773,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - Zapis w arkuszu biblioteki działa przez „Zapisz”, a na stronie zapis będzie natychmiastowy. Trzeba sprawdzić model `LibrarySettingsModel` pod kątem zapisu pojedynczych pól.
 - **Do sprawdzenia:** dodanie obu typów bibliotek, skan, pełny skan, dopasuj wszystkie, usunięcie, zmiana ustawień biblioteki i harmonogramu, obserwator globalny i per biblioteka, polskie źródła i własny dostawca.
 
-**Etap 5 — Ogólne, Dziennik, Aktywność**
+**Etap 5 — Ogólne, Dziennik, Aktywność** — ✅ wykonany (część 13)
 
 - **Zakres:**
   - Dziennik jako podstrona Ogólnych,
@@ -754,7 +784,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
 - **Ryzyko:** strona błędu serwera otwiera dziś „Ogólne”, a `AudiobookSwiftApp` otwiera je sam przy `.failed`. Musi to zostać.
 - **Do sprawdzenia:** błąd startu (np. zajęty port) pokazuje się z logiem, przewijanie dziennika, kopiowanie, zamknięcie otwartej sesji, usunięcie sesji z historii.
 
-**Etap 6 — Powiadomienia, Kopie, porządki**
+**Etap 6 — Powiadomienia, Kopie, porządki** — ✅ wykonany (część 14)
 
 - **Zakres:**
   - Powiadomienia bez kart, SMTP w arkuszu pod „Zaawansowane”,
@@ -1013,7 +1043,7 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 
 - **Wiadomość na stronie logowania (D7)** jest w arkuszu „Ustawienia logowania…”, a na stronie widać tylko jej stan („brak” / „ustawiona”). Cały formularz logowania ma jeden zapis.
 - **Sekcja „Aplikacja AudiobookSwift na telefonie”** została na stronie, bo daje stałe miejsce na „Kod z adresami…”, także gdy banera nie ma. Makieta jej nie ma.
-- **Własny adres** ma pole z „Zapisz” i pod nim wiersz z „Kopiuj”, więc adres widać dwa razy.
+- **Własny adres** ma od części 16 jedno pole z „Zapisz” albo „Kopiuj”.
 
 ### Znane braki
 
@@ -1021,3 +1051,284 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 - **Punkt odniesienia banera** w instalacji sprzed etapu 3 ustala się dopiero przy pierwszym otwarciu „Dostępu zdalnego” po wczytaniu telefonów. Zmiana adresu przed tą chwilą zostanie przyjęta bez alarmu.
 - **Reset w układzie wydania** (`Contents/Resources/Server`): ścieżki do `bcryptjs` i `sqlite3` w paczce sprawdzone tylko listingiem, reset nie był uruchamiany na zainstalowanej aplikacji.
 - **„Zakończ” z menu** nie zamyka aplikacji, gdy w oknie ustawień jest otwarty arkusz. Nie sprawdzałem, czy tak było przed tymi zmianami.
+
+## 12. Wdrożenie etapu 4 („Biblioteki”)
+
+Gałąź `claude/ustawienia-etap-4-6` z `main` (`e1fd9eb`, po etapach 13a i 13b).
+
+### Co zrobiono
+
+- **Lista bibliotek** (`UI/Settings/SettingsPages.swift`, `LibraryListRows`):
+  - wiersz z ikoną typu, nazwą i folderami; klik w nazwę albo strzałkę otwiera podstronę;
+  - obok „Skanuj”, pod spodem wynik ostatniego skanu;
+  - „Dodaj audiobooki…” i „Dodaj podcasty…” (te same arkusze wyboru folderu co dotąd);
+  - gdy aplikacja nie zna hasła roota, zamiast formularza jest baner „Podaj hasło…” do strony roota (B9).
+- **Podstrona biblioteki** (`UI/Settings/LibraryPage.swift`, cel `.library(id:)` jest teraz prawdziwą podstroną; dawny `LibrarySettingsSheet.swift` usunięty). Sekcje:
+  - Biblioteka (nazwa, ikona, źródło; w podcastach sklep iTunes), Foldery, Wyświetlanie;
+  - Skanowanie: „Skanuj”, „Wymuś pełny skan”, „Dopasuj wszystkie…” (z potwierdzeniem), obserwator tej biblioteki z dopiskiem o ustawieniu globalnym, harmonogram;
+  - Słuchanie („Oznacz jako ukończone”);
+  - Zaawansowane: tylko audiobooki, ASIN/ISBN, skrypty EPUB, źródła skanera z kolejnością, usuwanie plików metadanych, „Wyżej/Niżej” (kolejność bibliotek dla dostępności);
+  - na dole „Usuń bibliotekę…” z potwierdzeniem; po usunięciu (także z web UI) strona wraca do listy.
+- **Zapis natychmiastowy** (`LibrarySettingsModel`):
+  - zmiana pola uruchamia zapis po 0,4 s, więc kilka szybkich kliknięć to jeden `PATCH`;
+  - zapis czeka na trwającą operację, a zmiana w trakcie zapisu nie jest nadpisywana odpowiedzią serwera;
+  - nazwa zapisuje się po Enter albo wyjściu z pola, a pusta wraca do zapisanej;
+  - nieudany zapis (np. wyłączenie ostatniego źródła skanera) pokazuje błąd na górze i przywraca pola do stanu z serwera;
+  - wyjście z podstrony zapisuje to, co czeka.
+- **Metadane:** polskie źródła i własni dostawcy jako sekcje „Bibliotek”. Strona „Źródła metadanych” zniknęła. Zapisana strona `metadata` otwiera „Biblioteki”, a znak uwagi źródeł przeszedł na „Biblioteki”.
+- **Biblioteki › Zaawansowane** (`LibraryServerSettingsSections`, model tworzony dopiero po rozwinięciu):
+  - skaner i okładki, „Obserwuj foldery we wszystkich bibliotekach” z „Uruchom ponownie”;
+  - zapis okładek i `metadata.json` w folderach pozycji;
+  - sortowanie z przedrostkami (zapis po Enter albo „Zapisz”);
+  - pamięć podręczna: jeden „Wyczyść…” z wyborem „Tylko okładki pozycji” / „Całą pamięć podręczną” (S11 i S12).
+- **„Ustawienia serwera”** mają już tylko język serwera (S10). Język przejdzie do Ogólne › Zaawansowane w etapie 5.
+- **Cykl `libraryTasks`:** lista i podstrona liczą się osobno (`appear()`/`disappear()`), a podstrona sama wznawia odpytywanie (`resume()`). Przejście lista → biblioteka nie zrywa połączenia zdarzeń.
+- **Okno powitalne:** `LibrarySection` obsługuje już tylko okno powitalne. Z kodu zniknęły gałęzie dla `tasks != nil`, a ścieżka bez nich jest bez zmian.
+- **Tryb sprawdzający** odwiedza też „Biblioteki” z rozwiniętym „Zaawansowane” i podstronę każdej biblioteki. `pendingRemoteAdvanced` zastąpiła ogólna `pendingAdvanced: SettingsPage?`.
+- **Teksty:** okno źródeł metadanych odsyła do „Ustawienia → Biblioteki → Metadane”, a komunikat o plikach metadanych do „Biblioteki › Zaawansowane”. README opisuje nowy układ.
+
+### Zrzuty
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Biblioteki | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-dark.png) |
+| Biblioteki › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-zaawansowane-dark.png) |
+| Podstrona biblioteki | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-dark.png) |
+| Podstrona › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-zaawansowane-dark.png) |
+
+### Sprawdzone uruchomieniem (testowa kopia, port 13461)
+
+Do testów w bazie testowej kopii dopisana jest druga biblioteka audiobooków i biblioteka podcastów (przy zatrzymanym serwerze). Wyniki sprawdzane w bazie serwera:
+
+- **Tryb sprawdzający:** `TOUR OK`, w tym trzy podstrony bibliotek.
+- **Skanowanie:**
+  - „Skanuj” z listy: wynik „Skan zakończony — dodane: 0, zmienione: 0.” pod wierszem;
+  - „Wymuś pełny skan” na podstronie podcastów: wynik z liczbami, więc połączenie zdarzeń działało po przejściu z listy.
+- **Zapis na podstronie** (sprawdzony w bazie serwera):
+  - dwa przełączniki kliknięte szybko po sobie dały jeden zapis;
+  - nazwa zapisała się po wyjściu z pola;
+  - harmonogram „Codziennie” dał `0 3 * * *`;
+  - „przesłuchano procent” zapisał procent, a sekundy wyczyścił;
+  - przesunięcie i wyłączenie źródeł skanera;
+  - sklep iTunes „Polska” zapisał `pl`.
+- **Nieudany zapis:** wyłączenie ostatniego źródła skanera pokazało błąd, przełącznik wrócił, a w bazie zostało źródło.
+- **Kolejność:** „Wyżej” na podstronie zmienia `displayOrder`.
+- **Usunięcie biblioteki:** potwierdzenie, powrót do listy, w bazie bez biblioteki, folder na dysku został.
+- **Biblioteki › Zaawansowane:**
+  - podtytuł i okładki w folderach zapisują się w `server-settings`;
+  - obserwator pokazuje „Uruchom ponownie”, a strona przetrwała restart serwera;
+  - „Wyczyść…” → „Tylko okładki pozycji” daje komunikat.
+  - Ustawienia testowe zostały przywrócone.
+
+### Tylko skompilowane albo przejrzane
+
+- **Przeciąganie wierszy** zostało dorobione po etapie 6 (część 15). Pierwsza wersja z `onMove` w formularzu nie była pewna i została usunięta.
+- **Dodawanie biblioteki** z „Dodaj audiobooki…” / „Dodaj podcasty…” nie było klikane (panel wyboru folderu). Kod dodawania się nie zmienił, zmieniły się tylko nazwy przycisków.
+- **Polskie źródła i własny dostawca** nie były włączane ani dodawane. To ten sam kod co na dawnej stronie, w nowym miejscu.
+- **Okno powitalne:** sprawdzone przeglądem zmian, bez uruchomienia. Usunięte są tylko gałęzie dla ustawień.
+
+### Odstępstwa
+
+- **„Skanuj” w wierszu** to zwykły przycisk. Pełny skan i „Dopasuj wszystkie…” są tylko na podstronie (tabela przejścia, B3). Dawne menu przy „Skanuj” zniknęło.
+- **Wiersz biblioteki** to przycisk z własną strzałką, nie `NavigationLink`: formularz dorysowywał linkowi drugą strzałkę.
+- **Wyświetlanie i Zaawansowane:** „Tylko audiobooki” trafiło pod „Zaawansowane” podstrony razem z ASIN/ISBN i EPUB (BS8), zgodnie z tabelą przejścia.
+
+## 13. Wdrożenie etapu 5 („Ogólne”, dziennik, historia słuchania)
+
+### Co zrobiono
+
+- **Ogólne** (`UI/Settings/GeneralSettingsPage.swift`):
+  - Serwer: stan, błąd startu z ostatnimi wierszami logu, adres, wiersz „Dziennik serwera” (podstrona), Uruchom / Zatrzymaj / Uruchom ponownie;
+  - Aplikacja: start przy logowaniu;
+  - sekcje fragmentów sponsorowanych z etapu 13b bez zmian w logice i w kolejności;
+  - Zaawansowane: wersja audiobookshelf, folder danych z „Pokaż w Finderze”, poziom logu i język serwera (`ServerLogAndLanguageRows`, jeden model ustawień serwera, wczytywany dopiero po rozwinięciu).
+- **Dziennik serwera** (`UI/Settings/ServerLogPage.swift`, cel `.serverLog` jest prawdziwą podstroną „Ogólnych”):
+  - log na żywo, „Przewijaj automatycznie”, „Kopiuj log”;
+  - „Pokaż plik logu w Finderze” wskazuje najnowszy dzienny plik w `metadata/logs/daily` (L4: zamiast drugiego „Otwórz folder danych”);
+  - wybór poziomu logu przeszedł do Zaawansowanych.
+- **Historia słuchania** (`UI/Users/ListeningHistoryPage.swift`, dawna „Aktywność”, nowy cel `.history(userID:)`):
+  - „Historia słuchania wszystkich” jako wiersz pod kaflem roota;
+  - „Historia słuchania” na profilu osoby, z filtrem ustawionym na tę osobę;
+  - treść bez zmian: otwarte sesje z „Zamknij”, historia z filtrem, szczegóły, usuwanie.
+- **„Słucha teraz”:** `UsersModel.listeningNow` z otwartych sesji (`GET /api/sessions/open`), odświeżane co 20 s, dopóki widać siatkę albo profil. Na kaflu jest zielona linia ze słuchawkami i tytułem, w nagłówku profilu „Słucha teraz: …” zamiast „Ostatnio”. VoiceOver czyta to w etykiecie kafla.
+- **Znikają strony** „Log serwera”, „Ustawienia serwera” i „Aktywność”. Zapisane wartości `log` i `serverSettings` otwierają „Ogólne”, a `activity` otwiera „Użytkowników”. Pasek boczny ma teraz 6 stron.
+- **Kanały RSS** (`FeedsContent`) przeszły do pliku „Dostępu zdalnego”, gdzie są używane.
+- **Nawigacja:**
+  - wszystkie cele są podstronami, więc `isSubpage` zniknęło;
+  - wybór strony na pasku bocznym zeruje ścieżkę podstron. Klik w stronę, która już jest wybrana (np. „Ogólne” przy otwartym dzienniku), nie był sprawdzony prawdziwym kliknięciem; wybór przez dostępność go nie zmienia, więc wraca się strzałką wstecz;
+  - tryb sprawdzający odwiedza historię (wszystkich i jednej osoby) i dziennik, a na końcu wraca na „Ogólne” bez podstrony.
+- **Otwieranie „Ogólnych” przy błędzie startu** zostało bez zmian (`MenuBarLabel` przy `.failed`, „Ustawienia i log…” w oknach Biblioteka i web UI).
+
+### Zrzuty
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Ogólne | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-dark.png) |
+| Ogólne › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/ogolne-zaawansowane-dark.png) |
+| Użytkownicy ze „słucha teraz” | ![](ustawienia-nowy-uklad/wdrozenie-png/uzytkownicy-slucha-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/uzytkownicy-slucha-dark.png) |
+| Historia słuchania | ![](ustawienia-nowy-uklad/wdrozenie-png/historia-sluchania-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/historia-sluchania-dark.png) |
+
+### Sprawdzone uruchomieniem (testowa kopia)
+
+Do sesji użyta jest dopisana cicha książka testowa „Cisza” (2 min ciszy), żeby odtwarzanie nie wydawało dźwięku.
+
+- **Tryb sprawdzający:** `TOUR OK` ze wszystkimi nowymi podstronami.
+- **Błąd startu:** port 13461 zajęty przez inny proces. Okno samo otworzyło „Ogólne” z błędem EADDRINUSE i fragmentem logu, a z wiersza „Dziennik serwera” widać pełny log.
+- **Dziennik:** przełącznik „Przewijaj automatycznie” działa.
+- **Ogólne › Zaawansowane:** poziom logu (debug) i język (polski) zapisują się w `server-settings`. Oba przywrócone.
+- **„Słucha teraz”:** kafel konta Maca i etykieta VoiceOver pokazują tytuł odtwarzanej książki.
+- **Historia słuchania:**
+  - otwarta sesja widoczna, „Zamknij” przenosi ją do historii;
+  - zaznaczenie i „Usuń zaznaczone” z potwierdzeniem usuwa sesję z bazy;
+  - z profilu filtr pokazuje tę osobę.
+
+### Tylko skompilowane
+
+- **„Kopiuj log”** nie był klikany, żeby nie nadpisywać schowka użytkownika. Kod się nie zmienił.
+- **„Pokaż plik logu w Finderze”** nie był klikany. Wybór najnowszego pliku to prosta funkcja nad `metadata/logs/daily`.
+
+### Odstępstwa i propozycje
+
+- **„Fragmenty sponsorowane” (13b) zostały w „Ogólnych”** między „Aplikacją” a „Zaawansowanymi”, bez zmian. To ustawienie aplikacji, a nie serwera ani obiektu, więc w wariancie B „Ogólne” jest dla niego właściwym miejscem. Sekcja „Usługa modelu językowego” jest jednak długa i spycha „Zaawansowane” na dół strony. Propozycja do decyzji: przenieść ją do osobnej podstrony „Fragmenty sponsorowane ›” w „Ogólnych”, tak jak dziennik. Nie przenoszę bez decyzji.
+- **Folder danych** jest tylko w Zaawansowanych (G4), więc „Pokaż w Finderze” folderu danych nie ma już w dzienniku. Jest tam plik logu.
+- **Urządzenie sesji z tego Maca** pokazuje się w historii jako „Unknown 1.0.0 · iOS”. To dane urządzenia zapisane w sesji; wiersz sesji (`SessionRow`) przeniesiono bez zmian, więc ten etap tego nie zmienił. Do sprawdzenia osobno (follow-up).
+
+## 14. Wdrożenie etapu 6 („Powiadomienia”, „Kopie”, porządki)
+
+### Co zrobiono
+
+- **Powiadomienia** (`UI/Settings/NotificationsSettingsPage.swift`): jedna strona bez kart.
+  - Serwer Apprise: adres z „Zapisz” (Enter też zapisuje);
+  - lista powiadomień jak dotąd;
+  - „E-mail na czytniki” (czytniki e-booków); gdy SMTP nie jest ustawiony, stopka mówi, gdzie go ustawić;
+  - Zaawansowane: limity Apprise z „Zapisz limity” i „Serwer poczty (SMTP)” ze stanem i „Ustaw…”, który otwiera arkusz SMTP („Wyślij próbny e-mail”, Anuluj, Zapisz).
+  - Tytuł strony „Powiadomienia”. Odesłanie z arkusza wysyłki na czytnik (X7) brzmi „Otwórz Ustawienia → Powiadomienia”.
+- **Kopie zapasowe:** lista, „Utwórz kopię teraz”, „Wgraj z pliku…” i „Automatyczne kopie” (włączanie, harmonogram, Cofnij/Zapisz) na stronie. Pod „Zaawansowane”: liczba trzymanych kopii, limit rozmiaru i folder kopii („Pokaż w Finderze”, „Zmień…”). Harmonogram, liczba i limit zapisują się razem, więc „Zapisz” jest w obu sekcjach.
+- **Pasek boczny:** jedna lista sześciu stron w kolejności wariantu B (Ogólne, Użytkownicy, Biblioteki, Dostęp zdalny, Powiadomienia, Kopie zapasowe), bez grup „Aplikacja” / „Serwer audiobookshelf” (pytanie 10).
+- **Opcja „Podłącz telefon…” na pasku menu** (decyzja z części 9): przełącznik w Ogólne › Aplikacja, domyślnie wyłączony (`menu.showsPairPhone`). Pozycja w menu otwiera „Użytkowników”, profil konta tego Maca i arkusz „Podłącz telefon”.
+- **Słownictwo:**
+  - iOS: „sparowany / sparuj” zamienione na „podłączony / podłącz” w czterech komunikatach (część 7);
+  - Mac: opisy w kodzie i okno źródeł metadanych odsyłają do nowych miejsc;
+  - README opisuje nowy układ (sześć stron, „Ogólne”, „Biblioteki”, „Powiadomienia”, „Kopie”, historia słuchania, opcja menu) i ma nowe zrzuty;
+  - w Mac i iOS nie ma już odesłań do „Udostępniania”, „Kont”, „Logu serwera”, „Ustawień serwera”, „Aktywności” ani „Powiadomień i e-mail” (grep po tekstach w kodzie; zostały tylko komentarze o dawnych nazwach i przekierowania zapisanej strony).
+- **Spis:** pozycje bez starego miejsca (etapy 2b–2d, 3, 5, 6 oraz 13a i 13b) są dopisane jako NW1–NW12 w części 1.3 i w tabeli przejścia. `sprawdz-tabele.sh`: 136 pozycji, każda dokładnie raz (124 pierwotne i 12 nowych).
+
+### Porównanie ze spisem (kod, nie tylko tabela)
+
+Etykiety wszystkich kontrolek (`Button`, `Toggle`, `Picker`, pola, `LabeledContent`, `Stepper`, `Section`) z plików ustawień w stanie `e1fd9eb` (przed etapami 4–6) zostały porównane z obecnym kodem. Brakuje tylko etykiet, które celowo zmieniły nazwę albo miejsce:
+
+| Dawna etykieta | Teraz |
+|---|---|
+| „Automatyczny skan” | sekcja „Skanowanie” podstrony biblioteki (harmonogram) |
+| „Obserwuj zmiany w folderze biblioteki” | „Obserwuj zmiany w folderze tej biblioteki” |
+| „Ustawienia biblioteki „…”” (suwaki) | klik w wiersz biblioteki → podstrona |
+| „Usuń pliki metadata.json/.abs…” | „Usuń metadata.json/.abs…” (podstrona › Zaawansowane) |
+| „Wyczyść okładki pozycji…” i „Wyczyść całą pamięć podręczną…” | jeden „Wyczyść…” z wyborem (Biblioteki › Zaawansowane) |
+| „Otwórz folder danych” (log) | folder danych w Ogólne › Zaawansowane; w dzienniku „Pokaż plik logu w Finderze” |
+| „Statystyki i ostatnie sesje” | „Statystyki” i „Historia słuchania” na profilu |
+| „Wyłącz po nieudanych próbach” | „Wyłącz powiadomienie po nieudanych próbach” (Powiadomienia › Zaawansowane) |
+| „Widok” (karty) | znika razem z kartami |
+
+### Zrzuty (do README)
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Ogólne | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-dark.png) |
+| Użytkownicy | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-uzytkownicy-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-uzytkownicy-dark.png) |
+| Biblioteki | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-biblioteki-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-biblioteki-dark.png) |
+| Dostęp zdalny | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-dark.png) |
+| Powiadomienia | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-powiadomienia-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-powiadomienia-dark.png) |
+| Arkusz SMTP | ![](ustawienia-nowy-uklad/wdrozenie-png/arkusz-smtp-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/arkusz-smtp-dark.png) |
+| Kopie zapasowe | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-kopie-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-kopie-dark.png) |
+| Kopie › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/kopie-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/kopie-zaawansowane-dark.png) |
+
+Zrzuty z etapów 1–3 (części 10 i 11) mają jeszcze pasek boczny z dwiema grupami i dawnymi stronami.
+
+### Sprawdzone uruchomieniem (testowa kopia)
+
+Atrapy na tym Macu: serwer HTTP udający Apprise (`127.0.0.1:13499`) i serwer SMTP, który przyjmuje wszystko (`127.0.0.1:13525`). Żadna wiadomość nie wyszła poza Maca.
+
+- **Apprise:** adres zapisany; „Nowe powiadomienie…” z adresem `json://example.invalid/test` dodane; „Wyślij próbę” dotarło do atrapy (`POST /notify` z tytułem i treścią), a strona pokazała „Serwer Apprise przyjął próbne powiadomienie.”
+- **SMTP w arkuszu:** zapisany serwer, port, TLS wyłączony, nadawca i adres próbny (w bazie `email-settings`). „Wyślij próbny e-mail” dotarł do atrapy SMTP („Test email from Audiobookshelf”).
+- **Czytnik:** „Dodaj czytnik…” zapisał czytnik w bazie, a lista go pokazuje.
+- **Kopie:**
+  - „Utwórz kopię teraz” utworzyło kopię;
+  - harmonogram „Co tydzień” zapisał `30 1 * * 1`;
+  - limit rozmiaru 2 GB zapisał się z „Zaawansowanych”;
+  - „Przywróć…” z potwierdzeniem przywróciło kopię, aplikacja połączyła się ponownie, a ustawienia kopii wróciły do stanu z kopii.
+- **Opcja menu:** po włączeniu pozycja „Podłącz telefon…” jest w menu na pasku menu i otwiera profil konta Maca z arkuszem parowania. Po teście opcja jest wyłączona, a klucz usunięty z ustawień (UserDefaults są wspólne z prawdziwą aplikacją).
+- **Pasek boczny:** sześć stron w nowej kolejności. Tryb sprawdzający: `TOUR OK`.
+
+### Tylko skompilowane
+
+- **Zmiana folderu kopii** („Zmień…”, panel wyboru folderu): kod bez zmian, tylko w nowym miejscu.
+- **Zmiana limitów Apprise** steperami nie była klikana (narzędzie dostępności nie obsługuje steperów). „Zapisz limity” woła ten sam `saveServer` co adres.
+
+### Odstępstwa
+
+- **Własny cron kopii** (KZ4) jest w sekcji „Automatyczne kopie”, a nie pod „Zaawansowane”. Pokazuje się tylko wtedy, gdy harmonogram ustawiono w web UI, więc nie zaśmieca strony.
+- **„Zapisz” w dwóch sekcjach Kopii** zapisuje ten sam formularz. Rozdzielenie zapisu harmonogramu od limitu wymagałoby dwóch zapytań do serwera i zmian w modelu.
+- **Wyszukiwanie w oknie ustawień** (część 7) dorobione po etapie 6 (część 16).
+
+### Zdarzenia przy testach (etapy 4–6)
+
+- W worktree brakowało odnośnika `build` do dołączonego Node, więc testowy serwer nie startował. Odnośnik `build → /Volumes/wew/audiobookswift/build` jest odtworzony; git go ignoruje.
+- Błędny indeks przycisku w narzędziu dostępności nacisnął „Pokaż w Finderze” i otworzył okno Findera z folderem testowym. Okno jest zamknięte.
+- Jeden raz poszło systemowe naciśnięcie Escape (zdarzenie klawiatury, nie dostępność), przy próbie zamknięcia menu.
+- **UserDefaults są wspólne z prawdziwą aplikacją.** Testy zapisały w nich `libraryWindow.library` (biblioteka testowej kopii) i `settings.lastPage`. Oba klucze są usunięte, a poprzednie wartości nie są znane: prawdziwa aplikacja wybierze przy następnym otwarciu pierwszą bibliotekę i stronę „Ogólne”. Klucz opcji menu `menu.showsPairPhone` też jest usunięty.
+
+### Znane braki i pytania (etapy 4–6)
+
+- **Przeciąganie bibliotek** (B2) dorobione i sprawdzone myszą (część 15).
+- **„Fragmenty sponsorowane” (13b)** są od części 15 osobną podstroną „Ogólnych”.
+- **Zrzuty etapów 1–3** pokazują stary pasek boczny. Można je odświeżyć skryptami z części 10–11.
+- **VoiceOver** nie był słuchany z mową. Etykiety sprawdzone w drzewie dostępności.
+
+## 15. Po etapie 6: fragmenty sponsorowane jako podstrona i przeciąganie bibliotek
+
+Decyzja użytkownika z 2026-11-23: oba punkty otwarte w części 14 zrobić od razu.
+
+- **Fragmenty sponsorowane** (13b): w „Ogólnych” został jeden wiersz „Fragmenty sponsorowane w podcastach” ze stanem w jednym zdaniu (np. „Wyłączone — najpierw ustaw usługę modelu językowego”). Prowadzi do podstrony (`SettingsDestination.sponsorDetection`) z dotychczasowymi sekcjami „Fragmenty sponsorowane w podcastach” i „Usługa modelu językowego”. Logika sekcji (`SponsorDetectionSection`) jest bez zmian. „Zaawansowane” w „Ogólnych” są teraz widoczne bez przewijania.
+- **Przeciąganie bibliotek** (B2):
+  - wiersz na liście „Bibliotek” da się przeciągnąć na miejsce innej biblioteki (`draggable` / `dropDestination`, działa także w formularzu, który nie jest listą);
+  - linia nad wierszem pokazuje miejsce upuszczenia;
+  - kolejność idzie od razu na serwer (`ServerAccount.reorderLibraries`);
+  - przeciągany jest tekst z przedrostkiem `abswift-library:`, więc upuszczenie zwykłego tekstu z innej aplikacji niczego nie zmienia;
+  - „Wyżej/Niżej” na podstronie zostaje dla klawiatury i VoiceOver.
+- **Sprawdzone uruchomieniem** (testowa kopia, prawdziwe przeciągnięcie myszą za zgodą użytkownika):
+  - „Podcasty” przeciągnięte na „lib” dały w bazie kolejność `Podcasty:1 lib:2`;
+  - drugie przeciągnięcie przywróciło `lib:1 Podcasty:2`;
+  - klik w wiersz nadal otwiera podstronę biblioteki;
+  - podstrona fragmentów sponsorowanych otwiera się z „Ogólnych”, a tryb sprawdzający ją odwiedza (`TOUR OK`).
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Ogólne z wierszem fragmentów | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-ogolne-dark.png) |
+| Fragmenty sponsorowane | ![](ustawienia-nowy-uklad/wdrozenie-png/fragmenty-sponsorowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/fragmenty-sponsorowane-dark.png) |
+
+## 16. Przed scaleniem: wyszukiwanie w ustawieniach i jeden wiersz własnego adresu
+
+- **Wyszukiwanie** (`UI/Settings/SettingsSearch.swift`, propozycja z części 7):
+  - pole „Szukaj w ustawieniach” nad paskiem bocznym (`.searchable`, miejsce `.sidebar`);
+  - zamiast stron lista wyników z tytułem i ścieżką, np. „Klucze API, logowanie (SSO, OpenID)… — Dostęp zdalny › Zaawansowane”;
+  - 20 wpisów ze słowami kluczowymi, także dawnymi nazwami: „Udostępnianie”, „Konta”, „Aktywność”, „Log serwera”, „Ustawienia serwera”, „Źródła metadanych”, „Powiadomienia i e-mail”, „Sparuj”;
+  - wielkość liter i polskie znaki nie mają znaczenia; każde słowo zapytania musi pasować;
+  - wynik otwiera stronę, podstronę (dziennik, root, historia słuchania, fragmenty sponsorowane) albo stronę z rozwiniętym „Zaawansowane” (Biblioteki, Dostęp zdalny); pole się czyści.
+  - Ogólne, Powiadomienia i Kopie mają „Zaawansowane” we własnym stanie sekcji, więc wynik otwiera tę stronę bez rozwinięcia, a ścieżka mówi „› Zaawansowane”.
+- **Własny adres** w „Dostępie zdalnym”: jedno pole. Obok niego jest „Zapisz”, gdy adres się zmienił, a „Kopiuj”, gdy pole pokazuje zapisany adres. Drugi wiersz z tym samym adresem zniknął.
+- **„Zaawansowane” na widocznej stronie:** „Dostęp zdalny” i „Biblioteki” reagują na prośbę o rozwinięcie także wtedy, gdy są już otwarte (wcześniej tylko przy pojawieniu się).
+- **Sprawdzone uruchomieniem** (testowa kopia, przez dostępność, bez myszy):
+  - „udostepnianie” → „Sieć domowa i dostęp spoza domu”, klik otwiera „Dostęp zdalny”;
+  - „sparuj” → telefony w profilu;
+  - „konta” → osoby i root;
+  - „aktywność” / „aktywnosc” → historia słuchania (klik otwiera podstronę);
+  - „klucz api” i „openid” → Dostęp zdalny z rozwiniętym „Zaawansowane”, także z tej samej strony;
+  - „cache” i „przedrostki” → Biblioteki z rozwiniętym „Zaawansowane”;
+  - „xyzzy” → „Brak wyników”;
+  - własny adres: po zmianie w polu jest „Zapisz”, po powrocie do zapisanego „Kopiuj”. „Kopiuj” nie był klikany, żeby nie nadpisać schowka.
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Wyszukiwanie („konta”) | ![](ustawienia-nowy-uklad/wdrozenie-png/szukanie-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/szukanie-dark.png) |
+| Dostęp zdalny | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/strona-dostep-zdalny-dark.png) |
+

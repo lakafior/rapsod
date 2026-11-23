@@ -324,11 +324,11 @@ final class AppModel {
     /// adres sprawdzany kluczem, ostatnio działający adres zostaje.
     func applyAddresses(_ payload: AddressesPayload) async {
         guard case .paired(let session) = phase, case .apiKey(let key)? = try? PairedServer.secretStore.load() else {
-            notice = "Ten kod tylko aktualizuje adresy sparowanego serwera. Najpierw sparuj telefon kodem parowania."
+            notice = "Ten kod tylko aktualizuje adresy podłączonego serwera. Najpierw podłącz telefon kodem z profilu osoby na Macu."
             return
         }
         guard let serverID = session.server.serverID, serverID == payload.server.id else {
-            notice = "Kod pochodzi z innego serwera („\(payload.server.name)”). Żeby przełączyć telefon, sparuj go z tamtym Makiem."
+            notice = "Kod pochodzi z innego serwera („\(payload.server.name)”). Żeby przełączyć telefon, podłącz go kodem z tamtego Maca."
             return
         }
         isConnecting = true

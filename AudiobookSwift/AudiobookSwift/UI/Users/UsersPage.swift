@@ -53,6 +53,18 @@ struct UsersPage: View {
                 }
                 .padding(.horizontal, 28)
 
+                ObjectRow(
+                    destination: .history(userID: nil),
+                    title: "Historia słuchania wszystkich",
+                    subtitle: "Kto słucha teraz i zapisane sesje ze wszystkich urządzeń"
+                ) {
+                    ZStack {
+                        Circle().fill(.quaternary).frame(width: 38, height: 38)
+                        Image(systemName: "waveform").foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 28)
+
                 Text("Każda osoba w domu może mieć własne konto z osobnym postępem słuchania i własnymi telefonami. Konto root zarządza serwerem z tej aplikacji; jego hasło jest w pęku kluczy tego Maca.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -71,13 +83,29 @@ struct UsersPage: View {
             guard account.state == .ready else { return }
             await model.load()
             await models.pairing.refresh()
+            openMacPairingIfPending()
+            // „Słucha teraz” na kaflach, odświeżane, dopóki strona jest widoczna.
+            while !Task.isCancelled {
+                await model.refreshListeningNow()
+                try? await Task.sleep(for: .seconds(20))
+            }
         }
+        .onChange(of: navigation.pendingMacPairing) { openMacPairingIfPending() }
         // Konto tego Maca założone (kafel „Utwórz konto tego Maca”) albo zapomniane — nowa lista.
         .onChange(of: account.userState) {
             guard account.state == .ready else { return }
             if case .ready = account.userState { model.notice = nil }
             Task { await model.load() }
         }
+    }
+
+    /// Skrót z paska menu: profil konta tego Maca z arkuszem „Podłącz telefon”.
+    private func openMacPairingIfPending() {
+        guard navigation.pendingMacPairing, model.hasLoaded else { return }
+        navigation.pendingMacPairing = false
+        guard let mac = model.people.first(where: model.isListener) else { return }
+        navigation.pendingProfileAction = .pairPhone
+        navigation.path = [.user(id: mac.id)]
     }
 
     private var needsRootPassword: Bool {
@@ -138,6 +166,7 @@ private struct PersonTile: View {
 
     private var isMac: Bool { models.users.isListener(user) }
     private var phones: Int { models.pairing.devices(for: user.id).count }
+    private var listening: String? { models.users.listeningNow[user.id] }
 
     var body: some View {
         Button {
@@ -154,12 +183,20 @@ private struct PersonTile: View {
                     .foregroundStyle(isMac ? Color.accentColor : .secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
+                if let title = listening {
+                    Label(title, systemImage: "headphones")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help("Słucha teraz: \(title)")
+                }
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(user.username), \(caption)")
+        .accessibilityLabel("\(user.username), \(caption)\(listening.map { ", słucha teraz: \($0)" } ?? "")")
         .accessibilityHint("Otwiera profil")
         .contextMenu {
             Button("Podłącz telefon…") { open(.pairPhone) }

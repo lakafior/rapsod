@@ -1,18 +1,14 @@
 import AudiobookshelfKit
 import SwiftUI
 
-/// Biblioteki na serwerze i dodawanie folderu — wspólne dla okna powitalnego i podstrony „Biblioteki”.
+/// Biblioteki na serwerze i dodawanie folderu w oknie powitalnym. Strona „Biblioteki” w ustawieniach
+/// ma własną listę z podstronami (`LibrariesSettingsPage`); wspólne są wiersze postępu niżej.
 struct LibrarySection: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
-    /// Skan i dopasowanie istniejących bibliotek (tylko w ustawieniach, nie w oknie powitalnym).
-    var tasks: LibraryTasks? = nil
     @Environment(\.openWindow) private var openWindow
     @State private var libraryToRemove: AudiobookshelfClient.Library?
-    @State private var libraryToMatch: AudiobookshelfClient.Library?
-    @State private var libraryToEdit: AudiobookshelfClient.Library?
     @State private var removing = false
-    @State private var reordering = false
     @State private var removalError: String?
 
     var body: some View {
@@ -54,33 +50,8 @@ struct LibrarySection: View {
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
-                    if let tasks, let activity = tasks.activities[library.id] {
-                        LibraryActivityRow(activity: activity)
-                    }
                 }
                 Spacer()
-                if tasks != nil, account.libraries.count > 1 {
-                    let index = account.libraries.firstIndex(of: library) ?? 0
-                    ControlGroup {
-                        Button("Wyżej", systemImage: "chevron.up") { move(library, by: -1) }
-                            .disabled(index == 0)
-                        Button("Niżej", systemImage: "chevron.down") { move(library, by: 1) }
-                            .disabled(index == account.libraries.count - 1)
-                    }
-                    .controlGroupStyle(.navigation)
-                    .fixedSize()
-                    .disabled(reordering)
-                    .help("Kolejność bibliotek — ta sama w oknie „Biblioteka”, w telefonie i w web UI")
-                }
-                if let tasks {
-                    taskMenu(for: library, tasks: tasks)
-                    Button("Ustawienia biblioteki „\(library.name)”", systemImage: "slider.horizontal.3") {
-                        libraryToEdit = library
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .help("Nazwa, źródło metadanych, skaner, harmonogram skanu i inne ustawienia biblioteki")
-                }
                 Button("Usuń bibliotekę „\(library.name)”", systemImage: "trash", role: .destructive) {
                     removalError = nil
                     libraryToRemove = library
@@ -88,7 +59,7 @@ struct LibrarySection: View {
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .help("Usuń bibliotekę z serwera (pliki zostają na dysku)")
-                .disabled(account.isScanning || removing || tasks?.isRunning(library.id) == true)
+                .disabled(account.isScanning || removing)
             }
         }
         if let removalError {
@@ -107,9 +78,6 @@ struct LibrarySection: View {
             Button("Dodaj folder z podcastami…") { add(.podcasts) }
         }
         .disabled(account.isScanning)
-        .sheet(item: $libraryToEdit) { library in
-            LibrarySettingsSheet(account: account, library: library)
-        }
         .confirmationDialog(
             "Usunąć bibliotekę „\(libraryToRemove?.name ?? "")”?",
             item: $libraryToRemove
@@ -119,32 +87,6 @@ struct LibrarySection: View {
         } message: { _ in
             Text("Biblioteka zniknie z serwera razem z postępem słuchania, kolekcjami i metadanymi jej pozycji. Pliki w folderze zostaną na dysku nietknięte.")
         }
-        .confirmationDialog(
-            "Dopasować wszystkie książki w „\(libraryToMatch?.name ?? "")”?",
-            item: $libraryToMatch
-        ) { library in
-            Button("Dopasuj wszystkie") { tasks?.matchAll(library) }
-            Button("Anuluj", role: .cancel) {}
-        } message: { _ in
-            Text("Serwer wyszuka każdą książkę w domyślnym źródle metadanych tej biblioteki i uzupełni brakujące metadane i okładki. Przy wielu książkach trwa to długo; pojedyncze pozycje wygodniej dopasować w oknie „Biblioteka”.")
-        }
-    }
-
-    private func taskMenu(for library: AudiobookshelfClient.Library, tasks: LibraryTasks) -> some View {
-        Menu {
-            Button("Wymuś pełny skan") { tasks.scan(library, force: true) }
-            if library.mediaType == "book" {
-                Button("Dopasuj wszystkie…") { libraryToMatch = library }
-            }
-        } label: {
-            Text("Skanuj")
-        } primaryAction: {
-            tasks.scan(library, force: false)
-        }
-        .menuStyle(.button)
-        .fixedSize()
-        .help("Skanuj folder biblioteki; strzałka: pełny skan albo dopasowanie wszystkich książek")
-        .disabled(tasks.isRunning(library.id) || account.isScanning || removing)
     }
 
     private func add(_ kind: ServerAccount.LibraryKind) {
@@ -160,21 +102,8 @@ struct LibrarySection: View {
             defer { removing = false }
             do {
                 try await account.removeLibrary(library)
-                tasks?.forget(library.id)
             } catch {
                 removalError = "Nie udało się usunąć biblioteki „\(library.name)”: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func move(_ library: AudiobookshelfClient.Library, by offset: Int) {
-        reordering = true
-        Task {
-            defer { reordering = false }
-            do {
-                try await account.moveLibrary(library, by: offset)
-            } catch {
-                removalError = "Nie udało się zmienić kolejności bibliotek: \(error.localizedDescription)"
             }
         }
     }

@@ -20,16 +20,11 @@ struct AppModels {
 /// symbolem i widokiem w `content(models:)`. Surowa wartość jest zapisywana jako ostatnia
 /// strona, więc przy usuwaniu strony trzeba dopisać ją do `init(storedValue:)`.
 enum SettingsPage: String, CaseIterable, Identifiable {
-    // Aplikacja
+    // Kolejność z wariantu B planu: obiekty od najczęściej używanych.
     case general
-    case sharing
-    case metadata
-    case log
-    // Serwer
-    case libraries
     case users
-    case serverSettings
-    case activity
+    case libraries
+    case sharing
     case notifications
     case backups
 
@@ -42,6 +37,11 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case "accounts": self = .users
         // Etap 3: „Dostęp” wszedł do „Dostępu zdalnego”.
         case "access": self = .sharing
+        // Etap 4: „Źródła metadanych” weszły do „Bibliotek”.
+        case "metadata": self = .libraries
+        // Etap 5: „Log serwera” i „Ustawienia serwera” weszły do „Ogólnych”, „Aktywność” do „Użytkowników”.
+        case "log", "serverSettings": self = .general
+        case "activity": self = .users
         default: self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
         }
     }
@@ -53,19 +53,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "Użytkownicy"
         case .backups: "Kopie zapasowe"
         case .sharing: "Dostęp zdalny"
-        case .metadata: "Źródła metadanych"
-        case .log: "Log serwera"
-        case .serverSettings: "Ustawienia serwera"
-        case .activity: "Aktywność"
-        case .notifications: "Powiadomienia i e-mail"
-        }
-    }
-
-    /// Grupa na pasku bocznym.
-    var isServerPage: Bool {
-        switch self {
-        case .general, .sharing, .metadata, .log: false
-        default: true
+        case .notifications: "Powiadomienia"
         }
     }
 
@@ -76,10 +64,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "person.2.crop.square.stack"
         case .backups: "clock.arrow.circlepath"
         case .sharing: "globe"
-        case .metadata: "text.book.closed"
-        case .log: "doc.text.magnifyingglass"
-        case .serverSettings: "server.rack"
-        case .activity: "waveform"
         case .notifications: "bell.badge"
         }
     }
@@ -92,10 +76,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: UsersPage(models: models)
         case .backups: BackupsSettingsPage(models: models)
         case .sharing: RemoteAccessPage(models: models)
-        case .metadata: MetadataSettingsPage(models: models)
-        case .log: LogSettingsPage(models: models)
-        case .serverSettings: ServerSettingsPage(models: models)
-        case .activity: ActivitySettingsPage(models: models)
         case .notifications: NotificationsSettingsPage(models: models)
         }
     }
@@ -109,6 +89,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             return models.loginItem.requiresApproval || models.loginItem.lastError != nil
         case .libraries:
             if case .failed = models.account.state { return true }
+            // Polskie źródła metadanych włączone, ale niedziałające (dawny znak przy „Źródłach metadanych”).
+            let sources = models.metadataSources
+            guard sources.isEnabled else { return false }
+            if case .failed = sources.state { return true }
+            if case .unavailable = sources.state { return true }
+            if case .failed = sources.registration { return true }
             return false
         case .users:
             // Brak hasła roota albo brak konta tego Maca (dawny znak przy „Kontach”).
@@ -118,21 +104,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             case .missing, .invalid: return true
             case .unknown, .ready: return false
             }
-        case .backups, .serverSettings, .activity, .notifications:
+        case .backups, .notifications:
             return false
         case .sharing:
             if case .failed = models.sharing.tunnel.state, models.sharing.externalAccess == .cloudflareTunnel { return true }
             return models.sharing.lastError != nil
                 || (!models.pairing.devices.isEmpty && models.sharing.phonesMayLackRemoteAddress)
-        case .metadata:
-            let sources = models.metadataSources
-            guard sources.isEnabled else { return false }
-            if case .failed = sources.state { return true }
-            if case .unavailable = sources.state { return true }
-            if case .failed = sources.registration { return true }
-            return false
-        case .log:
-            return false
         }
     }
 }
@@ -144,25 +121,21 @@ enum SettingsDestination: Hashable, Codable {
     case user(id: String)
     /// Konto root (Użytkownicy › Administrator serwera).
     case root
-    /// Dziennik serwera. Do etapu 5 planu to osobna strona („Log serwera”), nie podstrona.
+    /// Dziennik serwera (Ogólne › Dziennik serwera).
     case serverLog
-    /// Biblioteka. Do etapu 4 planu ustawienia biblioteki są arkuszem na stronie „Biblioteki”.
+    /// Fragmenty sponsorowane w podcastach i usługa modelu językowego (Ogólne › Fragmenty sponsorowane, etap 13b).
+    case sponsorDetection
+    /// Historia słuchania (Użytkownicy › „Historia słuchania wszystkich…”, albo jednej osoby z jej profilu).
+    case history(userID: String?)
+    /// Biblioteka (Biblioteki › biblioteka).
     case library(id: String)
 
     /// Strona na pasku bocznym, pod którą leży to miejsce.
     var page: SettingsPage {
         switch self {
-        case .user, .root: .users
-        case .serverLog: .log
+        case .user, .root, .history: .users
+        case .serverLog, .sponsorDetection: .general
         case .library: .libraries
-        }
-    }
-
-    /// Czy to podstrona (element ścieżki), czy na razie sama strona z paska bocznego.
-    var isSubpage: Bool {
-        switch self {
-        case .user, .root: true
-        case .serverLog, .library: false
         }
     }
 
@@ -171,8 +144,12 @@ enum SettingsDestination: Hashable, Codable {
         switch self {
         case .user(let id): UserProfilePage(models: models, userID: id)
         case .root: RootProfilePage(models: models)
-        // Jeszcze nie podstrony (`isSubpage`): `show(_:)` otwiera ich stronę.
-        case .serverLog, .library: EmptyView()
+        case .library(let id): LibraryPage(models: models, libraryID: id)
+        case .serverLog: ServerLogPage(models: models)
+        case .sponsorDetection:
+            SettingsForm { SponsorDetectionSection(dataRoot: models.supervisor.dataRoot) }
+                .navigationSubtitle("Fragmenty sponsorowane")
+        case .history(let userID): ListeningHistoryPage(models: models, userID: userID)
         }
     }
 }
@@ -200,20 +177,17 @@ final class SettingsNavigation {
         case changePassword
     }
     var pendingProfileAction: ProfileAction?
-    /// Strona „Dostęp zdalny” ma się otworzyć z rozwiniętym „Zaawansowane” (np. z profilu osoby).
-    var pendingRemoteAdvanced = false
+    /// Skrót „Podłącz telefon…” z paska menu: „Użytkownicy” otworzą profil konta tego Maca z arkuszem parowania.
+    var pendingMacPairing = false
+    /// Strona, która ma się otworzyć z rozwiniętym „Zaawansowane” (np. „Dostęp zdalny” z profilu osoby).
+    var pendingAdvanced: SettingsPage?
 
     init() {
         page = SettingsPage(storedValue: UserDefaults.standard.string(forKey: Self.lastPageKey))
     }
 
-    /// Przechodzi do miejsca: strona z paska bocznego, a dla podstron także ścieżka.
+    /// Przechodzi do podstrony: najpierw jej strona z paska bocznego, potem ścieżka.
     func show(_ destination: SettingsDestination) {
-        guard destination.isSubpage else {
-            page = destination.page
-            path = []
-            return
-        }
         if page == destination.page {
             path = [destination]
             return
@@ -255,20 +229,24 @@ struct SettingsWindow: View {
 
     let models: AppModels
     @Bindable var navigation: SettingsNavigation
+    @State private var query = ""
 
     var body: some View {
         NavigationSplitView {
             List(selection: Binding<SettingsPage?>(
                 get: { navigation.page },
-                set: { if let page = $0 { navigation.page = page } }
+                // Klik w bieżącą stronę wraca z podstrony (np. z dziennika do „Ogólnych”).
+                set: { if let page = $0 { navigation.page = page; navigation.path = [] } }
             )) {
-                Section("Aplikacja") {
-                    ForEach(SettingsPage.allCases.filter { !$0.isServerPage }) { row($0) }
-                }
-                Section("Serwer audiobookshelf") {
-                    ForEach(SettingsPage.allCases.filter(\.isServerPage)) { row($0) }
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // Jedna lista bez podziału na aplikację i serwer (etap 6 planu, pytanie 10).
+                    ForEach(SettingsPage.allCases) { row($0) }
+                } else {
+                    searchResults
                 }
             }
+            // Szuka też po dawnych nazwach stron („Udostępnianie”, „Konta”, „Aktywność”…).
+            .searchable(text: $query, placement: .sidebar, prompt: "Szukaj w ustawieniach")
             // Sama szerokość kolumny nie wystarcza: podział pamięta poprzednią szerokość.
             .frame(minWidth: 215)
             .navigationSplitViewColumnWidth(min: 215, ideal: 215, max: 280)
@@ -291,6 +269,29 @@ struct SettingsWindow: View {
         .environment(navigation)
         .onAppear { models.loginItem.refresh() }
         .task { await SettingsTour.runIfRequested(models: models, navigation: navigation) }
+    }
+
+    @ViewBuilder
+    private var searchResults: some View {
+        let results = SettingsSearchEntry.results(for: query)
+        if results.isEmpty {
+            Text("Brak wyników").foregroundStyle(.secondary)
+        }
+        ForEach(results) { entry in
+            Button {
+                navigation.open(entry.target)
+                query = ""
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                    Text(entry.path).font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(entry.title), \(entry.path)")
+        }
     }
 
     private func row(_ page: SettingsPage) -> some View {

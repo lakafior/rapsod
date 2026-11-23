@@ -84,7 +84,7 @@ struct RootView: View {
             Button("Zastąp", role: .destructive) { model.confirmReplacement(payload) }
             Button("Anuluj", role: .cancel) { model.pendingReplacement = nil }
         } message: { payload in
-            Text("Telefon jest już sparowany z „\(model.pairedServerName ?? "")”. Nowy kod łączy go z „\(payload.server.name)” (konto „\(payload.account.username)”). Stary klucz zostanie usunięty z telefonu — na serwerze cofniesz go, odłączając telefon na Macu.")
+            Text("Telefon jest już podłączony do „\(model.pairedServerName ?? "")”. Nowy kod łączy go z „\(payload.server.name)” (konto „\(payload.account.username)”). Stary klucz zostanie usunięty z telefonu — na serwerze cofniesz go, odłączając telefon na Macu.")
         }
         .alert(
             "Adresy serwera",

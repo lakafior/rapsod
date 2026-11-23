@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Tryb sprawdzający okno ustawień: z argumentem `-ABSSettingsTour YES` aplikacja otwiera okno
-/// ustawień i po kolei pokazuje każdą stronę i każdą podstronę obiektu (osoby, root), a postęp
+/// ustawień i po kolei pokazuje każdą stronę i każdą podstronę (osoby, root, historia słuchania, biblioteki, dziennik serwera), a postęp
 /// wypisuje na standardowe wyjście (`TOUR …`, na końcu `TOUR OK`). Awaria widoku kończy proces,
 /// więc brak `TOUR OK` w wyjściu oznacza błąd. `-ABSSettingsTourDelay <sekundy>` wydłuża postój
 /// na każdej stronie (np. do zrzutów ekranu robionych z zewnątrz). Tylko do testów na kopii testowej.
@@ -43,23 +43,34 @@ enum SettingsTour {
         }
         // „Dostęp zdalny” jeszcze raz, z rozwiniętym „Zaawansowane” (klucze, logowanie, kanały, log tunelu).
         navigation.page = .general
-        navigation.pendingRemoteAdvanced = true
+        navigation.pendingAdvanced = .sharing
         navigation.page = .sharing
         log("page sharing-advanced")
+        try? await Task.sleep(for: delay + .seconds(1))
+        // „Biblioteki” z rozwiniętym „Zaawansowane” (wspólne ustawienia skanera i pamięci podręcznej).
+        navigation.page = .general
+        navigation.pendingAdvanced = .libraries
+        navigation.page = .libraries
+        log("page libraries-advanced")
         try? await Task.sleep(for: delay + .seconds(1))
         for destination in await subpages(models: models) {
             navigation.show(destination)
             log("subpage \(destination.tourName)")
             try? await Task.sleep(for: delay)
         }
+        // Inna strona i z powrotem: nowy stos bez podstron (ostatnia podstrona leży pod „Ogólnymi”).
+        navigation.page = .users
+        try? await Task.sleep(for: .milliseconds(300))
         navigation.page = .general
         log("OK")
     }
 
-    /// Podstrony do odwiedzenia: profil każdej osoby i strona roota.
+    /// Podstrony do odwiedzenia: profil każdej osoby, strona roota i każda biblioteka.
     private static func subpages(models: AppModels) async -> [SettingsDestination] {
         if models.account.state == .ready, !models.users.hasLoaded { await models.users.load() }
-        return models.users.people.map { .user(id: $0.id) } + [.root]
+        return models.users.people.map { .user(id: $0.id) } + [.root, .history(userID: nil)]
+            + models.users.people.prefix(1).map { .history(userID: $0.id) }
+            + models.account.libraries.map { .library(id: $0.id) } + [.serverLog, .sponsorDetection]
     }
 
     private static func log(_ text: String) {
@@ -76,6 +87,8 @@ extension SettingsDestination {
         case .root: "root"
         case .serverLog: "serverLog"
         case .library: "library"
+        case .sponsorDetection: "sponsorDetection"
+        case .history(let userID): userID == nil ? "history-all" : "history-user"
         }
     }
 }

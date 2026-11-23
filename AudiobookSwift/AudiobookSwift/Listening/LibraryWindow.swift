@@ -171,7 +171,7 @@ struct LibraryWindow: View {
                 }
             }
         } else if listening.libraries.isEmpty, !listening.isRefreshing {
-            ContentUnavailableView("Brak bibliotek", systemImage: "books.vertical", description: Text("Dodaj folder z audiobookami w ustawieniach aplikacji."))
+            ContentUnavailableView("Brak bibliotek", systemImage: "books.vertical", description: Text("Dodaj bibliotekę w Ustawieniach → Biblioteki („Dodaj audiobooki…”)."))
         } else {
             ProgressView()
         }

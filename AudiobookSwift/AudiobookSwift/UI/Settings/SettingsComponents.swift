@@ -130,7 +130,7 @@ struct AdvancedHeader: View {
 
 /// Wiersze harmonogramu (wyłączony, codziennie, co tydzień, własny cron z web UI) — wspólne dla
 /// automatycznego skanu biblioteki i automatycznych kopii. Zapis zostaje po stronie wywołującego:
-/// kopie mają „Zapisz/Cofnij”, arkusz biblioteki zapisuje całość przyciskiem „Zapisz”.
+/// kopie mają „Zapisz/Cofnij”, podstrona biblioteki zapisuje zmianę sama.
 struct ScheduleRows: View {
     @Binding var choice: BackupScheduleChoice
     /// Godzina proponowana przy przejściu z „Wyłączony” na codziennie albo co tydzień.

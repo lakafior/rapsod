@@ -2,7 +2,9 @@ import AudiobookshelfKit
 import Foundation
 import Observation
 
-/// Szkic arkusza „Ustawienia biblioteki”.
+/// Ustawienia biblioteki na jej podstronie (Biblioteki › biblioteka). Każda zmiana zapisuje się
+/// sama po chwili (`draftChanged()`), jednym `PATCH` całego formularza, jak „Zapisz” w web UI.
+/// Nieudany zapis przywraca pola do stanu z serwera i zostawia komunikat błędu.
 @MainActor
 @Observable
 final class LibrarySettingsModel {
@@ -42,6 +44,28 @@ final class LibrarySettingsModel {
     var finishedValue = 10.0
     var schedule = BackupScheduleChoice.disabled
     private(set) var providers: [AudiobookshelfClient.ProviderChoice] = []
+
+    /// Wszystko, co zapisuje `save()` — porównywane z ostatnim stanem z serwera.
+    struct Draft: Equatable {
+        var name: String
+        var icon: String
+        var provider: String
+        var settings: AudiobookshelfClient.LibrarySettings?
+        var sources: [String]
+        var finishedRule: FinishedRule
+        var finishedValue: Double
+        var schedule: BackupScheduleChoice
+    }
+
+    var draft: Draft {
+        Draft(name: name, icon: icon, provider: provider, settings: settings,
+              sources: sources.map { "\($0.id):\($0.enabled)" }, finishedRule: finishedRule,
+              finishedValue: finishedValue, schedule: schedule)
+    }
+
+    /// Stan zapisany na serwerze (po wczytaniu albo ostatnim udanym zapisie).
+    @ObservationIgnored private var savedDraft: Draft?
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     init(account: ServerAccount, libraryID: String) {
         self.account = account
@@ -83,11 +107,34 @@ final class LibrarySettingsModel {
             finishedValue = details.settings.markAsFinishedTimeRemaining ?? 10
         }
         schedule = details.settings.autoScanCronExpression.map { BackupScheduleChoice(.cron($0)) } ?? .disabled
+        savedDraft = draft
     }
 
-    /// Zapis całego formularza jednym `PATCH` (jak przycisk „Zapisz” w web UI).
-    func save() async -> Bool {
+    /// Pole formularza się zmieniło: zapis po krótkiej przerwie (kilka kliknięć w rzędzie to jeden zapis).
+    func draftChanged() {
+        guard let savedDraft, draft != savedDraft else { return }
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            // Osobne zadanie: anulowanie przy następnej zmianie przerywa tylko odliczanie, nie zapis.
+            Task { await self?.saveNow() }
+        }
+    }
+
+    /// Zapisuje od razu (np. przed wyjściem z podstrony); czeka, aż skończy się trwająca operacja.
+    func saveNow() async {
+        while status.isBusy { try? await Task.sleep(for: .milliseconds(100)) }
+        guard let savedDraft, draft != savedDraft else { return }
+        if await save() { return }
+        // Na stronie nie może zostać wartość, której nie ma na serwerze.
+        if let loaded { apply(loaded, providers: providers) }
+    }
+
+    /// Zapis całego formularza jednym `PATCH`; po nim pola pokazują to, co zwrócił serwer.
+    private func save() async -> Bool {
         guard var settings else { return false }
+        let target = draft
         let name = name.trimmingCharacters(in: .whitespaces)
         if !isPodcast {
             settings.metadataPrecedence = sources.filter(\.enabled).map(\.id).reversed()
@@ -108,6 +155,9 @@ final class LibrarySettingsModel {
                 throw ItemManager.ManageError.invalid("Włącz co najmniej jedno źródło metadanych skanera.")
             }
             try await account.withAdminToken { try await $0.updateLibrary(id: libraryID, update, token: $1) }
+            let details = try await account.withAdminToken { try await $0.libraryDetails(id: libraryID, token: $1) }
+            // Zmiana w trakcie zapisu czeka na swój zapis — nie nadpisujemy jej odpowiedzią serwera.
+            if draft == target { apply(details, providers: providers) } else { loaded = details; savedDraft = target }
             try? await account.refreshLibraries()
         }
     }
@@ -150,7 +200,7 @@ final class LibrarySettingsModel {
 
     private func reloadFolders() async throws {
         let details = try await account.withAdminToken { try await $0.libraryDetails(id: libraryID, token: $1) }
-        // Tylko foldery — reszta formularza mogła być już zmieniona i czeka na „Zapisz”.
+        // Tylko foldery — reszta formularza może czekać na zapis.
         loaded = details
         try? await account.refreshLibraries()
     }

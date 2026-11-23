@@ -477,3 +477,65 @@ private struct LoginSettingsSheet: View {
         Binding(get: { binding.wrappedValue ?? "" }, set: { binding.wrappedValue = $0.isEmpty ? nil : $0 })
     }
 }
+
+// MARK: - Kanały RSS
+
+struct FeedsContent: View {
+    let model: FeedsModel
+    @State private var feedToClose: AudiobookshelfClient.Feed?
+
+    var body: some View {
+        Section {
+            AdminStatusRows(status: model.status)
+            if model.feeds.isEmpty, model.isLoaded {
+                Text("Żaden kanał nie jest otwarty.").foregroundStyle(.secondary)
+            }
+            ForEach(model.feeds) { feed in
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(feed.meta?.title ?? feed.slug ?? feed.id).font(.body.weight(.medium))
+                        if let url = feed.url {
+                            Text(url.absoluteString).font(.caption.monospaced()).textSelection(.enabled).lineLimit(1).truncationMode(.middle)
+                        }
+                        Text(details(feed)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let url = feed.url {
+                        Button("Kopiuj adres kanału", systemImage: "doc.on.doc") {
+                            NSPasteboard.copy(url.absoluteString)
+                        }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                            .help("Kopiuj adres kanału")
+                    }
+                    Button("Zamknij…") { feedToClose = feed }
+                        .disabled(model.status.isBusy)
+                }
+            }
+        } header: {
+            HStack {
+                Text("Publiczne kanały RSS")
+                Spacer()
+                Button("Odśwież") { Task { await model.load() } }
+                    .buttonStyle(.borderless)
+                    .disabled(model.status.isBusy)
+            }
+        } footer: {
+            Text("Kanał RSS udostępnia książkę albo podcast jako podcast pod publicznym adresem — bez logowania, dla każdego, kto zna adres. Kanał dla książki otwierasz z menu „Więcej” na jej stronie w oknie „Biblioteka”.")
+                .foregroundStyle(.secondary)
+        }
+        .confirmationDialog("Zamknąć kanał „\(feedToClose?.meta?.title ?? "")”?", item: $feedToClose) { feed in
+            Button("Zamknij kanał", role: .destructive) { Task { await model.close(feed) } }
+            Button("Anuluj", role: .cancel) {}
+        } message: { _ in
+            Text("Adres kanału przestanie działać we wszystkich aplikacjach do podcastów, które go subskrybują.")
+        }
+    }
+
+    private func details(_ feed: AudiobookshelfClient.Feed) -> String {
+        var parts = [feed.entityText]
+        if let created = feed.createdAt { parts.append("otwarty " + Formats.dateTime(Date(timeIntervalSince1970: created / 1000))) }
+        if feed.meta?.preventIndexing == false { parts.append("widoczny dla wyszukiwarek") }
+        return parts.joined(separator: " · ")
+    }
+}

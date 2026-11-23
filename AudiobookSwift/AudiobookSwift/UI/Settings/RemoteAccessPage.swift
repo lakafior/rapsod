@@ -76,17 +76,19 @@ struct RemoteAccessPage: View {
             await keys.load()
             await feeds.load()
         }
-        .onAppear {
-            if navigation.pendingRemoteAdvanced {
-                navigation.pendingRemoteAdvanced = false
-                showsAdvanced = true
-            }
-        }
+        .onAppear(perform: consumePendingAdvanced)
+        .onChange(of: navigation.pendingAdvanced) { consumePendingAdvanced() }
     }
 
     private struct AdvancedLoad: Equatable {
         let expanded: Bool
         let state: ServerAccount.State
+    }
+
+    private func consumePendingAdvanced() {
+        guard navigation.pendingAdvanced == .sharing else { return }
+        navigation.pendingAdvanced = nil
+        showsAdvanced = true
     }
 
     private func showAddressesCode() {
@@ -187,19 +189,21 @@ struct RemoteAccessPage: View {
             case .none:
                 EmptyView()
             case .custom:
+                // Jedno pole: „Zapisz” przy zmianie, „Kopiuj” zapisanego adresu (bez drugiego wiersza z tym samym adresem).
                 LabeledContent("Adres") {
                     HStack {
                         TextField("Własny adres", text: $externalURL, prompt: Text("np. https://ksiazki.example.com"))
                             .labelsHidden()
                             .onSubmit { sharing.setExternalURL(externalURL) }
-                        Button("Zapisz") { sharing.setExternalURL(externalURL) }
-                            .disabled(externalURL.trimmingCharacters(in: .whitespaces) == sharing.settings.externalURL)
+                        if externalChanged {
+                            Button("Zapisz") { sharing.setExternalURL(externalURL) }
+                        } else if let url = sharing.externalURL {
+                            Button("Kopiuj") { NSPasteboard.copy(url.absoluteString) }
+                                .help("Kopiuj adres \(url.absoluteString)")
+                        }
                     }
                 }
                 .onAppear { externalURL = sharing.settings.externalURL }
-                if let url = sharing.externalURL {
-                    CopyableRow(title: "", value: url.absoluteString)
-                }
             case .cloudflareTunnel:
                 CloudflareTunnelSection(tunnel: tunnel)
             }
@@ -208,6 +212,10 @@ struct RemoteAccessPage: View {
         } footer: {
             Text(outsideFooter)
         }
+    }
+
+    private var externalChanged: Bool {
+        externalURL.trimmingCharacters(in: .whitespaces) != sharing.settings.externalURL
     }
 
     private var outsideFooter: String {
