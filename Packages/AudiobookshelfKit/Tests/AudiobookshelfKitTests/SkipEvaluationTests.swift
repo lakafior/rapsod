@@ -6,8 +6,8 @@ import Foundation
 import Testing
 @testable import AudiobookshelfKit
 
-/// Ocena wykrywania na zestawie publicznych odcinków (etap 13a; 13b użyje tego samego jako testu
-/// regresji). Wyłączona domyślnie — nagrania i kanały nie są w repozytorium. Uruchomienie:
+/// Ocena wykrywania na zestawie publicznych odcinków (etap 13a; model z 13b — `modelEvaluation`,
+/// a test regresji na zapisanych odpowiedziach modelu bez sieci — `SponsorRegressionTests`). Wyłączona domyślnie — nagrania i kanały nie są w repozytorium. Uruchomienie:
 ///
 ///     SKIP_EVAL_MANIFEST=/ścieżka/manifest.json SKIP_EVAL_OUT=/ścieżka/wyniki.jsonl swift test --filter SkipEvaluation
 ///
@@ -123,5 +123,100 @@ struct SkipEvaluation {
         }
         let text = lines.joined(separator: "\n") + "\n"
         if let out = env["SKIP_EVAL_OUT"] { try text.write(toFile: out, atomically: true, encoding: .utf8) }
+    }
+
+    // MARK: - Model (13b)
+
+    struct ModelEntry: Decodable {
+        let name: String
+        /// Transkrypcja `DictationTranscriber` (TSV: początek, koniec, słowo).
+        let transcript: String
+        let duration: Double
+        let truth: [[Value]]
+    }
+
+    struct ModelReport: Encodable {
+        let name: String
+        let truth: Int
+        let found: Int
+        let falseRegions: Int
+        let contentWronglySkipped: Double
+        let adSecondsCovered: Double
+        let adSeconds: Double
+        let boundaryErrors: [[Double]]
+        let segments: [[String]]
+        let requests: Int
+        let promptTokens: Int
+        let completionTokens: Int
+        let seconds: Double
+    }
+
+    /// Zestaw z rozpoznania przez prawdziwy model, na kluczu użytkownika (README → 13b). Wyłączony bez
+    /// zmiennych; wysyła transkrypcje publicznych odcinków z manifestu do wskazanej usługi.
+    ///
+    ///     SPONSOR_API_BASE=https://api.mistral.ai/v1 SPONSOR_API_MODEL=mistral-small-latest SPONSOR_API_KEY=… \
+    ///     SKIP_EVAL_MODEL_MANIFEST=/ścieżka/manifest.json swift test --filter SkipEvaluation/modelEvaluation
+    ///
+    /// Opcjonalnie `SKIP_EVAL_WINDOW` (sekundy okna, domyślnie 600; 100000 = cała transkrypcja naraz)
+    /// i `SKIP_EVAL_OUT` (plik wyników JSONL). Drukuje też rozkład pewności trafień i fałszywych obszarów.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SKIP_EVAL_MODEL_MANIFEST"] != nil))
+    func modelEvaluation() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let base = try #require(env["SPONSOR_API_BASE"].flatMap(SponsorAPIConfiguration.parseBaseURL), "SPONSOR_API_BASE")
+        let model = try #require(env["SPONSOR_API_MODEL"], "SPONSOR_API_MODEL")
+        let configuration = SponsorAPIConfiguration(baseURL: base, model: model, apiKey: env["SPONSOR_API_KEY"])
+        let window = env["SKIP_EVAL_WINDOW"].flatMap(Double.init) ?? 600
+        let manifest = try JSONDecoder().decode([ModelEntry].self, from: Data(contentsOf: URL(filePath: env["SKIP_EVAL_MODEL_MANIFEST"]!)))
+        var lines: [String] = []
+        var hits: [Double] = [], misses: [Double] = []
+        for entry in manifest {
+            let text = try String(contentsOf: URL(filePath: entry.transcript), encoding: .utf8)
+            let words = text.split(separator: "\n").compactMap { line -> TextSync.Word? in
+                let p = line.split(separator: "\t", maxSplits: 2)
+                guard p.count == 3, let a = Double(p[0]), let b = Double(p[1]) else { return nil }
+                return TextSync.Word(text: String(p[2]), start: a, end: b)
+            }
+            let transcriptLines = SponsorClassification.lines(from: words)
+            let started = Date.now
+            let classifier = SponsorClassifier(client: SponsorAPIClient(configuration: configuration), windowLength: window, overlap: min(120, window / 5))
+            let result = try await classifier.classify(lines: transcriptLines, duration: entry.duration)
+            let candidates = SponsorClassification.merge(result.findings, lines: transcriptLines)
+                .map { SponsorClassification.refine($0, silences: [], gaps: SponsorClassification.wordGaps(words), duration: entry.duration) }
+            let segments = SponsorClassification.segments(candidates, model: model)
+            let truth = entry.truth.compactMap { row -> (Double, Double)? in
+                guard row.count >= 2, let a = row[0].number, let b = row[1].number else { return nil }
+                return (a, b)
+            }
+            func overlap(_ a: (Double, Double), _ b: SkipSegment) -> Double { max(0, min(a.1, b.end) - max(a.0, b.start)) }
+            for segment in segments {
+                if truth.allSatisfy({ overlap($0, segment) < 0.3 * segment.duration }) { misses.append(segment.confidence) } else { hits.append(segment.confidence) }
+            }
+            let skipping = segments.filter(\.autoSkip)
+            var found = 0
+            var errors: [[Double]] = []
+            for t in truth {
+                guard let best = skipping.max(by: { overlap(t, $0) < overlap(t, $1) }), overlap(t, best) >= 0.5 * (t.1 - t.0) else { continue }
+                found += 1
+                errors.append([((best.start - t.0) * 10).rounded() / 10, ((best.end - t.1) * 10).rounded() / 10])
+            }
+            let covered = truth.reduce(0.0) { sum, t in sum + skipping.reduce(0.0) { $0 + overlap(t, $1) } }
+            let report = ModelReport(
+                name: entry.name, truth: truth.count, found: found,
+                falseRegions: skipping.filter { s in truth.allSatisfy { overlap($0, s) < 0.3 * s.duration } }.count,
+                contentWronglySkipped: (skipping.reduce(0.0) { $0 + $1.duration } - covered).rounded(),
+                adSecondsCovered: covered.rounded(), adSeconds: truth.reduce(0) { $0 + $1.1 - $1.0 }.rounded(),
+                boundaryErrors: errors,
+                segments: segments.map { ["\(Int($0.start.rounded()))–\(Int($0.end.rounded()))", $0.kind.rawValue, String(format: "%.2f", $0.confidence), $0.autoSkip ? "pomija" : "znacznik"] },
+                requests: result.requests, promptTokens: result.promptTokens, completionTokens: result.completionTokens,
+                seconds: (Date.now.timeIntervalSince(started) * 10).rounded() / 10)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            lines.append(String(decoding: try encoder.encode(report), as: UTF8.self))
+        }
+        lines.append("pewność trafień: \(hits.sorted().map { String(format: "%.2f", $0) })")
+        lines.append("pewność fałszywych obszarów: \(misses.sorted().map { String(format: "%.2f", $0) })")
+        let text = lines.joined(separator: "\n") + "\n"
+        if let out = env["SKIP_EVAL_OUT"] { try text.write(toFile: out, atomically: true, encoding: .utf8) }
+        print(text)
     }
 }

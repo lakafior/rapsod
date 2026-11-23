@@ -308,27 +308,30 @@ struct PodcastSkipButton: View {
 struct PodcastSkipSettingsView: View {
     let listening: ListeningController
     let item: AudiobookshelfClient.ItemDetail
-    @State private var settings = SkipSettings.standard
+    @State private var preference = SkipPreference.inherit
+    @State private var withoutModel = 0
+
+    private var defaults: SkipSettings { listening.skipSettings.categoryDefaults }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Segmenty sponsorowane").font(.headline)
-            Toggle("Oznaczaj i pomijaj w tym podcaście", isOn: $settings.enabled)
+            Toggle("Oznaczaj i pomijaj w tym podcaście", isOn: $preference.enabled)
                 .accessibilityIdentifier("podcastSkip.enabled")
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
                 GridRow {
                     Text("Reklamy i sponsorzy")
-                    Picker("Reklamy i sponsorzy", selection: $settings.sponsor) { actions }
+                    Picker("Reklamy i sponsorzy", selection: $preference.sponsor) { actions(default: defaults.sponsor) }
                         .labelsHidden().accessibilityIdentifier("podcastSkip.sponsor")
                 }
                 GridRow {
                     Text("Autopromocja")
-                    Picker("Autopromocja", selection: $settings.selfPromo) { actions }
+                    Picker("Autopromocja", selection: $preference.selfPromo) { actions(default: defaults.selfPromo) }
                         .labelsHidden().accessibilityIdentifier("podcastSkip.selfPromo")
                 }
             }
-            .disabled(!settings.enabled)
-            Text("Ustawienie dotyczy tego Maca. Znaczniki pochodzą z opisu odcinka (czasy przy słowach jak „sponsor”, „partner odcinka”, „autopromocja”), rozdziałów i informacji o reklamach wstawianych przez serwer wydawcy.")
+            .disabled(!preference.enabled)
+            Text("Ustawienie dotyczy tego Maca; „Jak w ustawieniach” idzie za Ustawieniami → Ogólne → Fragmenty sponsorowane. Znaczniki pochodzą z opisu odcinka (czasy przy słowach jak „sponsor”, „partner odcinka”, „autopromocja”), rozdziałów, informacji o reklamach wstawianych przez serwer wydawcy\(listening.skip.modelEnabled ? " i z transkrypcji ocenionej przez model językowy" : "").")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Divider()
             HStack {
@@ -339,15 +342,21 @@ struct PodcastSkipSettingsView: View {
                 .accessibilityIdentifier("podcastSkip.analyze")
                 if listening.skip.isBusy { ProgressView().controlSize(.small) }
             }
-            Text("Liczy się samo po pobraniu nowego odcinka na serwer. Ręczne poprawki zostają przy ponownym wykrywaniu.")
+            Text(listening.skip.modelEnabled
+                 ? "Liczy się samo po pobraniu nowego odcinka na serwer. Ten przycisk wyśle do modelu także pobrane odcinki, których jeszcze nie oceniał (teraz: \(withoutModel)); ponownie jeden odcinek — z menu odcinka. Ręczne poprawki zostają przy ponownym wykrywaniu."
+                 : "Liczy się samo po pobraniu nowego odcinka na serwer. Ręczne poprawki zostają przy ponownym wykrywaniu.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .onAppear { settings = listening.skipSettings.settings(podcastID: item.id) }
-        .onChange(of: settings) { listening.setSkipSettings(settings, podcastID: item.id) }
+        .onAppear {
+            preference = listening.skipSettings.preference(podcastID: item.id)
+            withoutModel = listening.skip.episodesWithoutModel(item)
+        }
+        .onChange(of: preference) { listening.setSkipPreference(preference, podcastID: item.id) }
     }
 
-    @ViewBuilder private var actions: some View {
-        ForEach(SkipAction.allCases, id: \.self) { Text($0.title).tag($0) }
+    @ViewBuilder private func actions(default value: SkipAction) -> some View {
+        Text("Jak w ustawieniach (\(value.title.lowercased()))").tag(SkipAction?.none)
+        ForEach(SkipAction.allCases, id: \.self) { Text($0.title).tag(SkipAction?.some($0)) }
     }
 }
 
@@ -359,8 +368,16 @@ struct EpisodeSkipBadge: View {
 
     var body: some View {
         switch skip.phase(itemID: itemID, episodeID: episode.id) {
-        case .queued?, .running?:
+        case .queued?:
+            Label(skip.isModelQueued(itemID: itemID, episodeID: episode.id) ? "Segmenty: w kolejce do analizy" : "Wykrywanie segmentów…", systemImage: "hourglass")
+        case .running?:
             Label("Wykrywanie segmentów…", systemImage: "hourglass")
+        case .transcribing(let fraction)?:
+            Label("Transkrypcja \(Int((fraction * 100).rounded())) %", systemImage: "waveform")
+                .help("Rozpoznawanie mowy na tym Macu, do oceny fragmentów sponsorowanych")
+        case .classifying(let done, let total)?:
+            Label("Klasyfikacja \(done)/\(total)", systemImage: "text.magnifyingglass")
+                .help("Fragmenty transkrypcji oceniane przez model językowy")
         case .failed(let message)?:
             Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).lineLimit(1)
         default:

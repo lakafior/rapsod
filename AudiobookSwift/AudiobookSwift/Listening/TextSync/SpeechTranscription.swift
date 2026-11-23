@@ -24,13 +24,19 @@ enum SpeechTranscription {
             guard let code = languageCode(raw) else { continue }
             let matching = supported.filter { $0.language.languageCode?.identifier == code }
             if matching.isEmpty { continue }
-            // Wariant „rodzimy” (pl-PL, de-DE) albo z regionem tego Maca, w ostateczności pierwszy.
+            // Wariant „rodzimy” (pl-PL, de-DE), z regionem tego Maca, najczęstszy dla języka (en-US,
+            // a nie pierwszy z listy, np. en-ZA), w ostateczności pierwszy.
             let native = matching.first { $0.region?.identifier.lowercased() == code }
             let local = matching.first { $0.region == Locale.current.region }
-            return native ?? local ?? matching[0]
+            let common = defaultRegions[code].flatMap { region in matching.first { $0.region?.identifier == region } }
+            return native ?? local ?? common ?? matching[0]
         }
         return nil
     }
+
+    private static let defaultRegions: [String: String] = [
+        "en": "US", "pt": "PT", "es": "ES", "zh": "CN", "ar": "SA", "sv": "SE", "cs": "CZ", "uk": "UA", "da": "DK", "ja": "JP", "ko": "KR",
+    ]
 
     private static let names: [String: String] = [
         "polski": "pl", "polish": "pl", "pol": "pl", "english": "en", "angielski": "en", "eng": "en",

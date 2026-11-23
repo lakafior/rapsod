@@ -251,6 +251,10 @@ struct ServerEnvironment: Sendable {
         for key in ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "TZ"] {
             environment[key] = inherited[key]
         }
+        #if DEBUG
+        // Testowa kopia: kanał i pliki z atrapy na 127.0.0.1 (serwer domyślnie blokuje adresy lokalne).
+        environment["SSRF_REQUEST_FILTER_WHITELIST"] = inherited["SSRF_REQUEST_FILTER_WHITELIST"]
+        #endif
         return environment
     }
 }

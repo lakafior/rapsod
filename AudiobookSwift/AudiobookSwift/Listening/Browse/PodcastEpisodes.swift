@@ -68,6 +68,9 @@ struct EpisodeRow: View {
             }
             Button("Wykryj segmenty sponsorowane") { listening.skip.analyze(itemID: itemID, episodeID: episode.id) }
                 .disabled(SkipController.audioURL(episode) == nil)
+            if listening.skip.isModelQueued(itemID: itemID, episodeID: episode.id) {
+                Button("Przerwij analizę modelem") { listening.skip.cancelModel(itemID: itemID, episodeID: episode.id) }
+            }
             AddToPlaylistMenu(browser: browser, entry: .init(libraryItemId: itemID, episodeId: episode.id), libraryID: libraryID)
             EpisodeManageMenu(browser: browser, episode: episode, editing: $editing, removing: $removing)
         }
