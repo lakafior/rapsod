@@ -115,6 +115,17 @@ public enum SponsorClassification {
     If there is nothing to mark, answer {"segments":[]}.
     """
 
+    /// Wariant instrukcji z rozpoznania (2026-11-23, Mistral Small, cała transkrypcja: 7/10): lista numerów
+    /// wierszy bez kategorii i pewności. Do porównania w `SkipEvaluation` — wynik bez kategorii to „sponsor”.
+    public static let lineListPrompt = """
+    You label podcast transcripts. A transcript fragment is given as lines "ID [mm:ss] text" (Polish or English, from speech \
+    recognition with errors). Return the IDs of every line that is part of an advertisement or sponsor read: "this episode is \
+    sponsored by", "partnerem odcinka jest", brand descriptions, offers, discount codes, URLs to buy something, calls to action \
+    to sign up or buy, and host self-promotion of their own products, books, newsletters or paid community. Include the whole \
+    ad block from first to last line. Do NOT include normal conversation, even if it mentions companies. Answer ONLY with JSON: \
+    {"ad_line_ids": [..]} (empty list if none).
+    """
+
     /// Treść zapytania dla okna: położenie okna w odcinku i wiersze „ID [mm:ss] tekst”.
     public static func userPrompt(_ window: Window, totalDuration: Double) -> String {
         var text = "Transcript fragment \(clock(window.start))–\(clock(window.end)) of a \(clock(totalDuration)) episode, lines \(window.ids.lowerBound)–\(window.ids.upperBound):\n"
@@ -163,6 +174,16 @@ public enum SponsorClassification {
         guard let open = content.firstIndex(of: "{"), let close = content.lastIndex(of: "}"), open < close,
               let object = try? JSONSerialization.jsonObject(with: Data(content[open...close].utf8)) as? [String: Any] else {
             throw InvalidResponse(reason: "to nie jest JSON")
+        }
+        // Lista numerów wierszy (wariant z rozpoznania): kolejne numery to jeden segment „sponsor”.
+        if let ids = object["ad_line_ids"] as? [Any] {
+            let valid = ids.compactMap(integer).filter { window.ids.contains($0) }.sorted()
+            var findings: [Finding] = []
+            for id in valid {
+                if let last = findings.last, id == last.last + 1 { findings[findings.count - 1].last = id }
+                else if findings.last?.last != id { findings.append(Finding(first: id, last: id, kind: .sponsor, confidence: 0.7, window: window.index)) }
+            }
+            return findings
         }
         guard let items = (object["segments"] ?? object["ad_segments"] ?? object["ads"]) as? [Any] else {
             throw InvalidResponse(reason: "brak tablicy „segments”")

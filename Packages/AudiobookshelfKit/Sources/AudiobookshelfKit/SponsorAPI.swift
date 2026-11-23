@@ -266,10 +266,17 @@ public struct SponsorClassifier: Sendable {
     public var windowLength: Double
     public var overlap: Double
 
-    public init(client: any ChatCompleting, windowLength: Double = 600, overlap: Double = 120) {
+    /// Instrukcja dla modelu (do porównań w ocenie; aplikacja używa domyślnej).
+    public var systemPrompt: String
+    /// Surowa odpowiedź każdego okna (diagnostyka oceny).
+    public var onReply: (@Sendable (_ window: SponsorClassification.Window, _ content: String) async -> Void)?
+
+    public init(client: any ChatCompleting, windowLength: Double = 600, overlap: Double = 120,
+                systemPrompt: String = SponsorClassification.systemPrompt) {
         self.client = client
         self.windowLength = windowLength
         self.overlap = overlap
+        self.systemPrompt = systemPrompt
     }
 
     /// `done` — wyniki okien z poprzedniego przerwanego przebiegu (indeks okna → segmenty).
@@ -287,7 +294,8 @@ public struct SponsorClassifier: Sendable {
                 continue
             }
             let user = SponsorClassification.userPrompt(window, totalDuration: duration)
-            var reply = try await client.complete(system: SponsorClassification.systemPrompt, user: user, maxTokens: 1000)
+            var reply = try await client.complete(system: systemPrompt, user: user, maxTokens: 1000)
+            await onReply?(window, reply.content)
             result.requests += 1
             result.promptTokens += reply.promptTokens ?? 0
             result.completionTokens += reply.completionTokens ?? 0
@@ -295,7 +303,8 @@ public struct SponsorClassifier: Sendable {
             do {
                 findings = try SponsorClassification.parse(reply.content, window: window)
             } catch let first as SponsorClassification.InvalidResponse {
-                reply = try await client.complete(system: SponsorClassification.systemPrompt, user: user + "\n" + SponsorClassification.formatReminder, maxTokens: 1000)
+                reply = try await client.complete(system: systemPrompt, user: user + "\n" + SponsorClassification.formatReminder, maxTokens: 1000)
+                await onReply?(window, reply.content)
                 result.requests += 1
                 result.promptTokens += reply.promptTokens ?? 0
                 result.completionTokens += reply.completionTokens ?? 0

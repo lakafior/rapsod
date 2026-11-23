@@ -165,10 +165,18 @@ struct SkipEvaluation {
         let base = try #require(env["SPONSOR_API_BASE"].flatMap(SponsorAPIConfiguration.parseBaseURL), "SPONSOR_API_BASE")
         let model = try #require(env["SPONSOR_API_MODEL"], "SPONSOR_API_MODEL")
         let configuration = SponsorAPIConfiguration(baseURL: base, model: model, apiKey: env["SPONSOR_API_KEY"])
-        let window = env["SKIP_EVAL_WINDOW"].flatMap(Double.init) ?? 600
+        let defaultWindow = env["SKIP_EVAL_WINDOW"].flatMap(Double.init) ?? 600
+        // Warianty: okna|calosc (okna 10 min albo cała transkrypcja) i -id (instrukcja z rozpoznania).
+        let variants = (env["SKIP_EVAL_VARIANTS"] ?? "okna").split(separator: ",").map(String.init)
+        let rawURL = env["SKIP_EVAL_RAW"].map { URL(filePath: $0) }
+        let raw = RawLog()
         let manifest = try JSONDecoder().decode([ModelEntry].self, from: Data(contentsOf: URL(filePath: env["SKIP_EVAL_MODEL_MANIFEST"]!)))
         var lines: [String] = []
         var hits: [Double] = [], misses: [Double] = []
+        for variant in variants {
+        let window = variant.hasPrefix("calosc") ? 1_000_000 : defaultWindow
+        let prompt = variant.hasSuffix("-id") ? SponsorClassification.lineListPrompt : SponsorClassification.systemPrompt
+        lines.append("== wariant \(variant)")
         for entry in manifest {
             let text = try String(contentsOf: URL(filePath: entry.transcript), encoding: .utf8)
             let words = text.split(separator: "\n").compactMap { line -> TextSync.Word? in
@@ -178,7 +186,9 @@ struct SkipEvaluation {
             }
             let transcriptLines = SponsorClassification.lines(from: words)
             let started = Date.now
-            let classifier = SponsorClassifier(client: SponsorAPIClient(configuration: configuration), windowLength: window, overlap: min(120, window / 5))
+            var classifier = SponsorClassifier(client: SponsorAPIClient(configuration: configuration), windowLength: window, overlap: min(120, window / 5), systemPrompt: prompt)
+            let name = entry.name
+            classifier.onReply = { w, content in await raw.add("\(variant) \(name) okno \(w.index) (\(w.ids.lowerBound)–\(w.ids.upperBound)): \(content)") }
             let result = try await classifier.classify(lines: transcriptLines, duration: entry.duration)
             let candidates = SponsorClassification.merge(result.findings, lines: transcriptLines)
                 .map { SponsorClassification.refine($0, silences: [], gaps: SponsorClassification.wordGaps(words), duration: entry.duration) }
@@ -213,10 +223,17 @@ struct SkipEvaluation {
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
             lines.append(String(decoding: try encoder.encode(report), as: UTF8.self))
         }
+        }
         lines.append("pewność trafień: \(hits.sorted().map { String(format: "%.2f", $0) })")
         lines.append("pewność fałszywych obszarów: \(misses.sorted().map { String(format: "%.2f", $0) })")
         let text = lines.joined(separator: "\n") + "\n"
         if let out = env["SKIP_EVAL_OUT"] { try text.write(toFile: out, atomically: true, encoding: .utf8) }
+        if let rawURL { try (await raw.lines).joined(separator: "\n").write(to: rawURL, atomically: true, encoding: .utf8) }
         print(text)
+    }
+
+    actor RawLog {
+        var lines: [String] = []
+        func add(_ line: String) { lines.append(line) }
     }
 }
