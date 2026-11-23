@@ -281,7 +281,7 @@ public enum DownloadIndex {
                     break
                 }
             }
-            let expected = Set(item.files.map(\.fileName) + ["cover.jpg", DownloadedItem.textSyncFileName])
+            let expected = Set(item.files.map(\.fileName) + ["cover.jpg", DownloadedItem.textSyncFileName, DownloadedItem.skipFileName])
             for name in present.keys.sorted() where !expected.contains(name) { orphans.append(item.folder + "/" + name) }
             if item.hasCover, present["cover.jpg"] == nil { item.hasCover = false }
             fixed.append(item)
