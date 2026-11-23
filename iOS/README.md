@@ -57,3 +57,11 @@ przewinięcie z „Wróć do bieżącego miejsca”, krój i rozmiar w menu „A
 we wspólnym pakiecie (`TextFollowModel`, `TextSyncDocument`). Przy okazji: lista „Audiobooki”
 zostaje na miejscu po powrocie z podstrony, a strona pozycji nie przerysowuje się przy każdej
 synchronizacji postępu. Szczegóły w głównym `README.md` („Tekst w odtwarzaczu”).
+
+Etap 11d: płynny ruch trybu „Tekst” — skład CoreText i ruch ze wspólnego `TextFlowController`
+(pakiet), widok to `BookTextCanvas` (`UIScrollView` z warstwami wierszy): przewijanie o wiersz,
+gdy lektor do niego dochodzi, jedną ciągłą animacją; jasność zdań zmienia tylko krycie nakładki
+(układ się nie zmienia); bez okna akapitów i bez późniejszych korekt po przeskoku. Tryb pokazowy
+(tylko Debug) do nagrań i pomiarów bez serwera: `xcrun simctl launch booted net.smigi.abswift.ios
+-BookTextDemo <folder z *.m4a i *.sync.json> [-BookTextDemoStart s] [-BookTextDemoRate r]
+[-BookTextDemoScript plik]`. Szczegóły w głównym `README.md` („Płynny ruch tekstu”).

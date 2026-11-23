@@ -8,12 +8,14 @@ import Foundation
 import Observation
 
 /// Stan trybu „Tekst” w odtwarzaczu — wspólny dla Maca i iOS, bez zależności od widoków
-/// i od konkretnego odtwarzacza (Mac ma własny): wczytanie mapy, bieżące zdanie dla czasu
-/// nagrania, śledzenie (automatyczne przewijanie) i okno akapitów do pokazania.
+/// i od konkretnego odtwarzacza: wczytanie mapy, bieżące zdanie dla czasu nagrania i stan
+/// śledzenia (automatycznego przewijania).
 ///
-/// Widok podaje czas z odtwarzacza (`update`), a obserwuje tylko to, co się zmienia rzadko:
-/// bieżące zdanie i akapit, okno, stan śledzenia. Zegar odtwarzacza tyka dwa razy na sekundę,
-/// więc granicę zdania model wylicza sam i przełącza podświetlenie dokładnie na czas.
+/// Widok podaje czas z odtwarzacza (`update`), a obserwuje tylko to, co zmienia się rzadko:
+/// bieżące zdanie, stan śledzenia i prośby o przeskok. Zegar odtwarzacza tyka dwa razy na
+/// sekundę, więc granice zdań model wylicza sam (łańcuchem, także kilka krótkich zdań między
+/// tyknięciami) i nie cofa podświetlenia, gdy tyknięcie przyjdzie odrobinę „za wcześnie”.
+/// Czas między tyknięciami (`estimatedTime`) widok bierze do śledzenia wiersza w zdaniu.
 @MainActor
 @Observable
 public final class TextFollowModel {
@@ -35,12 +37,13 @@ public final class TextFollowModel {
     public private(set) var currentParagraph: Int?
     /// Automatyczne przewijanie za odtwarzaniem; ręczne przewinięcie je wstrzymuje.
     public private(set) var isFollowing = true
-    /// Akapity pokazane w widoku (leniwe okno wokół bieżącego miejsca, nie cała książka).
-    public private(set) var window: Range<Int> = 0..<0
-    /// Rośnie, gdy widok ma przewinąć do bieżącego zdania.
-    public private(set) var scrollRequest = 0
-    /// Ostatnia prośba to daleki przeskok (przewinięcie bez animacji).
-    public private(set) var scrollIsJump = false
+    /// Rośnie przy nieciągłości czasu (przewinięcie suwaka, rozdział, dotknięcie zdania,
+    /// pierwsze pokazanie): widok ustawia tekst od razu w nowym miejscu, zamiast czekać na wiersz.
+    public private(set) var jumpRequest = 0
+    /// Rośnie przy „Wróć do bieżącego miejsca” (także po wznowieniu odtwarzania).
+    public private(set) var returnRequest = 0
+    public private(set) var isPlaying = false
+    public private(set) var rate: Double = 1
 
     @ObservationIgnored private var key: String?
     @ObservationIgnored private var source: TextSyncSource?
@@ -49,13 +52,16 @@ public final class TextFollowModel {
     @ObservationIgnored private var boundary: Task<Void, Never>?
     @ObservationIgnored private var lastTime: Double = 0
     @ObservationIgnored private var lastStamp = ContinuousClock.now
-    @ObservationIgnored private var rate: Double = 1
-    @ObservationIgnored private var isPlaying = false
+    /// Początek zdania, na które model przełączył się sam między tyknięciami — tyknięcie
+    /// z czasem tuż sprzed niego nie cofa podświetlenia.
+    @ObservationIgnored private var floor: Double?
 
-    /// Akapity przed i za bieżącym w oknie.
-    public static let windowBefore = 40
-    public static let windowAfter = 80
-    static let windowLimit = 800
+    /// Nieciągłość czasu większa niż to (s) to przeskok, nie zwykłe tykanie zegara.
+    static let jumpThreshold = 1.5
+    /// Najwyżej tyle (s) tyknięcie może „cofnąć się” za przewidziany początek zdania.
+    static let jitter = 0.6
+    /// Najdalsza ekstrapolacja czasu bez tyknięcia (s czasu rzeczywistego).
+    static let maxExtrapolation = 0.6
 
     public init() {}
 
@@ -69,7 +75,6 @@ public final class TextFollowModel {
             document = nil
             currentSentence = nil
             currentParagraph = nil
-            window = 0..<0
             isFollowing = true
         }
         self.key = key
@@ -108,8 +113,8 @@ public final class TextFollowModel {
             if !same {
                 currentSentence = nil
                 currentParagraph = nil
-                recenter(on: nil)
-                refresh(time: lastTime, force: true)
+                floor = nil
+                refresh(time: lastTime, jump: true)
             }
         case .unavailable(let reason):
             if document == nil || reason != .offline { document = nil; phase = .unavailable(reason) }
@@ -128,61 +133,81 @@ public final class TextFollowModel {
         phase = .idle
         currentSentence = nil
         currentParagraph = nil
-        window = 0..<0
+        floor = nil
         isFollowing = true
     }
 
     // MARK: - Odtwarzanie
 
+    /// Czas nagrania teraz, między tyknięciami zegara odtwarzacza (przy pauzie — ostatni podany).
+    public func estimatedTime(at now: ContinuousClock.Instant = .now) -> Double {
+        guard isPlaying else { return lastTime }
+        let elapsed = now - lastStamp
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        // Najwyżej trochę ponad jeden odstęp tyknięć (0,5 s): gdy zegar przestaje tykać (czekanie
+        // na dane, ładowanie pliku), podświetlenie nie ucieka naprzód, żeby potem wracać.
+        return lastTime + min(seconds, Self.maxExtrapolation) * rate
+    }
+
     /// Czas z odtwarzacza (sekundy w całej książce), prędkość i stan.
     public func update(time: Double, rate: Float, isPlaying: Bool) {
         let resumed = isPlaying && !self.isPlaying
-        self.rate = max(0.25, Double(rate))
-        self.isPlaying = isPlaying
+        let expected = estimatedTime()
+        let jump = abs(time - expected) > (self.isPlaying ? Self.jumpThreshold : 0.3)
+        let newRate = max(0.25, Double(rate))
+        if newRate != self.rate { self.rate = newRate }
+        if isPlaying != self.isPlaying { self.isPlaying = isPlaying }
         lastTime = time
         lastStamp = .now
+        var effective = time
+        if jump {
+            floor = nil
+        } else if let floor {
+            // Tyknięcie odrobinę przed przewidzianą granicą zdania — zostajemy przy nowym zdaniu.
+            if time < floor, floor - time < Self.jitter { effective = floor } else { self.floor = nil }
+        }
         // Wznowienie odtwarzania przywraca śledzenie (jak po dotknięciu „Wróć do bieżącego miejsca”).
         if resumed, !isFollowing { resumeFollowing() }
-        refresh(time: time, force: false)
+        refresh(time: effective, jump: jump)
         scheduleBoundary()
     }
 
-    private func refresh(time: Double, force: Bool) {
+    private func refresh(time: Double, jump: Bool) {
         guard let document else { return }
         let sentence = document.sentence(at: time)
-        guard sentence != currentSentence || force else { return }
-        let oldParagraph = currentParagraph
-        currentSentence = sentence
-        currentParagraph = sentence.flatMap(document.paragraph(ofSentence:))
-        let target = currentParagraph ?? 0
-        if isFollowing {
-            let far = oldParagraph.map { abs($0 - target) > 6 } ?? true
-            if !window.contains(target) || target >= window.upperBound - 20 || target < window.lowerBound + 3 {
-                recenter(on: target)
-            }
-            scrollIsJump = far
-            scrollRequest += 1
+        if sentence != currentSentence {
+            currentSentence = sentence
+            currentParagraph = sentence.flatMap(document.paragraph(ofSentence:))
         }
+        if jump, isFollowing { jumpRequest += 1 }
     }
 
-    /// Zmiana podświetlenia na granicy zdania między tyknięciami zegara odtwarzacza.
+    /// Zmiana podświetlenia na granicy zdania między tyknięciami zegara odtwarzacza; po każdej
+    /// granicy planowana jest następna, więc kilka krótkich zdań w pół sekundy przechodzi na czas.
     private func scheduleBoundary() {
         boundary?.cancel()
         boundary = nil
-        guard isPlaying, let document, let next = document.nextStart(after: lastTime) else { return }
-        let delay = (next - lastTime) / rate
+        guard isPlaying, let document else { return }
+        let now = estimatedTime()
+        guard let next = document.nextStart(after: now) else { return }
+        let delay = (next - now) / rate
         // Następne tyknięcie i tak przyjdzie za ok. 0,5 s — dalej nie planujemy.
-        guard delay > 0, delay < 0.6 else { return }
+        guard delay < 0.6 else { return }
         boundary = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay + 0.01))
+            try? await Task.sleep(for: .seconds(max(0, delay) + 0.005))
             guard !Task.isCancelled, let self, self.isPlaying else { return }
-            let elapsed = (ContinuousClock.now - self.lastStamp)
-            let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-            self.refresh(time: self.lastTime + seconds * self.rate, force: false)
+            // Zegar odtwarzacza stanął (ekstrapolacja doszła do granicy) — czekamy na tyknięcie.
+            let now = self.estimatedTime()
+            guard now >= next - 0.02 else { return }
+            self.refresh(time: max(next, now), jump: false)
+            // Dolna granica to początek zdania, na którym model faktycznie stanął (przy spóźnionym
+            // wybudzeniu mogło to być kilka zdań dalej niż zaplanowana granica).
+            self.floor = self.currentSentence.flatMap { document.map.sentences[$0].start } ?? next
+            self.scheduleBoundary()
         }
     }
 
-    // MARK: - Śledzenie i okno
+    // MARK: - Śledzenie
 
     /// Użytkownik przewinął tekst sam — przestajemy przewijać za odtwarzaniem.
     public func userDidScroll() {
@@ -193,42 +218,7 @@ public final class TextFollowModel {
     /// „Wróć do bieżącego miejsca”.
     public func resumeFollowing() {
         isFollowing = true
-        let target = currentParagraph ?? 0
-        if !window.contains(target) || target >= window.upperBound - 20 || target < window.lowerBound + 3 {
-            recenter(on: target)
-        }
-        scrollIsJump = false
-        scrollRequest += 1
-    }
-
-    /// Widok doszedł do brzegu okna przy ręcznym przewijaniu — dokładamy akapity.
-    public func reachedWindowEdge(top: Bool) {
-        guard let document else { return }
-        let n = document.paragraphs.count
-        var lower = window.lowerBound, upper = window.upperBound
-        if top {
-            guard lower > 0 else { return }
-            lower = max(0, lower - 60)
-            if upper - lower > Self.windowLimit { upper = lower + Self.windowLimit }
-        } else {
-            guard upper < n else { return }
-            upper = min(n, upper + 60)
-            if upper - lower > Self.windowLimit { lower = upper - Self.windowLimit }
-        }
-        window = lower..<upper
-    }
-
-    private func recenter(on paragraph: Int?) {
-        guard let document else { window = 0..<0; return }
-        let n = document.paragraphs.count
-        let p = min(max(0, paragraph ?? 0), max(0, n - 1))
-        window = Self.window(around: p, count: n)
-    }
-
-    static func window(around p: Int, count n: Int) -> Range<Int> {
-        let lower = max(0, p - windowBefore)
-        let upper = min(n, max(p + windowAfter, lower + windowBefore + windowAfter))
-        return max(0, min(lower, upper - windowBefore - windowAfter))..<upper
+        returnRequest += 1
     }
 
     /// Czas, od którego odtwarzać po dotknięciu zdania; wraca też śledzenie.
@@ -238,12 +228,12 @@ public final class TextFollowModel {
         return time
     }
 
-    /// Wartość podświetlenia dla akapitu: indeks bieżącego zdania ograniczony do zakresu akapitu
-    /// (o jedno poza nim, gdy bieżące zdanie jest gdzie indziej) — widok animuje ją płynnie.
-    public func highlight(for paragraph: TextSyncDocument.Paragraph) -> Double {
-        guard let current = currentSentence else { return Double(paragraph.sentences.lowerBound - 1) }
-        if current < paragraph.sentences.lowerBound { return Double(paragraph.sentences.lowerBound - 1) }
-        if current >= paragraph.sentences.upperBound { return Double(paragraph.sentences.upperBound) }
-        return Double(current)
+    /// Czas trwania zdania na osi nagrania (początek — początek następnego zdania z czasem,
+    /// gdy mapa nie ma końca), do śledzenia wiersza, w którym jest lektor.
+    public func span(ofSentence index: Int) -> ClosedRange<Double>? {
+        guard let document, document.map.sentences.indices.contains(index), let start = document.map.sentences[index].start else { return nil }
+        // Do końca zdania z mapy; gdy go nie ma — do początku następnego zdania.
+        let end = document.map.sentences[index].end ?? document.nextStart(after: start) ?? start
+        return start...max(start, end)
     }
 }
