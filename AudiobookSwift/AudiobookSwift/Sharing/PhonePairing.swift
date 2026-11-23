@@ -8,22 +8,24 @@ import SystemConfiguration
 
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "AudiobookSwift", category: "Pairing")
 
-/// Parowanie telefonu z aplikacją AudiobookSwift na iOS kodem QR (etap 10b).
+/// Podłączanie telefonu z aplikacją AudiobookSwift na iOS kodem QR (etap 10b; od etapu 2 nowego
+/// układu ustawień — dla każdego konta, decyzja z części 9 `docs/ustawienia-nowy-uklad.md`).
 ///
-/// Telefon dostaje **osobny klucz API konta słuchacza** — tego samego konta, którego używa Mac,
-/// żeby postęp słuchania był jeden. Konto root i żadne hasło nie trafiają do kodu. Klucz tworzy
-/// root (`POST /api/api-keys` wymaga administratora; dla konta innego niż root wolno), bez terminu
+/// Telefon dostaje **osobny klucz API wybranego konta**. Dla konta tego Maca to to samo konto,
+/// którego używa Mac, więc postęp słuchania jest jeden; inna osoba ma na telefonie swój postęp.
+/// Konto root i żadne hasło nie trafiają do kodu, root nie dostaje telefonów. Klucz tworzy root
+/// (`POST /api/api-keys` wymaga administratora; dla konta innego niż root wolno), bez terminu
 /// ważności i od razu aktywny. Klucz działa też w gnieździe zdarzeń (`SocketAuthority`).
 ///
-/// Lista sparowanych urządzeń to klucze konta słuchacza z nazwą zaczynającą się od
-/// `keyPrefix` — źródłem prawdy jest serwer, Mac nie przechowuje żadnych kluczy. Nazwa jest
-/// zaszyta w samym kluczu (JWT), więc po parowaniu nie da się jej zmienić; unieważnienie
-/// usuwa klucz z serwera.
+/// Lista podłączonych urządzeń to klucze z nazwą zaczynającą się od `keyPrefix`, pogrupowane po
+/// `userId` — źródłem prawdy jest serwer, Mac nie przechowuje żadnych kluczy. Nazwa jest zaszyta
+/// w samym kluczu (JWT), więc po podłączeniu nie da się jej zmienić; „Odłącz” usuwa klucz z serwera.
 @MainActor
 @Observable
 final class PhonePairing {
     struct Device: Identifiable, Equatable {
         let id: String
+        let userID: String
         let name: String
         let createdAt: Date?
         /// Upstream (v2.38.0) ma kolumnę `lastUsedAt`, ale jej nie uzupełnia.
@@ -40,23 +42,23 @@ final class PhonePairing {
     }
 
     enum PairingError: LocalizedError {
-        case listenerMissing
+        case rootAccount
         case noAddresses
 
         var errorDescription: String? {
             switch self {
-            case .listenerMissing: "Nie znaleziono na serwerze konta do słuchania."
-            case .noAddresses: "Telefon nie ma jak połączyć się z tym Makiem — włącz udostępnianie w sieci lokalnej albo dostęp spoza domu."
+            case .rootAccount: "Konto root nigdy nie trafia do telefonu."
+            case .noAddresses: "Telefon nie ma jak połączyć się z tym Makiem — włącz sieć domową albo dostęp spoza domu (Ustawienia → Dostęp zdalny)."
             }
         }
     }
 
-    /// Przedrostek nazwy klucza API, po którym aplikacja rozpoznaje sparowane telefony.
+    /// Przedrostek nazwy klucza API, po którym aplikacja rozpoznaje telefony. **Nie zmieniać:**
+    /// już podłączone telefony zniknęłyby z listy (część 7 planu).
     static let keyPrefix = "Telefon: "
 
+    /// Telefony wszystkich kont (od najnowszego).
     private(set) var devices: [Device] = []
-    /// Konto słuchacza ma typ `admin` (może zlecać pobieranie odcinków i zarządzać serwerem).
-    private(set) var listenerIsAdmin = false
     private(set) var isLoading = false
     private(set) var loadError: String?
 
@@ -70,10 +72,8 @@ final class PhonePairing {
         self.supervisor = supervisor
     }
 
-    /// Konto słuchacza gotowe — bez niego nie ma czego parować.
-    var listenerUsername: String? {
-        guard account.state == .ready, case .ready(let username) = account.userState else { return nil }
-        return username
+    func devices(for userID: String) -> [Device] {
+        devices.filter { $0.userID == userID }
     }
 
     /// Adresy, które trafią do kodu: sieć lokalna (gdy serwer faktycznie w niej słucha), potem spoza domu.
@@ -88,13 +88,20 @@ final class PhonePairing {
         return result
     }
 
-    /// Dlaczego nie da się teraz sparować telefonu (`nil` = można).
-    var unavailableReason: String? {
-        if listenerUsername == nil {
-            return "Parowanie wymaga działającego serwera i konta do słuchania."
-        }
-        if addresses.isEmpty {
-            return "Telefon łączy się z Makiem przez sieć: najpierw włącz „Udostępniaj serwer w sieci lokalnej” powyżej (albo dostęp spoza domu)."
+    /// Czy arkusz może zaproponować włączenie sieci domowej (wymaga konta tego Maca, jak przełącznik
+    /// na stronie „Dostęp zdalny”, bo niezainicjalizowany serwer w sieci byłby niebezpieczny).
+    var canEnableHomeNetwork: Bool {
+        guard !sharing.isEnabled, !sharing.isBusy, account.state == .ready, case .ready = account.userState else { return false }
+        return true
+    }
+
+    /// Dlaczego nie da się teraz podłączyć telefonu do tego konta (`nil` = można, ewentualnie po
+    /// włączeniu sieci domowej w arkuszu).
+    func unavailableReason(for user: AudiobookshelfClient.ManagedUser) -> String? {
+        if user.isRoot { return PairingError.rootAccount.errorDescription }
+        if account.state != .ready { return "Podłączanie telefonu wymaga działającego serwera." }
+        if addresses.isEmpty, !canEnableHomeNetwork, !sharing.isBusy {
+            return "Telefon łączy się z Makiem przez sieć: włącz sieć domową albo dostęp spoza domu w Ustawieniach → Dostęp zdalny."
         }
         return nil
     }
@@ -106,22 +113,20 @@ final class PhonePairing {
 
     // MARK: - Lista
 
+    /// Wczytuje klucze telefonów wszystkich kont jednym zapytaniem.
     func refresh() async {
-        guard listenerUsername != nil else {
-            devices = []
-            return
-        }
+        guard account.state == .ready else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            let listener = try await listener()
             let keys = try await account.withAdminToken { try await $0.apiKeys(token: $1) }
             devices = keys
-                .filter { $0.userId == listener.id && $0.name.hasPrefix(Self.keyPrefix) }
+                .filter { $0.name.hasPrefix(Self.keyPrefix) && $0.userId != nil }
                 .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
                 .map {
                     Device(
                         id: $0.id,
+                        userID: $0.userId ?? "",
                         name: String($0.name.dropFirst(Self.keyPrefix.count)),
                         createdAt: $0.createdAt,
                         lastUsedAt: $0.lastUsedAt,
@@ -129,30 +134,26 @@ final class PhonePairing {
                         isExpired: $0.isExpired
                     )
                 }
-            listenerIsAdmin = Self.canOrderDownloads(listener)
             loadError = nil
         } catch {
-            logger.error("Lista sparowanych telefonów: \(error.localizedDescription, privacy: .public)")
+            logger.error("Lista telefonów: \(error.localizedDescription, privacy: .public)")
             loadError = error.localizedDescription
         }
     }
 
-    // MARK: - Parowanie
+    // MARK: - Podłączanie
 
-    /// Tworzy klucz dla telefonu i składa kod. Z `grantAdmin` konto słuchacza dostaje najpierw
-    /// typ `admin` (pytanie w arkuszu parowania; domyślnie nie).
-    func pair(deviceName: String, grantAdmin: Bool) async throws -> Code {
+    /// Tworzy klucz dla telefonu wybranego konta i składa kod. Uprawnienia (rola) zmienia
+    /// wywołujący przed tym wywołaniem — tu nic poza kluczem się nie zmienia.
+    func pair(deviceName: String, user: AudiobookshelfClient.ManagedUser) async throws -> Code {
+        guard !user.isRoot else { throw PairingError.rootAccount }
         let name = deviceName.trimmingCharacters(in: .whitespacesAndNewlines)
         let deviceName = name.isEmpty ? "Telefon" : name
         let addresses = addresses
         guard !addresses.isEmpty else { throw PairingError.noAddresses }
 
-        var listener = try await listener()
-        if grantAdmin, !Self.canOrderDownloads(listener) {
-            listener = try await setType("admin", update: true, of: listener)
-        }
         let created = try await account.withAdminToken {
-            try await $0.createApiKey(name: Self.keyPrefix + deviceName, userID: listener.id, expiresIn: nil, isActive: true, token: $1)
+            try await $0.createApiKey(name: Self.keyPrefix + deviceName, userID: user.id, expiresIn: nil, isActive: true, token: $1)
         }
         // Bez treści klucza: tylko nazwa i identyfikator.
         logger.notice("Utworzono klucz dla telefonu „\(deviceName, privacy: .public)” (\(created.key.id, privacy: .public))")
@@ -160,7 +161,7 @@ final class PhonePairing {
         let payload = PairingPayload(
             server: .init(id: sharing.ensureServerID(), name: Self.serverName),
             addresses: addresses,
-            account: .init(id: listener.id, username: listener.username),
+            account: .init(id: user.id, username: user.username),
             device: .init(keyID: created.key.id, name: deviceName),
             key: created.secret
         )
@@ -169,64 +170,26 @@ final class PhonePairing {
         return code
     }
 
-    /// Kod „Odśwież adresy” (etap 10c): aktualne adresy serwera bez klucza, dla już sparowanych
-    /// telefonów (np. po włączeniu tunelu). `nil`, gdy nie ma adresów albo żaden telefon nie był parowany.
+    /// Kod „Kod z adresami” (etap 10c): aktualne adresy serwera bez klucza, dla już podłączonych
+    /// telefonów wszystkich kont (np. po włączeniu tunelu). `nil`, gdy nie ma adresów albo żaden
+    /// telefon nie był podłączany.
     func addressesCode() -> URL? {
         guard let serverID = sharing.settings.serverID, !addresses.isEmpty else { return nil }
         let payload = AddressesPayload(server: .init(id: serverID, name: Self.serverName), addresses: addresses)
         return try? payload.url()
     }
 
-    /// Unieważnia klucz telefonu (usuwa go z serwera). Telefon dostaje 401 przy następnym zapytaniu.
+    /// Odłącza telefon: usuwa jego klucz z serwera. Telefon dostaje 401 przy następnym zapytaniu.
     func revoke(keyID: String) async throws {
         try await account.withAdminToken { try await $0.deleteApiKey(id: keyID, token: $1) }
-        logger.notice("Unieważniono klucz telefonu \(keyID, privacy: .public)")
+        logger.notice("Odłączono telefon (klucz \(keyID, privacy: .public))")
         await refresh()
     }
 
-    /// Nadaje albo odbiera kontu słuchacza uprawnienia administratora. Serwer przy zlecaniu
-    /// pobrań odcinków (`download-episodes`) sprawdza i typ konta, i „Edycję pozycji”
-    /// (`permissions.update`), więc oba zmieniają się razem.
-    func setListenerAdmin(_ admin: Bool) async throws {
-        let listener = try await listener()
-        let type = admin ? "admin" : "user"
-        if listener.type != type || listener.permissions.update != admin {
-            _ = try await setType(type, update: admin, of: listener)
-        }
-        await refresh()
-    }
-
-    /// Telefon może zlecać pobrania: administrator z „Edycją pozycji”. Sam typ administratora
-    /// (nadany przed etapem 10e) nie wystarcza — wtedy przełącznik pokazuje „Nie” i „Nadaj…” to naprawia.
-    private static func canOrderDownloads(_ user: AudiobookshelfClient.ManagedUser) -> Bool {
+    /// Telefon może zlecać pobrania odcinków: administrator z „Edycją pozycji”. Sam typ
+    /// administratora (nadany przed etapem 10e) nie wystarcza.
+    static func canOrderDownloads(_ user: AudiobookshelfClient.ManagedUser) -> Bool {
         user.type == "admin" && user.permissions.update
-    }
-
-    // MARK: - Pomocnicze
-
-    private func listener() async throws -> AudiobookshelfClient.ManagedUser {
-        guard let username = listenerUsername else { throw PairingError.listenerMissing }
-        let users = try await account.withAdminToken { try await $0.users(token: $1) }
-        guard let user = users.first(where: { $0.username == username }) else { throw PairingError.listenerMissing }
-        return user
-    }
-
-    /// Zmienia typ konta i „Edycję pozycji”; pozostałe uprawnienia odsyłamy bez zmian
-    /// (`UserChanges` zawsze wysyła komplet).
-    private func setType(_ type: String, update: Bool, of user: AudiobookshelfClient.ManagedUser) async throws -> AudiobookshelfClient.ManagedUser {
-        var permissions = user.permissions
-        permissions.update = update
-        let changes = AudiobookshelfClient.UserChanges(
-            type: type,
-            permissions: permissions,
-            librariesAccessible: user.librariesAccessible,
-            itemTagsSelected: user.itemTagsSelected
-        )
-        let updated = try await account.withAdminToken { try await $0.updateUser(id: user.id, changes, token: $1) }
-        logger.notice("Konto słuchacza ma teraz typ \(type, privacy: .public)")
-        listenerIsAdmin = Self.canOrderDownloads(updated)
-        account.listenerPermissionsChanged()
-        return updated
     }
 }
 

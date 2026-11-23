@@ -32,7 +32,7 @@ struct StatsView: View {
 }
 
 /// Statystyki słuchania jednego konta: kafelki, ostatnie 30 dni, najdłużej słuchane i ostatnie sesje.
-/// Wspólne dla „Twoje słuchanie” i Ustawień → Konta (etap 9i, `pages/config/users/_id/index.vue`).
+/// Wspólne dla „Twoje słuchanie” i profilu osoby w Ustawieniach → Użytkownicy (etap 9i, `pages/config/users/_id/index.vue`).
 struct ListeningStatsContent: View {
     let stats: AudiobookshelfClient.ListeningStats
     /// Liczba ukończonych — znana tylko dla własnego konta (postęp słuchacza).

@@ -11,6 +11,8 @@ struct AppModels {
     let pairing: PhonePairing
     let metadataSources: MetadataSourcesController
     let libraryTasks: LibraryTasks
+    let users: UsersModel
+    let avatars: AvatarStore
 }
 
 /// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,
@@ -24,7 +26,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     case log
     // Serwer
     case libraries
-    case accounts
     case users
     case serverSettings
     case access
@@ -36,17 +37,20 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
     /// Strona zapisana przy poprzednim uruchomieniu; nieznana (np. usunięta w nowszej wersji) daje „Ogólne”.
     init(storedValue: String?) {
-        self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
+        switch storedValue {
+        // Etap 2: „Konta” weszły do „Użytkowników”.
+        case "accounts": self = .users
+        default: self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
+        }
     }
 
     var title: String {
         switch self {
         case .general: "Ogólne"
         case .libraries: "Biblioteki"
-        case .accounts: "Konta"
         case .users: "Użytkownicy"
         case .backups: "Kopie zapasowe"
-        case .sharing: "Udostępnianie"
+        case .sharing: "Dostęp zdalny"
         case .metadata: "Źródła metadanych"
         case .log: "Log serwera"
         case .serverSettings: "Ustawienia serwera"
@@ -68,10 +72,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .libraries: "books.vertical"
-        case .accounts: "person.2"
-        case .users: "person.3"
+        case .users: "person.2.crop.square.stack"
         case .backups: "clock.arrow.circlepath"
-        case .sharing: "iphone.and.arrow.forward"
+        case .sharing: "globe"
         case .metadata: "text.book.closed"
         case .log: "doc.text.magnifyingglass"
         case .serverSettings: "server.rack"
@@ -86,8 +89,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: GeneralSettingsPage(models: models)
         case .libraries: LibrariesSettingsPage(models: models)
-        case .accounts: AccountsSettingsPage(models: models)
-        case .users: UsersSettingsPage(models: models)
+        case .users: UsersPage(models: models)
         case .backups: BackupsSettingsPage(models: models)
         case .sharing: SharingSettingsPage(models: models)
         case .metadata: MetadataSettingsPage(models: models)
@@ -109,14 +111,15 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .libraries:
             if case .failed = models.account.state { return true }
             return false
-        case .accounts:
+        case .users:
+            // Brak hasła roota albo brak konta tego Maca (dawny znak przy „Kontach”).
             if case .needsPassword = models.account.state { return true }
             guard models.account.state == .ready else { return false }
             switch models.account.userState {
             case .missing, .invalid: return true
             case .unknown, .ready: return false
             }
-        case .users, .backups, .serverSettings, .access, .activity, .notifications:
+        case .backups, .serverSettings, .access, .activity, .notifications:
             return false
         case .sharing:
             return models.sharing.lastError != nil
@@ -136,6 +139,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 /// Miejsce w oknie ustawień: strona z paska bocznego albo podstrona obiektu.
 /// Podstrona to element ścieżki `NavigationStack` w szczegółach (`SettingsNavigation.path`).
 enum SettingsDestination: Hashable, Codable {
+    /// Profil osoby (Użytkownicy › osoba).
+    case user(id: String)
+    /// Konto root (Użytkownicy › Administrator serwera).
+    case root
     /// Dziennik serwera. Do etapu 5 planu to osobna strona („Log serwera”), nie podstrona.
     case serverLog
     /// Biblioteka. Do etapu 4 planu ustawienia biblioteki są arkuszem na stronie „Biblioteki”.
@@ -144,6 +151,7 @@ enum SettingsDestination: Hashable, Codable {
     /// Strona na pasku bocznym, pod którą leży to miejsce.
     var page: SettingsPage {
         switch self {
+        case .user, .root: .users
         case .serverLog: .log
         case .library: .libraries
         }
@@ -152,14 +160,19 @@ enum SettingsDestination: Hashable, Codable {
     /// Czy to podstrona (element ścieżki), czy na razie sama strona z paska bocznego.
     var isSubpage: Bool {
         switch self {
+        case .user, .root: true
         case .serverLog, .library: false
         }
     }
 
     @MainActor @ViewBuilder
     func content(models: AppModels) -> some View {
-        // Na razie żadne miejsce nie jest podstroną (`isSubpage`); widoki dochodzą z etapami planu.
-        EmptyView()
+        switch self {
+        case .user(let id): UserProfilePage(models: models, userID: id)
+        case .root: RootProfilePage(models: models)
+        // Jeszcze nie podstrony (`isSubpage`): `show(_:)` otwiera ich stronę.
+        case .serverLog, .library: EmptyView()
+        }
     }
 }
 
@@ -179,6 +192,13 @@ final class SettingsNavigation {
         }
     }
     var path: [SettingsDestination] = []
+
+    /// Akcja z menu kontekstowego kafla osoby, którą profil wykona po otwarciu.
+    enum ProfileAction: Equatable {
+        case pairPhone
+        case changePassword
+    }
+    var pendingProfileAction: ProfileAction?
 
     init() {
         page = SettingsPage(storedValue: UserDefaults.standard.string(forKey: Self.lastPageKey))

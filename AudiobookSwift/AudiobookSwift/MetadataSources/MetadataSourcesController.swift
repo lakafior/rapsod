@@ -336,7 +336,7 @@ final class MetadataSourcesController {
 
     // MARK: - Okno stron agregatora
 
-    /// Wybór strony przyciskiem w Ustawieniach aplikacji (okno otwiera wywołujący).
+    /// Wybór strony przyciskiem w Ustawieniach (okno otwiera wywołujący).
     func showPage(_ page: Page) {
         self.page = page
         pageRequest += 1

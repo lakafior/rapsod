@@ -105,7 +105,7 @@ final class BackupsModel {
             try await account.withAdminToken { try await $0.applyBackup(id: backup.id, token: $1) }
             await account.reconnect()
             guard account.state == .ready else {
-                notice = "Kopia przywrócona. Aplikacja potrzebuje teraz danych konta root — zobacz podstronę „Konta”."
+                notice = "Kopia przywrócona. Aplikacja potrzebuje teraz danych konta root — zobacz Ustawienia → Użytkownicy → Administrator serwera."
                 return
             }
             await load()

@@ -100,7 +100,7 @@ struct RSSFeedSheet: View {
                         ForEach(addresses, id: \.url) { Text("\($0.url) (\($0.label))").tag($0.url) }
                     }
                     if address.contains(ServerEnvironment.host) {
-                        Label("Ten adres działa tylko na tym Macu. Żeby słuchać na telefonie, włącz udostępnianie w sieci albo dostęp spoza domu w Ustawieniach → Udostępnianie.", systemImage: "exclamationmark.triangle")
+                        Label("Ten adres działa tylko na tym Macu. Żeby słuchać na telefonie, włącz sieć domową albo dostęp spoza domu w Ustawieniach → Dostęp zdalny.", systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -316,7 +316,7 @@ struct ShareLinkSheet: View {
                         ForEach(addresses, id: \.url) { Text("\($0.url) (\($0.label))").tag($0.url) }
                     }
                     if address.contains(ServerEnvironment.host) {
-                        Label("Ten adres działa tylko na tym Macu. Żeby wysłać link komuś innemu, włącz dostęp spoza domu w Ustawieniach → Udostępnianie.", systemImage: "exclamationmark.triangle")
+                        Label("Ten adres działa tylko na tym Macu. Żeby wysłać link komuś innemu, włącz dostęp spoza domu w Ustawieniach → Dostęp zdalny.", systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
                     }

@@ -27,59 +27,40 @@ struct LibrariesSettingsPage: View {
     }
 }
 
-/// Konta: konto do słuchania (Mac i telefon) i konto root do zarządzania serwerem.
-struct AccountsSettingsPage: View {
-    let models: AppModels
-
-    private var account: ServerAccount { models.account }
-
-    var body: some View {
-        SettingsForm {
-            Section("Konto do słuchania") {
-                UserAccountSection(account: account)
-            }
-            Section("Konto do zarządzania serwerem") {
-                rootRows
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var rootRows: some View {
-        switch account.state {
-        case .ready:
-            LabeledContent("Konto", value: "\(account.username ?? ServerEnvironment.rootUsername) (hasło w pęku kluczy)")
-            Text("Tego konta używa „Zarządzanie serwerem…” w menu na pasku menu: użytkownicy, biblioteki i ustawienia audiobookshelf.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        case .needsPassword(let reason):
-            RootPasswordForm(account: account, reason: reason)
-        case .connecting:
-            ProgressView("Łączenie z serwerem…")
-                .controlSize(.small)
-        case .disconnected:
-            Text("Dostępne, gdy serwer działa.").foregroundStyle(.secondary)
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
-                .textSelection(.enabled)
-        }
-    }
-}
-
-/// Udostępnianie: sieć lokalna, dane do telefonu, dostęp spoza domu i tunel.
+/// Dostęp zdalny (dawne „Udostępnianie” bez telefonu): sieć domowa, dostęp spoza domu i tunel.
+/// Telefony i dane logowania są od etapu 2 w profilach osób (strona „Użytkownicy”).
 struct SharingSettingsPage: View {
     let models: AppModels
+    @Environment(SettingsNavigation.self) private var navigation
+    @State private var addressesCode: AddressesCode?
 
     var body: some View {
         SettingsForm {
-            Section("Połącz telefon") {
+            Section("Sieć domowa i dostęp spoza domu") {
                 ConnectPhoneSection(sharing: models.sharing, supervisor: models.supervisor, account: models.account)
             }
-            Section("Aplikacja AudiobookSwift na telefonie") {
-                PhonePairingSection(pairing: models.pairing)
+            Section {
+                if models.pairing.devices.isEmpty {
+                    LabeledContent("Podłączone telefony", value: "brak")
+                } else {
+                    LabeledContent("Adresy na telefonach") {
+                        Button("Kod z adresami…") { addressesCode = models.pairing.addressesCode().map(AddressesCode.init) }
+                            .disabled(models.pairing.addresses.isEmpty)
+                    }
+                }
+                LabeledContent("Podłączanie telefonów") {
+                    Button("Użytkownicy…") { navigation.page = .users }
+                }
+            } header: {
+                Text("Aplikacja AudiobookSwift na telefonie")
+            } footer: {
+                Text("Telefon podłączasz kodem QR w profilu osoby (Ustawienia → Użytkownicy). Po włączeniu dostępu spoza domu albo zmianie adresów zeskanuj w telefonie „Kod z adresami” — to ten sam kod co w profilach; zaktualizuje adresy bez ponownego podłączania. Zmieniony adres w sieci domowej telefon znajduje też sam (Bonjour).")
             }
+        }
+        .sheet(item: $addressesCode) { AddressesCodeSheet(url: $0.url) }
+        .task(id: models.account.state) {
+            guard models.account.state == .ready else { return }
+            await models.pairing.refresh()
         }
     }
 }

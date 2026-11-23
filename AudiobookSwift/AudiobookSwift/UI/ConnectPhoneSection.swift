@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Wiersze sekcji „Połącz telefon” (podstrona „Udostępnianie” ustawień): wszystko, co trzeba przepisać
-/// do dowolnego klienta audiobookshelf (adres, nazwa użytkownika, hasło).
+/// Wiersze strony „Dostęp zdalny”: sieć domowa (przełącznik i adresy) i dostęp spoza domu
+/// (własny adres albo Cloudflare Tunnel). Nazwa i hasło do innych aplikacji są od etapu 2
+/// w profilu osoby („Dane logowania…”).
 struct ConnectPhoneSection: View {
     let sharing: SharingController
     let supervisor: ServerSupervisor
@@ -20,7 +21,7 @@ struct ConnectPhoneSection: View {
     }
 
     var body: some View {
-        Toggle("Udostępniaj serwer w sieci lokalnej", isOn: Binding(
+        Toggle("Udostępniaj serwer w sieci domowej", isOn: Binding(
             get: { sharing.isEnabled },
             set: { enabled in Task { await sharing.setEnabled(enabled) } }
         ))
@@ -33,18 +34,14 @@ struct ConnectPhoneSection: View {
 
         if isReachable {
             ForEach(Array(sharing.localURLs.enumerated()), id: \.element) { index, url in
-                CopyableRow(title: index == 0 ? "Adres w sieci lokalnej" : "", value: url.absoluteString)
+                CopyableRow(title: index == 0 ? "Adres w sieci domowej" : "", value: url.absoluteString)
             }
             if sharing.localURLs.isEmpty {
-                LabeledContent("Adres w sieci lokalnej", value: "brak połączenia z siecią")
+                LabeledContent("Adres w sieci domowej", value: "brak połączenia z siecią")
             }
         }
         if let external = sharing.externalURL {
             CopyableRow(title: "Adres spoza domu", value: external.absoluteString)
-        }
-        if let credentials = account.phoneCredentials {
-            CopyableRow(title: "Nazwa użytkownika", value: credentials.username)
-            PasswordRow(password: credentials.password)
         }
 
         Picker("Dostęp spoza domu", selection: Binding(
@@ -58,7 +55,7 @@ struct ConnectPhoneSection: View {
 
         switch sharing.externalAccess {
         case .none:
-            Text("Serwer jest dostępny tylko z tego Maca\(sharing.isEnabled ? " i z sieci lokalnej" : ""). Dostęp spoza domu jest opcjonalny: własny adres (np. Tailscale, własny tunel lub VPN) albo Cloudflare Tunnel zestawiany przez aplikację.")
+            Text("Serwer jest dostępny tylko z tego Maca\(sharing.isEnabled ? " i z sieci domowej" : ""). Dostęp spoza domu jest opcjonalny: własny adres (np. Tailscale, własny tunel lub VPN) albo Cloudflare Tunnel zestawiany przez aplikację.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -73,7 +70,7 @@ struct ConnectPhoneSection: View {
                 }
             }
             .onAppear { externalURL = sharing.settings.externalURL }
-            Text("Aplikacja niczego pod tym adresem nie zestawia — to adres Twojego tunelu albo VPN (np. Tailscale), pokazywany razem z danymi logowania.")
+            Text("Aplikacja niczego pod tym adresem nie zestawia — to adres Twojego tunelu albo VPN (np. Tailscale). Trafia do kodów telefonów i do danych logowania w profilach osób.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -90,11 +87,11 @@ struct ConnectPhoneSection: View {
 
     private var explanation: String {
         if sharing.isEnabled {
-            "Aplikację AudiobookSwift na telefonie sparujesz kodem QR niżej. W innej aplikacji audiobookshelf (np. oficjalnej, Plappa, ShelfPlayer) podaj adres serwera oraz nazwę i hasło poniżej. Ruch w sieci lokalnej idzie zwykłym HTTP: hasło i treść są widoczne dla innych urządzeń w tej samej sieci. Wyłączenie przywraca nasłuch tylko na tym Macu."
+            "Aplikację AudiobookSwift na telefonie podłączysz kodem QR w profilu osoby (Ustawienia → Użytkownicy); tam są też dane logowania (adres, nazwa, hasło) do innych aplikacji audiobookshelf (np. oficjalnej, Plappa, ShelfPlayer). Ruch w sieci domowej idzie zwykłym HTTP: hasło i treść są widoczne dla innych urządzeń w tej samej sieci. Wyłączenie przywraca nasłuch tylko na tym Macu."
         } else if canEnable {
-            "Teraz serwer jest dostępny tylko z tego Maca. Po włączeniu zacznie słuchać w sieci lokalnej po zwykłym HTTP (wymaga restartu serwera), a telefon połączy się dowolnym klientem audiobookshelf."
+            "Teraz serwer jest dostępny tylko z tego Maca. Po włączeniu zacznie słuchać w sieci domowej po zwykłym HTTP (wymaga restartu serwera), a telefon połączy się aplikacją AudiobookSwift albo dowolnym klientem audiobookshelf."
         } else {
-            "Udostępnianie wymaga działającego serwera i konta użytkownika."
+            "Sieć domowa wymaga działającego serwera i konta tego Maca (Ustawienia → Użytkownicy)."
         }
     }
 }

@@ -17,7 +17,7 @@ struct ServerMenu: View {
 
         MenuPlayerControls(player: player)
 
-        // Codzienna praca jest natywna (okno „Biblioteka” i „Ustawienia aplikacji”); web UI zostaje
+        // Codzienna praca jest natywna (okno „Biblioteka” i „Ustawienia”); web UI zostaje
         // jako wyjście awaryjne pod Option (etap 9i): przy bibliotece — web UI słuchacza, przy
         // ustawieniach — zarządzanie serwerem na koncie root.
         Button("Otwórz bibliotekę") {

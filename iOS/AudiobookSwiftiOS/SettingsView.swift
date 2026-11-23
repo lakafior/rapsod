@@ -95,13 +95,13 @@ struct SettingsView: View {
                 Section {
                     Button("Odśwież adresy", systemImage: "qrcode.viewfinder") { showsScanner = true }
                 } footer: {
-                    Text("Gdy na Macu włączysz dostęp spoza domu albo zmienią się jego adresy: Ustawienia aplikacji → Udostępnianie → „Kod z adresami…”, a tu zeskanuj kod. Telefon nie musi być parowany od nowa.")
+                    Text("Gdy na Macu włączysz dostęp spoza domu albo zmienią się jego adresy: ustawienia AudiobookSwift → Dostęp zdalny (albo swój profil w „Użytkownikach”) → „Kod z adresami…”, a tu zeskanuj kod. Telefonu nie trzeba podłączać od nowa.")
                 }
 
                 Section {
                     Button("Rozłącz", role: .destructive) { confirmsDisconnect = true }
                 } footer: {
-                    Text("Rozłączenie usuwa klucz tylko z tego telefonu. Żeby unieważnić go na serwerze, usuń telefon z listy sparowanych na Macu.")
+                    Text("Rozłączenie usuwa klucz tylko z tego telefonu. Żeby cofnąć go na serwerze, odłącz telefon na Macu, w swoim profilu (Użytkownicy).")
                 }
             }
             .navigationTitle("Ustawienia")

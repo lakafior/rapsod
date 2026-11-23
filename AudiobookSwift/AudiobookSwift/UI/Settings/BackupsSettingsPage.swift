@@ -39,7 +39,7 @@ struct AdminUnavailableRow: View {
             ProgressView("Łączenie z serwerem…").controlSize(.small)
         case .needsPassword:
             ActionBanner(text: "Wymaga konta root, a aplikacja nie zna jego aktualnego hasła.", actionTitle: "Przejdź do konta root…") {
-                navigation?.page = .accounts
+                navigation?.show(.root)
             }
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.red)

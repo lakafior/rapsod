@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wiersze trybu „Cloudflare Tunnel” w sekcji „Połącz telefon”: instalacja `cloudflared`,
+/// Wiersze trybu „Cloudflare Tunnel” na stronie „Dostęp zdalny”: instalacja `cloudflared`,
 /// token z panelu, stan połączenia, opublikowany adres i log tunelu.
 struct CloudflareTunnelSection: View {
     let tunnel: CloudflareTunnel

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Wiersze strony „Źródła metadanych” w Ustawieniach aplikacji: przełącznik, stan,
+/// Wiersze strony „Źródła metadanych” w Ustawieniach: przełącznik, stan,
 /// przyciski stron konfiguracji i wyszukiwarki, log.
 struct MetadataSourcesSection: View {
     let sources: MetadataSourcesController

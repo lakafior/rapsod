@@ -50,9 +50,10 @@ enum SettingsTour {
         log("OK")
     }
 
-    /// Podstrony do odwiedzenia: dochodzą z etapami planu (osoby, root).
+    /// Podstrony do odwiedzenia: profil każdej osoby i strona roota.
     private static func subpages(models: AppModels) async -> [SettingsDestination] {
-        []
+        if models.account.state == .ready, !models.users.hasLoaded { await models.users.load() }
+        return models.users.people.map { .user(id: $0.id) } + [.root]
     }
 
     private static func log(_ text: String) {
@@ -65,6 +66,8 @@ extension SettingsDestination {
     /// Opis do wyjścia trybu sprawdzającego, bez nazw osób.
     var tourName: String {
         switch self {
+        case .user: "user"
+        case .root: "root"
         case .serverLog: "serverLog"
         case .library: "library"
         }
