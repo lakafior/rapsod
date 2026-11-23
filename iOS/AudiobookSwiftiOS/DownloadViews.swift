@@ -279,6 +279,7 @@ private struct DownloadRow: View {
     let model: AppModel
     let session: ServerSession
     @State private var error: String?
+    @State private var reader: ReaderTarget?
     @ScaledMetric(relativeTo: .body) private var coverSize: CGFloat = 52
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -348,7 +349,14 @@ private struct DownloadRow: View {
         .buttonStyle(.plain)
         .accessibilityHint(item.isComplete ? (isCurrent && model.playback.player.isPlaying ? "Zatrzymuje" : "Odtwarza z telefonu") : "")
         .contextMenu {
+            if !item.isEpisode, session.downloads.manager.ebookURL(itemID: item.itemID) != nil {
+                // E-book pobrany z książką (etap 10g) — także bez sieci.
+                Button("Czytaj e-book", systemImage: "book") { reader = ReaderTarget(itemID: item.itemID, title: item.title) }
+            }
             DownloadMenuItems(target: target, session: session) { error = $0 }
+        }
+        .fullScreenCover(item: $reader) { target in
+            ReaderScreen(target: target, session: session, isOffline: model.isOffline)
         }
         .swipeActions(edge: .trailing) {
             Button("Usuń", systemImage: "trash", role: .destructive) {
