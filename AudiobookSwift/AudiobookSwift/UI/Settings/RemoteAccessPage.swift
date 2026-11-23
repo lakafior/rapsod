@@ -77,8 +77,8 @@ struct RemoteAccessPage: View {
             await feeds.load()
         }
         .onAppear {
-            if navigation.pendingRemoteAdvanced {
-                navigation.pendingRemoteAdvanced = false
+            if navigation.pendingAdvanced == .sharing {
+                navigation.pendingAdvanced = nil
                 showsAdvanced = true
             }
         }

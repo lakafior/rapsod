@@ -23,7 +23,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     // Aplikacja
     case general
     case sharing
-    case metadata
     case log
     // Serwer
     case libraries
@@ -42,6 +41,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case "accounts": self = .users
         // Etap 3: „Dostęp” wszedł do „Dostępu zdalnego”.
         case "access": self = .sharing
+        // Etap 4: „Źródła metadanych” weszły do „Bibliotek”.
+        case "metadata": self = .libraries
         default: self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
         }
     }
@@ -53,7 +54,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "Użytkownicy"
         case .backups: "Kopie zapasowe"
         case .sharing: "Dostęp zdalny"
-        case .metadata: "Źródła metadanych"
         case .log: "Log serwera"
         case .serverSettings: "Ustawienia serwera"
         case .activity: "Aktywność"
@@ -64,7 +64,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     /// Grupa na pasku bocznym.
     var isServerPage: Bool {
         switch self {
-        case .general, .sharing, .metadata, .log: false
+        case .general, .sharing, .log: false
         default: true
         }
     }
@@ -76,7 +76,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: "person.2.crop.square.stack"
         case .backups: "clock.arrow.circlepath"
         case .sharing: "globe"
-        case .metadata: "text.book.closed"
         case .log: "doc.text.magnifyingglass"
         case .serverSettings: "server.rack"
         case .activity: "waveform"
@@ -92,7 +91,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .users: UsersPage(models: models)
         case .backups: BackupsSettingsPage(models: models)
         case .sharing: RemoteAccessPage(models: models)
-        case .metadata: MetadataSettingsPage(models: models)
         case .log: LogSettingsPage(models: models)
         case .serverSettings: ServerSettingsPage(models: models)
         case .activity: ActivitySettingsPage(models: models)
@@ -109,6 +107,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             return models.loginItem.requiresApproval || models.loginItem.lastError != nil
         case .libraries:
             if case .failed = models.account.state { return true }
+            // Polskie źródła metadanych włączone, ale niedziałające (dawny znak przy „Źródłach metadanych”).
+            let sources = models.metadataSources
+            guard sources.isEnabled else { return false }
+            if case .failed = sources.state { return true }
+            if case .unavailable = sources.state { return true }
+            if case .failed = sources.registration { return true }
             return false
         case .users:
             // Brak hasła roota albo brak konta tego Maca (dawny znak przy „Kontach”).
@@ -124,13 +128,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             if case .failed = models.sharing.tunnel.state, models.sharing.externalAccess == .cloudflareTunnel { return true }
             return models.sharing.lastError != nil
                 || (!models.pairing.devices.isEmpty && models.sharing.phonesMayLackRemoteAddress)
-        case .metadata:
-            let sources = models.metadataSources
-            guard sources.isEnabled else { return false }
-            if case .failed = sources.state { return true }
-            if case .unavailable = sources.state { return true }
-            if case .failed = sources.registration { return true }
-            return false
         case .log:
             return false
         }
@@ -146,7 +143,7 @@ enum SettingsDestination: Hashable, Codable {
     case root
     /// Dziennik serwera. Do etapu 5 planu to osobna strona („Log serwera”), nie podstrona.
     case serverLog
-    /// Biblioteka. Do etapu 4 planu ustawienia biblioteki są arkuszem na stronie „Biblioteki”.
+    /// Biblioteka (Biblioteki › biblioteka).
     case library(id: String)
 
     /// Strona na pasku bocznym, pod którą leży to miejsce.
@@ -161,8 +158,8 @@ enum SettingsDestination: Hashable, Codable {
     /// Czy to podstrona (element ścieżki), czy na razie sama strona z paska bocznego.
     var isSubpage: Bool {
         switch self {
-        case .user, .root: true
-        case .serverLog, .library: false
+        case .user, .root, .library: true
+        case .serverLog: false
         }
     }
 
@@ -171,8 +168,9 @@ enum SettingsDestination: Hashable, Codable {
         switch self {
         case .user(let id): UserProfilePage(models: models, userID: id)
         case .root: RootProfilePage(models: models)
-        // Jeszcze nie podstrony (`isSubpage`): `show(_:)` otwiera ich stronę.
-        case .serverLog, .library: EmptyView()
+        case .library(let id): LibraryPage(models: models, libraryID: id)
+        // Jeszcze nie podstrona (`isSubpage`): `show(_:)` otwiera jej stronę.
+        case .serverLog: EmptyView()
         }
     }
 }
@@ -200,8 +198,8 @@ final class SettingsNavigation {
         case changePassword
     }
     var pendingProfileAction: ProfileAction?
-    /// Strona „Dostęp zdalny” ma się otworzyć z rozwiniętym „Zaawansowane” (np. z profilu osoby).
-    var pendingRemoteAdvanced = false
+    /// Strona, która ma się otworzyć z rozwiniętym „Zaawansowane” (np. „Dostęp zdalny” z profilu osoby).
+    var pendingAdvanced: SettingsPage?
 
     init() {
         page = SettingsPage(storedValue: UserDefaults.standard.string(forKey: Self.lastPageKey))

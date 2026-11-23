@@ -2,7 +2,7 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
-**Stan wdrożenia (2026-11-23):** etapy **1**, **2** (2a–2d, z resetem hasła roota) i **3** są wykonane. Etapy 1–2 są scalone do `main`. Etap 3 i reset hasła roota są na gałęzi `claude/ustawienia-etap-3-reset-roota`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2) i [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota). Etapy 4–6 czekają.
+**Stan wdrożenia (2026-11-23):** etapy **1**, **2** (2a–2d, z resetem hasła roota), **3** i **4** są wykonane. Etapy 1–3 i reset są scalone do `main`. Etap 4 jest na gałęzi `claude/ustawienia-etap-4-6`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2), [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota) i [część 12](#12-wdrożenie-etapu-4-biblioteki). Etapy 5–6 czekają.
 
 **Decyzje użytkownika (2026-11-23):** wariant B; telefony dla każdego domownika; pełna kontrola nad kontem root (zmiana i reset hasła); skrót „Podłącz telefon…” na pasku menu tylko jako opcja; wygląd jak w makietach, z własnymi awatarami. Szczegóły i wpływ na plan: [część 9](#9-decyzje-z-2026-11-23-i-ich-skutki).
 
@@ -730,7 +730,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - Baner potrzebuje wiedzy, które telefony mają stare adresy. Dziś jej nie ma. Pierwsza wersja może pokazywać baner po każdej zmianie adresów do czasu pokazania kodu. To założenie, sprawdzić z zachowaniem iOS.
 - **Do sprawdzenia:** włączenie i wyłączenie sieci domowej (restart serwera), własny adres, tunel z tokenem testowym (bez ruszania tunelu użytkownika), klucze API: klucz telefonu oznaczony i nie da się go przypadkiem usunąć bez ostrzeżenia, OpenID zapis i przywrócenie.
 
-**Etap 4 — Biblioteki**
+**Etap 4 — Biblioteki** — ✅ wykonany (część 12)
 
 - **Zakres:**
   - arkusz biblioteki staje się podstroną,
@@ -1021,3 +1021,86 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 - **Punkt odniesienia banera** w instalacji sprzed etapu 3 ustala się dopiero przy pierwszym otwarciu „Dostępu zdalnego” po wczytaniu telefonów. Zmiana adresu przed tą chwilą zostanie przyjęta bez alarmu.
 - **Reset w układzie wydania** (`Contents/Resources/Server`): ścieżki do `bcryptjs` i `sqlite3` w paczce sprawdzone tylko listingiem, reset nie był uruchamiany na zainstalowanej aplikacji.
 - **„Zakończ” z menu** nie zamyka aplikacji, gdy w oknie ustawień jest otwarty arkusz. Nie sprawdzałem, czy tak było przed tymi zmianami.
+
+## 12. Wdrożenie etapu 4 („Biblioteki”)
+
+Gałąź `claude/ustawienia-etap-4-6` z `main` (`e1fd9eb`, po etapach 13a i 13b).
+
+### Co zrobiono
+
+- **Lista bibliotek** (`UI/Settings/SettingsPages.swift`, `LibraryListRows`):
+  - wiersz z ikoną typu, nazwą i folderami; klik w nazwę albo strzałkę otwiera podstronę;
+  - obok „Skanuj”, pod spodem wynik ostatniego skanu;
+  - kolejność przez przeciąganie (`onMove`, nowe `ServerAccount.reorderLibraries`);
+  - „Dodaj audiobooki…” i „Dodaj podcasty…” (te same arkusze wyboru folderu co dotąd);
+  - gdy aplikacja nie zna hasła roota, zamiast formularza jest baner „Podaj hasło…” do strony roota (B9).
+- **Podstrona biblioteki** (`UI/Settings/LibraryPage.swift`, cel `.library(id:)` jest teraz prawdziwą podstroną; dawny `LibrarySettingsSheet.swift` usunięty). Sekcje:
+  - Biblioteka (nazwa, ikona, źródło; w podcastach sklep iTunes), Foldery, Wyświetlanie;
+  - Skanowanie: „Skanuj”, „Wymuś pełny skan”, „Dopasuj wszystkie…” (z potwierdzeniem), obserwator tej biblioteki z dopiskiem o ustawieniu globalnym, harmonogram;
+  - Słuchanie („Oznacz jako ukończone”);
+  - Zaawansowane: tylko audiobooki, ASIN/ISBN, skrypty EPUB, źródła skanera z kolejnością, usuwanie plików metadanych, „Wyżej/Niżej” (kolejność bibliotek dla dostępności);
+  - na dole „Usuń bibliotekę…” z potwierdzeniem; po usunięciu (także z web UI) strona wraca do listy.
+- **Zapis natychmiastowy** (`LibrarySettingsModel`):
+  - zmiana pola uruchamia zapis po 0,4 s, więc kilka szybkich kliknięć to jeden `PATCH`;
+  - zapis czeka na trwającą operację, a zmiana w trakcie zapisu nie jest nadpisywana odpowiedzią serwera;
+  - nazwa zapisuje się po Enter albo wyjściu z pola, a pusta wraca do zapisanej;
+  - nieudany zapis (np. wyłączenie ostatniego źródła skanera) pokazuje błąd na górze i przywraca pola do stanu z serwera;
+  - wyjście z podstrony zapisuje to, co czeka.
+- **Metadane:** polskie źródła i własni dostawcy jako sekcje „Bibliotek”. Strona „Źródła metadanych” zniknęła. Zapisana strona `metadata` otwiera „Biblioteki”, a znak uwagi źródeł przeszedł na „Biblioteki”.
+- **Biblioteki › Zaawansowane** (`LibraryServerSettingsSections`, model tworzony dopiero po rozwinięciu):
+  - skaner i okładki, „Obserwuj foldery we wszystkich bibliotekach” z „Uruchom ponownie”;
+  - zapis okładek i `metadata.json` w folderach pozycji;
+  - sortowanie z przedrostkami (zapis po Enter albo „Zapisz”);
+  - pamięć podręczna: jeden „Wyczyść…” z wyborem „Tylko okładki pozycji” / „Całą pamięć podręczną” (S11 i S12).
+- **„Ustawienia serwera”** mają już tylko język serwera (S10). Język przejdzie do Ogólne › Zaawansowane w etapie 5.
+- **Cykl `libraryTasks`:** lista i podstrona liczą się osobno (`appear()`/`disappear()`), a podstrona sama wznawia odpytywanie (`resume()`). Przejście lista → biblioteka nie zrywa połączenia zdarzeń.
+- **Okno powitalne:** `LibrarySection` obsługuje już tylko okno powitalne. Z kodu zniknęły gałęzie dla `tasks != nil`, a ścieżka bez nich jest bez zmian.
+- **Tryb sprawdzający** odwiedza też „Biblioteki” z rozwiniętym „Zaawansowane” i podstronę każdej biblioteki. `pendingRemoteAdvanced` zastąpiła ogólna `pendingAdvanced: SettingsPage?`.
+- **Teksty:** okno źródeł metadanych odsyła do „Ustawienia → Biblioteki → Metadane”, a komunikat o plikach metadanych do „Biblioteki › Zaawansowane”. README opisuje nowy układ.
+
+### Zrzuty
+
+| | Jasny | Ciemny |
+|---|---|---|
+| Biblioteki | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-dark.png) |
+| Biblioteki › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteki-zaawansowane-dark.png) |
+| Podstrona biblioteki | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-dark.png) |
+| Podstrona › Zaawansowane | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-zaawansowane-light.png) | ![](ustawienia-nowy-uklad/wdrozenie-png/biblioteka-zaawansowane-dark.png) |
+
+### Sprawdzone uruchomieniem (testowa kopia, port 13461)
+
+Do testów w bazie testowej kopii dopisana jest druga biblioteka audiobooków i biblioteka podcastów (przy zatrzymanym serwerze). Wyniki sprawdzane w bazie serwera:
+
+- **Tryb sprawdzający:** `TOUR OK`, w tym trzy podstrony bibliotek.
+- **Skanowanie:**
+  - „Skanuj” z listy: wynik „Skan zakończony — dodane: 0, zmienione: 0.” pod wierszem;
+  - „Wymuś pełny skan” na podstronie podcastów: wynik z liczbami, więc połączenie zdarzeń działało po przejściu z listy.
+- **Zapis na podstronie** (sprawdzony w bazie serwera):
+  - dwa przełączniki kliknięte szybko po sobie dały jeden zapis;
+  - nazwa zapisała się po wyjściu z pola;
+  - harmonogram „Codziennie” dał `0 3 * * *`;
+  - „przesłuchano procent” zapisał procent, a sekundy wyczyścił;
+  - przesunięcie i wyłączenie źródeł skanera;
+  - sklep iTunes „Polska” zapisał `pl`.
+- **Nieudany zapis:** wyłączenie ostatniego źródła skanera pokazało błąd, przełącznik wrócił, a w bazie zostało źródło.
+- **Kolejność:** „Wyżej” na podstronie zmienia `displayOrder`.
+- **Usunięcie biblioteki:** potwierdzenie, powrót do listy, w bazie bez biblioteki, folder na dysku został.
+- **Biblioteki › Zaawansowane:**
+  - podtytuł i okładki w folderach zapisują się w `server-settings`;
+  - obserwator pokazuje „Uruchom ponownie”, a strona przetrwała restart serwera;
+  - „Wyczyść…” → „Tylko okładki pozycji” daje komunikat.
+  - Ustawienia testowe zostały przywrócone.
+
+### Tylko skompilowane albo przejrzane
+
+- **Przeciąganie wierszy** (`onMove` w formularzu) nie było przeciągane: test wymagałby przejęcia myszy. Na podstronie jest „Wyżej/Niżej”, sprawdzone.
+- **Dodawanie biblioteki** z „Dodaj audiobooki…” / „Dodaj podcasty…” nie było klikane (panel wyboru folderu). Kod dodawania się nie zmienił, zmieniły się tylko nazwy przycisków.
+- **Polskie źródła i własny dostawca** nie były włączane ani dodawane. To ten sam kod co na dawnej stronie, w nowym miejscu.
+- **Okno powitalne:** sprawdzone przeglądem zmian, bez uruchomienia. Usunięte są tylko gałęzie dla ustawień.
+
+### Odstępstwa
+
+- **„Skanuj” w wierszu** to zwykły przycisk. Pełny skan i „Dopasuj wszystkie…” są tylko na podstronie (tabela przejścia, B3). Dawne menu przy „Skanuj” zniknęło.
+- **Wiersz biblioteki** to przycisk z własną strzałką, nie `NavigationLink`: formularz dorysowywał linkowi drugą strzałkę.
+- **Wyświetlanie i Zaawansowane:** „Tylko audiobooki” trafiło pod „Zaawansowane” podstrony razem z ASIN/ISBN i EPUB (BS8), zgodnie z tabelą przejścia.
+

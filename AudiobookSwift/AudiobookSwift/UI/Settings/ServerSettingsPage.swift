@@ -54,22 +54,53 @@ struct AdminPage<Model: AnyObject, Content: View>: View {
 
 /// Ustawienia serwera z `client/pages/config/index.vue`, które mają znaczenie przy serwerze
 /// na tym Macu. Pominięte (dotyczą tylko web UI): Chromecast, iframe, CORS, widok półki,
-/// format daty i godziny.
+/// format daty i godziny. Skaner, okładki, zapis w folderach, sortowanie i pamięć podręczna są
+/// w Biblioteki › Zaawansowane (`LibraryServerSettingsSections`); tu został język serwera,
+/// który w etapie 5 planu przejdzie do Ogólne › Zaawansowane.
 struct ServerSettingsPage: View {
     let models: AppModels
 
     var body: some View {
         AdminPage(account: models.account, title: "Ustawienia serwera", make: { ServerSettingsModel(account: models.account) }, load: { await $0.load() }) { model in
-            ServerSettingsContent(model: model, supervisor: models.supervisor)
+            ServerLanguageSection(model: model)
         }
     }
 }
 
-private struct ServerSettingsContent: View {
+/// Język serwera (S10).
+struct ServerLanguageSection: View {
+    let model: ServerSettingsModel
+
+    var body: some View {
+        Section {
+            AdminStatusRows(status: model.status)
+            if let settings = model.settings {
+                Picker("Język serwera", selection: Binding(
+                    get: { settings.language },
+                    set: { value in Task { await model.update { $0.language = value } } }
+                )) {
+                    ForEach(ServerLanguage.options, id: \.code) { Text($0.label).tag($0.code) }
+                    if !ServerLanguage.options.contains(where: { $0.code == settings.language }) {
+                        Text(settings.language).tag(settings.language)
+                    }
+                }
+                .disabled(model.status.isBusy)
+            }
+        } header: {
+            Text("Język")
+        } footer: {
+            Text("Domyślny język web UI i tekstów, które serwer tworzy sam (np. nazwy półek). Aplikacja ma własny interfejs po polsku.")
+        }
+    }
+}
+
+/// Wspólne ustawienia serwera dla wszystkich bibliotek (Biblioteki › Zaawansowane): skaner i okładki,
+/// zapis w folderach pozycji, sortowanie i pamięć podręczna. Każda zmiana idzie od razu na serwer.
+struct LibraryServerSettingsSections: View {
     let model: ServerSettingsModel
     let supervisor: ServerSupervisor
     @State private var prefixes = ""
-    @State private var confirmPurge: Bool?
+    @State private var confirmPurge = false
 
     var body: some View {
         if let settings = model.settings {
@@ -90,9 +121,10 @@ private struct ServerSettingsContent: View {
                 toggle("Dopasowane metadane mają pierwszeństwo", \.scannerPreferMatchedMetadata,
                        help: "Szybkie dopasowanie nadpisuje szczegóły pozycji danymi źródła (i okładkę, gdy ta jest z dopasowania).")
                 Toggle(isOn: Binding(get: { !settings.scannerDisableWatcher }, set: { value in Task { await model.update { $0.scannerDisableWatcher = !value } } })) {
-                    Text("Obserwuj foldery bibliotek")
-                    Text("Nowe i zmienione pliki są skanowane same. Bez obserwatora trzeba skanować bibliotekę ręcznie.")
+                    Text("Obserwuj foldery we wszystkich bibliotekach")
+                    Text("Nowe i zmienione pliki są skanowane same. Bez obserwatora trzeba skanować biblioteki ręcznie; pojedynczą bibliotekę można wyłączyć na jej stronie.")
                 }
+                .disabled(model.status.isBusy)
                 if model.watcherChangedSinceStart {
                     HStack {
                         Text("Zmiana obserwatora zadziała po ponownym uruchomieniu serwera.").foregroundStyle(.orange)
@@ -106,10 +138,10 @@ private struct ServerSettingsContent: View {
                     }
                 }
             } header: {
-                Text("Skaner")
+                Text("Skaner i okładki")
             }
 
-            Section("Metadane") {
+            Section("Zapis w folderach pozycji") {
                 toggle("Okładki w folderach pozycji", \.storeCoverWithItem,
                        help: "Nowe okładki trafiają do folderu książki jako „cover.*” zamiast do folderu danych serwera.")
                 toggle("Plik metadata.json w folderach pozycji", \.storeMetadataWithItem,
@@ -122,7 +154,8 @@ private struct ServerSettingsContent: View {
                 if settings.sortingIgnorePrefix {
                     HStack {
                         TextField("Przedrostki", text: $prefixes, prompt: Text(verbatim: "the, a"))
-                        Button("Zapisz") { Task { await model.saveSortingPrefixes(prefixes) } }
+                            .onSubmit(savePrefixes)
+                        Button("Zapisz", action: savePrefixes)
                             .disabled(model.status.isBusy || normalized(prefixes) == settings.sortingPrefixes)
                     }
                 }
@@ -130,50 +163,37 @@ private struct ServerSettingsContent: View {
                 Text("Sortowanie")
             } footer: {
                 Text("Przedrostki oddzielaj przecinkami; wielkość liter nie ma znaczenia. Zapis przelicza tytuły wszystkich pozycji.")
-                    .foregroundStyle(.secondary)
             }
 
             Section {
-                Picker("Język serwera", selection: binding(\.language)) {
-                    ForEach(ServerLanguage.options, id: \.code) { Text($0.label).tag($0.code) }
-                    if !ServerLanguage.options.contains(where: { $0.code == settings.language }) {
-                        Text(settings.language).tag(settings.language)
-                    }
+                LabeledContent("Okładki i pliki tymczasowe") {
+                    Button("Wyczyść…") { confirmPurge = true }
+                        .disabled(model.status.isBusy)
                 }
-            } header: {
-                Text("Język")
-            } footer: {
-                Text("Domyślny język web UI i tekstów, które serwer tworzy sam (np. nazwy półek). Aplikacja ma własny interfejs po polsku.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                HStack {
-                    Spacer()
-                    Button("Wyczyść okładki pozycji…") { confirmPurge = true }
-                    Button("Wyczyść całą pamięć podręczną…") { confirmPurge = false }
-                }
-                .disabled(model.status.isBusy)
             } header: {
                 Text("Pamięć podręczna")
             } footer: {
                 Text("Serwer trzyma przeskalowane okładki i pliki tymczasowe w folderze danych (`metadata/cache`). Wyczyszczenie zwalnia miejsce; okładki odtworzą się przy następnym wyświetleniu.")
-                    .foregroundStyle(.secondary)
             }
-            .confirmationDialog(confirmPurge == true ? "Wyczyścić okładki pozycji?" : "Wyczyścić całą pamięć podręczną?",
-                                item: $confirmPurge) { itemsOnly in
-                Button("Wyczyść", role: .destructive) { Task { await model.purgeCache(itemsOnly: itemsOnly) } }
+            .confirmationDialog("Co wyczyścić?", isPresented: $confirmPurge) {
+                Button("Tylko okładki pozycji", role: .destructive) { Task { await model.purgeCache(itemsOnly: true) } }
+                Button("Całą pamięć podręczną", role: .destructive) { Task { await model.purgeCache(itemsOnly: false) } }
                 Button("Anuluj", role: .cancel) {}
-            } message: { itemsOnly in
-                Text(itemsOnly ? "Usuwa przeskalowane okładki wszystkich pozycji." : "Usuwa cały folder metadata/cache: okładki, pliki tymczasowe i pozostałości przerwanych zadań (np. scalania do M4B).")
+            } message: {
+                Text("„Tylko okładki” usuwa przeskalowane okładki wszystkich pozycji. „Całą” usuwa cały folder metadata/cache: okładki, pliki tymczasowe i pozostałości przerwanych zadań (np. scalania do M4B).")
             }
             .onAppear { prefixes = settings.sortingPrefixes.joined(separator: ", ") }
             .onChange(of: settings.sortingPrefixes) { prefixes = settings.sortingPrefixes.joined(separator: ", ") }
         } else {
-            Section("Ustawienia serwera") {
+            Section("Ustawienia wspólne") {
                 AdminStatusRows(status: model.status)
             }
         }
+    }
+
+    private func savePrefixes() {
+        guard model.settings?.sortingPrefixes != normalized(prefixes) else { return }
+        Task { await model.saveSortingPrefixes(prefixes) }
     }
 
     private func normalized(_ text: String) -> [String] {

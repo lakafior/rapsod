@@ -327,7 +327,7 @@ private struct ProfileContent: View {
                 HStack {
                     Text("\(pairing.otherKeyCounts[user.id] ?? 0)").foregroundStyle(.secondary)
                     Button("Klucze API…") {
-                        navigation.pendingRemoteAdvanced = true
+                        navigation.pendingAdvanced = .sharing
                         navigation.page = .sharing
                     }
                 }

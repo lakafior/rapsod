@@ -512,11 +512,17 @@ final class ServerAccount {
 
     /// Kolejność bibliotek na serwerze (etap 9i; `POST /api/libraries/order`) — taka sama w telefonie i web UI.
     func moveLibrary(_ library: AudiobookshelfClient.Library, by offset: Int) async throws {
-        guard state == .ready, let index = libraries.firstIndex(of: library) else { return }
+        guard let index = libraries.firstIndex(of: library) else { return }
         let target = index + offset
         guard libraries.indices.contains(target) else { return }
         var ids = libraries.map(\.id)
         ids.swapAt(index, target)
+        try await reorderLibraries(ids)
+    }
+
+    /// Nowa kolejność wszystkich bibliotek (przeciąganie wierszy na stronie „Biblioteki”).
+    func reorderLibraries(_ ids: [String]) async throws {
+        guard state == .ready, ids != libraries.map(\.id) else { return }
         try await authorized { try await $0.reorderLibraries(ids, token: $1) }
         try await refreshLibraries()
     }
