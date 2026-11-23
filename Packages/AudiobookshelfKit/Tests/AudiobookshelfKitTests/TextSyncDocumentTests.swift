@@ -175,6 +175,24 @@ import Testing
         #expect(model.currentSentence == 0)
     }
 
+    /// Zegar odtwarzacza przestaje tykać (czekanie na dane): podświetlenie nie ucieka naprzód
+    /// dalej niż ok. pół sekundy, a spóźnione tyknięcie z dawnym czasem nie jest przeskokiem
+    /// i nie cofa podświetlenia o więcej niż jedno krótkie zdanie.
+    @MainActor @Test func followModelSurvivesStalledClock() async throws {
+        let sentences = (0..<40).map { Self.sentence("Z \($0).", block: $0, Double($0) * 0.3, Double($0) * 0.3 + 0.25) }
+        let model = TextFollowModel()
+        model.apply(.ready(TextSyncDocument(map: Self.map(sentences)), isStale: false, isOffline: false))
+        model.update(time: 3.0, rate: 1, isPlaying: true)
+        let jumps = model.jumpRequest
+        #expect(model.currentSentence == 10)
+        try await Task.sleep(for: .seconds(1.6))
+        // Bez tyknięć: najwyżej ok. 0,6 s naprzód (zdanie 12), nie 1,5 s (zdanie 15).
+        #expect((model.currentSentence ?? 0) <= 12, "\(String(describing: model.currentSentence))")
+        model.update(time: 3.1, rate: 1, isPlaying: true)
+        #expect(model.jumpRequest == jumps)
+        #expect((model.currentSentence ?? 0) >= 10)
+    }
+
     @Test func staleness() throws {
         let item = try JSONDecoder().decode(AudiobookshelfClient.ItemDetail.self, from: Data("""
         {"id":"li1","libraryId":"l","mediaType":"book","media":{"metadata":{"title":"T"},

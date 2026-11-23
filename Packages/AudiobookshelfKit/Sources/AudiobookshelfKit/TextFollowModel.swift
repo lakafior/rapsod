@@ -60,6 +60,8 @@ public final class TextFollowModel {
     static let jumpThreshold = 1.5
     /// Najwyżej tyle (s) tyknięcie może „cofnąć się” za przewidziany początek zdania.
     static let jitter = 0.6
+    /// Najdalsza ekstrapolacja czasu bez tyknięcia (s czasu rzeczywistego).
+    static let maxExtrapolation = 0.6
 
     public init() {}
 
@@ -142,8 +144,9 @@ public final class TextFollowModel {
         guard isPlaying else { return lastTime }
         let elapsed = now - lastStamp
         let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-        // Bez dalekiej ekstrapolacji, gdyby zegar przestał tykać (np. czekanie na dane).
-        return lastTime + min(seconds, 1.5) * rate
+        // Najwyżej trochę ponad jeden odstęp tyknięć (0,5 s): gdy zegar przestaje tykać (czekanie
+        // na dane, ładowanie pliku), podświetlenie nie ucieka naprzód, żeby potem wracać.
+        return lastTime + min(seconds, Self.maxExtrapolation) * rate
     }
 
     /// Czas z odtwarzacza (sekundy w całej książce), prędkość i stan.
@@ -193,7 +196,10 @@ public final class TextFollowModel {
         boundary = Task { [weak self] in
             try? await Task.sleep(for: .seconds(max(0, delay) + 0.005))
             guard !Task.isCancelled, let self, self.isPlaying else { return }
-            self.refresh(time: max(next, self.estimatedTime()), jump: false)
+            // Zegar odtwarzacza stanął (ekstrapolacja doszła do granicy) — czekamy na tyknięcie.
+            let now = self.estimatedTime()
+            guard now >= next - 0.02 else { return }
+            self.refresh(time: max(next, now), jump: false)
             // Dolna granica to początek zdania, na którym model faktycznie stanął (przy spóźnionym
             // wybudzeniu mogło to być kilka zdań dalej niż zaplanowana granica).
             self.floor = self.currentSentence.flatMap { document.map.sentences[$0].start } ?? next

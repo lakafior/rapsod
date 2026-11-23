@@ -88,6 +88,8 @@ public final class TextFlowController {
     /// Trwa aktualizacja warstw — zgłoszenia przewinięcia od własnego `setOffset` pomijamy.
     private var updating = false
     private var settingOffset = false
+    /// Nowy układ (rozmiar okna, tekstu) — tekst staje od razu, bez przenikania (to nie przeskok w książce).
+    private var relayouting = false
     /// Nakładki bieżącego (i gasnącego) zdania w widocznych wierszach.
     private var overlays: [LineKey: [Int: TextLineLayer]] = [:]
     /// Zdanie w pełnej jasności po zakończonym przejściu — warstwa bazowa go nie rysuje, więc
@@ -147,7 +149,9 @@ public final class TextFlowController {
                 let y = layout.top(of: anchor.paragraph) + anchor.fraction * layout.height(of: anchor.paragraph)
                 setOffset(y - viewport.height * FollowPlanner.readingLine)
             }
+            relayouting = true
             sync(forceJump: true)
+            relayouting = false
             scheduleIdleLayout()
         } else if restyle {
             for layer in layers.values { layer.appearance = appearance }
@@ -176,6 +180,7 @@ public final class TextFlowController {
             if solid != nil, solid != sentence { setSolid(nil) }
             fader.setCurrent(sentence, instant: instant)
             if instant { refreshOverlays() }
+            host?.visibleChanged()
             startAnimating()
         }
         guard following else { return }
@@ -209,7 +214,7 @@ public final class TextFlowController {
                 follower.target = target
             } else {
                 // Od razu w miejscu; krótkie przenikanie zamiast cięcia (gdy jest co przenikać).
-                if abs(target - current) > 1 { host?.dissolve() }
+                if abs(target - current) > 1, !relayouting { host?.dissolve() }
                 follower.snap(to: target)
                 setOffset(target)
             }
@@ -449,7 +454,17 @@ public final class TextFlowController {
             base.addSublayer(overlay)
             overlays[key, default: [:]][sentence] = overlay
         }
-        overlay.opacity = Float(HighlightFader.eased(weight))
+        overlay.opacity = Float(HighlightFader.eased(weight) * coverage(sentence))
+    }
+
+    /// Krycie nakładki, gdy pod nią jest jeszcze przygaszone zdanie z warstwy bazowej: tak, by
+    /// suma przy pełnej wadze równała się samej nakładce (bez skoku jasności, gdy warstwa bazowa
+    /// przestaje rysować bieżące zdanie). Przy kolorze bez przezroczystości (iOS) — 1.
+    private func coverage(_ sentence: Int) -> Double {
+        guard let appearance, solid != sentence else { return 1 }
+        let a = Double(appearance.ink.alpha), b = appearance.dimmed * a
+        guard a > 0, b < 1 else { return 1 }
+        return max(0, min(1, (a - b) / (a * (1 - b))))
     }
 
     /// Bieżące zdanie bez warstwy bazowej (`sentence`) albo z powrotem w niej (`nil`).
@@ -457,6 +472,7 @@ public final class TextFlowController {
         let changed = [solid, sentence].compactMap { $0 }
         solid = sentence
         guard let layout else { return }
+        defer { for item in changed { updateOverlays(sentences: [item]) } }
         for item in changed {
             guard let p = layout.document.paragraph(ofSentence: item), let paragraph = layout.existingLayout(p) else { continue }
             for index in paragraph.sentenceLines[item] ?? [] {
@@ -525,7 +541,7 @@ public final class TextFlowController {
     }
 
     /// Zdania widocznych akapitów z prostokątami (współrzędne treści) — elementy VoiceOver.
-    public func visibleSentences(margin: Int = 4) -> [(sentence: Int, frames: [CGRect])] {
+    public func visibleSentences(margin: Int = 40) -> [(sentence: Int, frames: [CGRect])] {
         guard let layout, !visibleRange.isEmpty else { return [] }
         let lower = max(0, visibleRange.lowerBound - margin), upper = min(layout.count, visibleRange.upperBound + margin)
         makeExact(lower..<upper)
