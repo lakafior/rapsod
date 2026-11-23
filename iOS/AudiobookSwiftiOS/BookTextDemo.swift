@@ -65,7 +65,7 @@ struct BookTextDemoView: View {
         let audio = files.filter { $0.pathExtension == "m4a" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         guard let mapURL = files.first(where: { $0.lastPathComponent.hasSuffix(TextSyncMap.fileSuffix) }),
               let data = try? Data(contentsOf: mapURL),
-              let map = try? JSONDecoder().decode(TextSyncMap.self, from: data) else {
+              let map = try? TextSyncMap.decode(data) else {
             status = "Brak mapy w \(folder.path)"
             return
         }
