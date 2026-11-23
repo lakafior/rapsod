@@ -13,8 +13,9 @@ struct AppModels {
     let libraryTasks: LibraryTasks
 }
 
-/// Podstrony okna „Ustawienia aplikacji” — jedyna lista. Nowa podstrona to nowy
-/// przypadek z tytułem, symbolem i widokiem w `content(models:)`.
+/// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,
+/// symbolem i widokiem w `content(models:)`. Surowa wartość jest zapisywana jako ostatnia
+/// strona, więc przy usuwaniu strony trzeba dopisać ją do `init(storedValue:)`.
 enum SettingsPage: String, CaseIterable, Identifiable {
     // Aplikacja
     case general
@@ -32,6 +33,11 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     case backups
 
     var id: Self { self }
+
+    /// Strona zapisana przy poprzednim uruchomieniu; nieznana (np. usunięta w nowszej wersji) daje „Ogólne”.
+    init(storedValue: String?) {
+        self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
+    }
 
     var title: String {
         switch self {
@@ -127,27 +133,88 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
 }
 
-/// Wybrana podstrona. Żyje w `AppDelegate`, więc przetrwa zamknięcie okna, a menu
-/// i inne okna mogą otworzyć ustawienia od razu na właściwej podstronie.
+/// Miejsce w oknie ustawień: strona z paska bocznego albo podstrona obiektu.
+/// Podstrona to element ścieżki `NavigationStack` w szczegółach (`SettingsNavigation.path`).
+enum SettingsDestination: Hashable, Codable {
+    /// Dziennik serwera. Do etapu 5 planu to osobna strona („Log serwera”), nie podstrona.
+    case serverLog
+    /// Biblioteka. Do etapu 4 planu ustawienia biblioteki są arkuszem na stronie „Biblioteki”.
+    case library(id: String)
+
+    /// Strona na pasku bocznym, pod którą leży to miejsce.
+    var page: SettingsPage {
+        switch self {
+        case .serverLog: .log
+        case .library: .libraries
+        }
+    }
+
+    /// Czy to podstrona (element ścieżki), czy na razie sama strona z paska bocznego.
+    var isSubpage: Bool {
+        switch self {
+        case .serverLog, .library: false
+        }
+    }
+
+    @MainActor @ViewBuilder
+    func content(models: AppModels) -> some View {
+        // Na razie żadne miejsce nie jest podstroną (`isSubpage`); widoki dochodzą z etapami planu.
+        EmptyView()
+    }
+}
+
+/// Wybrana strona i ścieżka podstron. Żyje w `AppDelegate`, więc przetrwa zamknięcie okna, a menu
+/// i inne okna mogą otworzyć ustawienia od razu we właściwym miejscu. Strona przetrwa też ponowne
+/// uruchomienie aplikacji (UserDefaults; ścieżka podstron nie, bo obiekt mógł w tym czasie zniknąć).
 @MainActor
 @Observable
 final class SettingsNavigation {
-    var page: SettingsPage = .general
+    static let lastPageKey = "settings.lastPage"
+
+    var page: SettingsPage {
+        didSet {
+            guard page != oldValue else { return }
+            path = []
+            UserDefaults.standard.set(page.rawValue, forKey: Self.lastPageKey)
+        }
+    }
+    var path: [SettingsDestination] = []
+
+    init() {
+        page = SettingsPage(storedValue: UserDefaults.standard.string(forKey: Self.lastPageKey))
+    }
+
+    /// Przechodzi do miejsca: strona z paska bocznego, a dla podstron także ścieżka.
+    func show(_ destination: SettingsDestination) {
+        page = destination.page
+        path = destination.isSubpage ? [destination] : []
+    }
 }
 
 extension OpenWindowAction {
-    /// Otwiera „Ustawienia aplikacji”, opcjonalnie na konkretnej podstronie.
+    /// Otwiera okno ustawień, opcjonalnie na konkretnej stronie.
     @MainActor
     func openSettings(_ page: SettingsPage? = nil, navigation: SettingsNavigation) {
-        if let page { navigation.page = page }
+        if let page {
+            navigation.page = page
+            navigation.path = []
+        }
+        bringToFront(id: SettingsWindow.windowID)
+    }
+
+    /// Otwiera okno ustawień w konkretnym miejscu (strona albo podstrona obiektu).
+    @MainActor
+    func openSettings(_ destination: SettingsDestination, navigation: SettingsNavigation) {
+        navigation.show(destination)
         bringToFront(id: SettingsWindow.windowID)
     }
 }
 
-/// Okno „Ustawienia aplikacji”: pasek boczny z podstronami jak w Ustawieniach systemowych.
+/// Okno „Ustawienia”: pasek boczny ze stronami jak w Ustawieniach systemowych, a w szczegółach
+/// stos podstron (osoba, biblioteka) ze strzałką wstecz na pasku narzędzi.
 struct SettingsWindow: View {
     static let windowID = "settings"
-    static let title = "Ustawienia aplikacji"
+    static let title = "Ustawienia"
 
     let models: AppModels
     @Bindable var navigation: SettingsNavigation
@@ -170,13 +237,23 @@ struct SettingsWindow: View {
             .navigationSplitViewColumnWidth(min: 215, ideal: 215, max: 280)
             .toolbar(removing: .sidebarToggle)
         } detail: {
-            navigation.page.content(models: models)
-                // Tytuł okna zostaje stały, żeby dało się je rozpoznać w Docku i menu Okno.
-                .navigationTitle(SettingsWindow.title)
-                .navigationSubtitle(navigation.page.title)
+            NavigationStack(path: $navigation.path) {
+                navigation.page.content(models: models)
+                    // Tytuł okna zostaje stały, żeby dało się je rozpoznać w Docku i menu Okno.
+                    .navigationTitle(SettingsWindow.title)
+                    .navigationSubtitle(navigation.page.title)
+                    .navigationDestination(for: SettingsDestination.self) { destination in
+                        destination.content(models: models)
+                            .navigationTitle(SettingsWindow.title)
+                    }
+            }
+            // Nowa strona to nowy stos: bez tego SwiftUI zostawia stan poprzedniej strony.
+            .id(navigation.page)
         }
         .frame(minWidth: 760, minHeight: 520)
+        .environment(navigation)
         .onAppear { models.loginItem.refresh() }
+        .task { await SettingsTour.runIfRequested(models: models, navigation: navigation) }
     }
 
     private func row(_ page: SettingsPage) -> some View {

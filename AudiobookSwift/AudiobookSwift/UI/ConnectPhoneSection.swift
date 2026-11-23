@@ -8,7 +8,6 @@ struct ConnectPhoneSection: View {
     let account: ServerAccount
 
     @State private var externalURL = ""
-    @State private var showsPassword = false
 
     private var canEnable: Bool {
         guard account.state == .ready, case .ready = account.userState else { return false }
@@ -45,13 +44,7 @@ struct ConnectPhoneSection: View {
         }
         if let credentials = account.phoneCredentials {
             CopyableRow(title: "Nazwa użytkownika", value: credentials.username)
-            CopyableRow(
-                title: "Hasło",
-                value: credentials.password,
-                shown: showsPassword ? credentials.password : String(repeating: "•", count: 12)
-            ) {
-                Button(showsPassword ? "Ukryj" : "Pokaż") { showsPassword.toggle() }
-            }
+            PasswordRow(password: credentials.password)
         }
 
         Picker("Dostęp spoza domu", selection: Binding(

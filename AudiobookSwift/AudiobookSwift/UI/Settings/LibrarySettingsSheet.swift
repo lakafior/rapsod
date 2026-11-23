@@ -16,8 +16,6 @@ struct LibrarySettingsSheet: View {
         _model = State(initialValue: LibrarySettingsModel(account: account, libraryID: library.id))
     }
 
-    private enum ScheduleMode: Hashable { case disabled, daily, weekly, custom }
-
     var body: some View {
         Form {
             // Komunikaty na górze — dół długiego arkusza jest zwykle schowany.
@@ -177,23 +175,7 @@ struct LibrarySettingsSheet: View {
 
     private var schedule: some View {
         Section("Automatyczny skan") {
-            Picker("Harmonogram", selection: scheduleMode) {
-                Text("Wyłączony").tag(ScheduleMode.disabled)
-                Text("Codziennie").tag(ScheduleMode.daily)
-                Text("Co tydzień").tag(ScheduleMode.weekly)
-                if case .custom = model.schedule { Text("Własny (cron)").tag(ScheduleMode.custom) }
-            }
-            if case .weekly(let weekday, let hour, let minute) = model.schedule {
-                Picker("Dzień", selection: Binding(get: { weekday }, set: { model.schedule = .weekly(weekday: $0, hour: hour, minute: minute) })) {
-                    ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { Text(Self.weekdayName($0)).tag($0) }
-                }
-            }
-            if let time = timeBinding {
-                DatePicker("Godzina", selection: time, displayedComponents: .hourAndMinute)
-            }
-            if case .custom(let expression) = model.schedule {
-                LabeledContent("Wyrażenie cron", value: expression)
-            }
+            ScheduleRows(choice: $model.schedule, defaultTime: (3, 0), saved: model.savedSchedule)
         }
     }
 
@@ -247,52 +229,4 @@ struct LibrarySettingsSheet: View {
         AddPodcastSheet.countries(including: model.settings?.podcastSearchRegion ?? "us")
     }
 
-    private var scheduleMode: Binding<ScheduleMode> {
-        Binding(
-            get: {
-                switch model.schedule {
-                case .disabled: .disabled
-                case .daily: .daily
-                case .weekly: .weekly
-                case .custom: .custom
-                }
-            },
-            set: { mode in
-                let (hour, minute): (Int, Int) = switch model.schedule {
-                case .daily(let h, let m), .weekly(_, let h, let m): (h, m)
-                default: (3, 0)
-                }
-                switch mode {
-                case .disabled: model.schedule = .disabled
-                case .daily: model.schedule = .daily(hour: hour, minute: minute)
-                case .weekly: model.schedule = .weekly(weekday: 1, hour: hour, minute: minute)
-                case .custom: break
-                }
-            }
-        )
-    }
-
-    private var timeBinding: Binding<Date>? {
-        let current: (Int, Int)? = switch model.schedule {
-        case .daily(let h, let m), .weekly(_, let h, let m): (h, m)
-        default: nil
-        }
-        guard let current else { return nil }
-        return Binding(
-            get: { Calendar.current.date(bySettingHour: current.0, minute: current.1, second: 0, of: .now) ?? .now },
-            set: { date in
-                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-                let hour = parts.hour ?? 0, minute = parts.minute ?? 0
-                switch model.schedule {
-                case .daily: model.schedule = .daily(hour: hour, minute: minute)
-                case .weekly(let weekday, _, _): model.schedule = .weekly(weekday: weekday, hour: hour, minute: minute)
-                default: break
-                }
-            }
-        )
-    }
-
-    static func weekdayName(_ day: Int) -> String {
-        ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"][day % 7]
-    }
 }

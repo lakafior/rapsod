@@ -113,6 +113,10 @@ private struct MenuBarLabel: View {
                 welcomeShown = true
                 openWindow.bringToFront(id: WelcomeWindow.windowID)
             }
+            .task {
+                // Tryb sprawdzający okno ustawień (tylko testowa kopia, argument `-ABSSettingsTour YES`).
+                if SettingsTour.isRequested { openWindow.openSettings(navigation: settings) }
+            }
             .onChange(of: supervisor.state) {
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
                 if case .failed = supervisor.state {
