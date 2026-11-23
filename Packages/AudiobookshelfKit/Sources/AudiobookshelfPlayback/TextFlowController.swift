@@ -9,6 +9,8 @@ import CoreGraphics
 import CoreText
 import Foundation
 import QuartzCore
+import os
+let flowLog = Logger(subsystem: "net.smigi.abswift.textflow", category: "Flow")
 
 /// Rdzeń widoku tekstu książki (etap 11d), wspólny dla Maca i iOS. Widok platformy daje tylko
 /// przewijanie (NSScrollView / UIScrollView), zegar klatek, dotyk i dostępność; tutaj jest
@@ -88,6 +90,9 @@ public final class TextFlowController {
     private var settingOffset = false
     /// Nakładki bieżącego (i gasnącego) zdania w widocznych wierszach.
     private var overlays: [LineKey: [Int: TextLineLayer]] = [:]
+    /// Zdanie w pełnej jasności po zakończonym przejściu — warstwa bazowa go nie rysuje, więc
+    /// w spoczynku tekst bieżącego zdania jest narysowany raz (bez podwójnego wygładzania krawędzi).
+    private var solid: Int?
     /// Licznik przerysowań wierszy (pomiar w wersji Debug).
     public private(set) var redraws = 0
 
@@ -121,6 +126,7 @@ public final class TextFlowController {
         self.appearance = appearance
         fader.duration = appearance.reduceMotion ? 0.15 : 0.45
         if relayout {
+            flowLog.debug("relayout w=\(viewport.width) h=\(viewport.height) oldh=\(self.viewport.height) key=\(style.key, privacy: .public)")
             let documentChanged = layout?.document.map != document.map
             // Kotwica: akapit u góry i jak daleko w nim (gdy użytkownik czyta sam).
             var anchor: (paragraph: Int, fraction: CGFloat)?
@@ -167,6 +173,7 @@ public final class TextFlowController {
         if sentence != lastSentence || jump {
             let instant = lastSentence == nil || appearance?.reduceMotion == true && jump
             lastSentence = sentence
+            if solid != nil, solid != sentence { setSolid(nil) }
             fader.setCurrent(sentence, instant: instant)
             if instant { refreshOverlays() }
             startAnimating()
@@ -191,6 +198,7 @@ public final class TextFlowController {
         let target = FollowPlanner.offset(for: lines[index], viewport: viewport.height, range: 0...maxOffset)
         let current = Double(host?.offset() ?? CGFloat(follower.position))
         let reduce = appearance?.reduceMotion ?? false
+        flowLog.debug("follow \(String(describing: reason), privacy: .public) s=\(sentence) line=\(index)/\(lines.count) cur=\(current) target=\(target) max=\(self.maxOffset) jumpReq=\(model.jumpRequest)")
         switch reason {
         case .jump, .back:
             let animate = reason == .jump
@@ -249,6 +257,7 @@ public final class TextFlowController {
         }
         let changed = fader.step(dt)
         if !changed.isEmpty { updateOverlays(sentences: changed) }
+        if let current = fader.current, solid != current, fader.weight(of: current) >= 1 { setSolid(current) }
         busy = busy || fader.isAnimating
         if !busy { stopAnimating() }
         return busy
@@ -380,6 +389,7 @@ public final class TextFlowController {
             layer.line = paragraph.lines[key.line]
             layer.size = layout.style.size
             layer.only = nil
+            layer.excluded = solid
             layer.frame = frame
             layer.setNeedsDisplay()
             redraws += 1
@@ -440,6 +450,22 @@ public final class TextFlowController {
             overlays[key, default: [:]][sentence] = overlay
         }
         overlay.opacity = Float(HighlightFader.eased(weight))
+    }
+
+    /// Bieżące zdanie bez warstwy bazowej (`sentence`) albo z powrotem w niej (`nil`).
+    private func setSolid(_ sentence: Int?) {
+        let changed = [solid, sentence].compactMap { $0 }
+        solid = sentence
+        guard let layout else { return }
+        for item in changed {
+            guard let p = layout.document.paragraph(ofSentence: item), let paragraph = layout.existingLayout(p) else { continue }
+            for index in paragraph.sentenceLines[item] ?? [] {
+                guard let layer = layers[LineKey(paragraph: p, line: index)] else { continue }
+                layer.excluded = sentence
+                layer.setNeedsDisplay()
+                redraws += 1
+            }
+        }
     }
 
     private func redrawAll() {
@@ -528,6 +554,8 @@ final class TextLineLayer: CALayer {
     var size: CGFloat = 17
     /// Nakładka jednego zdania w pełnej jasności; `nil` — cały wiersz przygaszony.
     var only: Int?
+    /// Zdanie pominięte w warstwie bazowej (rysuje je nakładka).
+    var excluded: Int?
 
     override init() {
         super.init()
@@ -569,7 +597,7 @@ final class TextLineLayer: CALayer {
         ctx.setAllowsFontSmoothing(true)
         let alpha = only == nil ? appearance.dimmed * appearance.ink.alpha : appearance.ink.alpha
         ctx.setFillColor(appearance.ink.copy(alpha: alpha) ?? appearance.ink)
-        for run in line.runs where only == nil || run.sentence == only {
+        for run in line.runs where only == nil ? run.sentence != excluded : run.sentence == only {
             ctx.textPosition = CGPoint(x: pad, y: pad + line.ascent)
             CTRunDraw(run.run, ctx, CFRange(location: 0, length: 0))
         }

@@ -90,6 +90,22 @@ struct BookTextDemoView: View {
         if let script = defaults.string(forKey: "BookTextDemoScript") { await run(script: script) }
     }
 
+    /// Elementy VoiceOver tekstu (etykieta, cechy, ramka) — do sprawdzenia bez Accessibility Inspectora.
+    static func dumpAccessibility() {
+        func find(_ view: UIView) -> TextCanvasContentView? {
+            if let view = view as? TextCanvasContentView { return view }
+            for sub in view.subviews { if let found = find(sub) { return found } }
+            return nil
+        }
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        guard let content = windows.lazy.compactMap({ find($0) }).first else { print("A11Y brak widoku"); return }
+        let elements = content.accessibilityElements as? [UIAccessibilityElement] ?? []
+        print("A11Y elementów: \(elements.count), zaznaczonych: \(elements.filter { $0.accessibilityTraits.contains(.selected) }.count), nagłówków: \(elements.filter { $0.accessibilityTraits.contains(.header) }.count)")
+        for element in elements.prefix(12) {
+            print("A11Y [\(element.accessibilityTraits.contains(.selected) ? "zaznaczone " : "")\(element.accessibilityTraits.contains(.header) ? "nagłówek " : "")przycisk] \(element.accessibilityLabel ?? "-") | \(element.accessibilityHint ?? "") | \(element.accessibilityFrameInContainerSpace)")
+        }
+    }
+
     /// Polecenia o ustalonych porach — powtarzalne nagrania przed i po zmianie.
     private func run(script path: String) async {
         guard let lines = try? String(contentsOfFile: path, encoding: .utf8).split(separator: "\n") else { return }
@@ -107,6 +123,7 @@ struct BookTextDemoView: View {
             case "play": player.play()
             case "chapter": player.nextChapter()
             case "resume": text.resumeFollowing()
+            case "a11y": Self.dumpAccessibility()
             default: break
             }
         }
