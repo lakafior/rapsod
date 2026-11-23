@@ -66,6 +66,9 @@ final class ReaderModel {
     @ObservationIgnored private let playback: PlaybackCoordinator
     @ObservationIgnored private let isOffline: Bool
     @ObservationIgnored private var checkedSuggestion = false
+    /// Pierwsze miejsce zgłoszone po otwarciu (to zapisane) — samo otwarcie niczego nie zapisuje.
+    @ObservationIgnored private var openedCFI: String?
+    @ObservationIgnored private var hasMoved = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var positions: EbookPositionStore { ReaderPositions.store(scope: session.scope) }
 
@@ -89,11 +92,20 @@ final class ReaderModel {
             case .epub:
                 let controller = EpubController(book: file, cacheKey: cacheKey, startLocation: EbookLocationValue.epubCFI(saved), look: look, layout: layout, spread: spread)
                 controller.onMove = { [weak self] place in
-                    self?.record(location: place.cfi, progress: place.progress)
-                    Task { await self?.suggestListeningPlace(controller) }
+                    guard let self else { return }
+                    if openedCFI == nil {
+                        openedCFI = place.cfi
+                    } else if hasMoved || place.cfi != openedCFI {
+                        hasMoved = true
+                        record(location: place.cfi, progress: place.progress)
+                    }
+                    Task { await self.suggestListeningPlace(controller) }
                 }
                 phase = .ready(.epub(controller))
-                Task { await loadTextMap() }
+                Task {
+                    await loadTextMap()
+                    await suggestListeningPlace(controller)
+                }
             case .pdf:
                 guard let document = PDFDocument(url: file) else { throw Failure(errorDescription: "Nie udało się otworzyć tego PDF-a.") }
                 pdfCount = document.pageCount
@@ -200,9 +212,10 @@ final class ReaderModel {
     /// Miejsce słuchania: bieżące odtwarzanie tej książki albo zapisana pozycja.
     func listeningTime() -> Double? {
         if playback.nowPlayingKey == PlaybackTimeline.key(target.itemID, nil) { return playback.player.currentTime }
-        let local = session.journal.position(itemID: target.itemID, episodeID: nil)?.currentTime
-        let server = session.library.progress.value(target.itemID)?.currentTime
-        return [local, server].compactMap { $0 }.max().flatMap { $0 > 0 ? $0 : nil }
+        // Jak przy wznawianiu odtwarzania: nowszy zapis (telefon albo serwer), nie dalszy.
+        let local = session.journal.position(itemID: target.itemID, episodeID: nil)
+        let server: ServerProgressLookup = session.library.progress.value(target.itemID).map { .some($0) } ?? .unreachable
+        return ProgressMerge.start(local: local, server: server).flatMap { $0.time > 0 ? $0.time : nil }
     }
 
     static let mismatch = "Tej strony nie ma w mapie tekstu (inne wydanie e-booka albo fragment, którego lektor nie czyta). Zsynchronizuj e-book na Macu jeszcze raz albo spróbuj na innej stronie."
@@ -227,9 +240,10 @@ final class ReaderModel {
     /// Przy otwarciu: jeśli słuchanie poszło dalej (albo zostało w tyle) niż czytanie o ponad
     /// minutę nagrania — propozycja przejścia. Raz na otwarcie.
     private func suggestListeningPlace(_ controller: EpubController) async {
-        guard !checkedSuggestion, let map = textMap, let listening = listeningTime() else { return }
+        guard !checkedSuggestion, let map = textMap, let listening = listeningTime(),
+              let page = await controller.pageText(), !checkedSuggestion else { return }
         checkedSuggestion = true
-        guard let page = await controller.pageText(), let reading = EbookAudioSync.time(in: map, href: page.href, passage: page.text) else { return }
+        guard let reading = EbookAudioSync.time(in: map, href: page.href, passage: page.text) else { return }
         if abs(reading - listening) > 60 { listeningSuggestion = listening }
     }
 
@@ -294,6 +308,7 @@ struct ReaderScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var model: ReaderModel?
     @State private var look = ReaderLook.load()
     @State private var showsChrome = true
@@ -311,7 +326,15 @@ struct ReaderScreen: View {
                     self.model = model
                     await model.load(look: look.javaScript(dynamicType: contentSize), layout: layout, spread: spread(width: geometry.size.width))
                 }
-                .onChange(of: geometry.size.width) { _, width in epub?.setSpread(spread(width: width)) }
+                .onChange(of: geometry.size) { _, size in
+                    epub?.setSpread(spread(width: size.width))
+                    // Zdarzenie `resize` strony potrafi przyjść, zanim WKWebView dostanie nowy rozmiar
+                    // (obrót) — wtedy epub.js łamie tekst na starą szerokość. Drugie wywołanie po chwili.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(350))
+                        epub?.call("book.resize()")
+                    }
+                }
         }
         .background(isPDF ? Color(.systemBackground) : look.theme.page)
         // Motyw tylko w czytniku (`preferredColorScheme` przełączałby całą aplikację pod spodem).
@@ -323,6 +346,7 @@ struct ReaderScreen: View {
             epub?.setLayout(layout)
         }
         .onChange(of: dynamicTypeSize) { _, _ in epub?.setLook(look.javaScript(dynamicType: contentSize)) }
+        .onChange(of: verticalSizeClass) { _, _ in epub?.setLayout(layout) }
         .onDisappear { model?.close() }
         .sheet(isPresented: $showsContents) {
             if let epub { ReaderContents(controller: epub) }
@@ -335,7 +359,12 @@ struct ReaderScreen: View {
 
     private var contentSize: UIContentSizeCategory { UIContentSizeCategory(dynamicTypeSize) }
     /// Miejsce na paski (górny i dolny), żeby pokazane nie zasłaniały tekstu.
-    private var layout: [String: Any] { ["side": look.margins.points, "top": 60, "bottom": 64] }
+    private var layout: [String: Any] {
+        // iPhone w poziomie: paski są niższe, a każdy wiersz tekstu się liczy.
+        verticalSizeClass == .compact
+            ? ["side": look.margins.points, "top": 44, "bottom": 44]
+            : ["side": look.margins.points, "top": 60, "bottom": 64]
+    }
     private func spread(width: CGFloat) -> String { width > 900 ? "auto" : "none" }
 
     private var epub: EpubController? {

@@ -34,6 +34,9 @@ import Testing
         #expect(EbookAudioSync.sentence(in: map, href: "ch1.xhtml", passage: "Tarkowski do swojej przyjaciółki.— Dlaczego?Staś") == 1)
         // Krótka końcówka zdania na górze strony → zdanie, które kończy.
         #expect(EbookAudioSync.sentence(in: map, href: "ch1.xhtml", passage: "łki.— Dlaczego?Staś, który kończył rok czternasty") == 1)
+        // Powtórzone krótkie zdanie na górze strony — rozstrzyga następne zdanie.
+        #expect(EbookAudioSync.sentence(in: map, href: "ch1.xhtml", passage: "— Dlaczego?Staś, który kończył rok") == 2)
+        #expect(EbookAudioSync.sentence(in: map, href: "ch1.xhtml", passage: "— Dlaczego?[1] Przypis bez czasu.") == 4)
         // Zdanie bez czasu (przypis) → następne zdanie z czasem.
         #expect(EbookAudioSync.time(in: map, href: "ch1.xhtml", passage: "[1] Przypis bez czasu.") == 20)
         #expect(EbookAudioSync.startTime(in: map, from: 5) == 20)

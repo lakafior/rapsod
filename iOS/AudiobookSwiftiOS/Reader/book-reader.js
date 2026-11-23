@@ -44,19 +44,13 @@
     rendition.themes.fontSize(`${look.size}%`)
   }
 
-  // Spis treści płasko z głębokością. Adresy względem pliku nawigacji zamieniamy na ścieżki
-  // w archiwum; `go` dopasowuje je do rozdziałów po końcówce.
+  // Spis treści płasko z głębokością; adresy jak w pliku nawigacji — `go` dopasowuje je do
+  // rozdziałów po końcówce ścieżki.
   function contents() {
     const out = []
-    const base = 'abook://local/'
-    const nav = (epub.packaging && (epub.packaging.navPath || epub.packaging.ncxPath)) || ''
     const visit = (list, depth) => {
       for (const item of list || []) {
-        let href = item.href || ''
-        try {
-          href = new URL(href, base + nav).href.slice(base.length)
-        } catch (e) {}
-        out.push({ label: (item.label || '').trim(), href, depth })
+        out.push({ label: (item.label || '').trim(), href: item.href || '', depth })
         visit(item.subitems, depth + 1)
       }
     }
@@ -172,7 +166,7 @@
       if (!rendition || !rendition.manager) return
       if (String(target).startsWith('epubcfi(')) return rendition.display(target)
       const [path, hash] = String(target).split('#')
-      const item = spineItemFor(decodeURIComponent(path))
+      const item = spineItemFor(decodeURIComponent(path).replace(/^(\.\.?\/)+/, ''))
       return rendition.display(item ? item.href + (hash ? '#' + hash : '') : target)
     },
     // Link wewnętrzny z treści (adres, pod który próbowała przejść ramka).
@@ -286,9 +280,20 @@
     setSpread(spread) {
       if (rendition) rendition.spread(spread || 'none')
     },
+    // Nowy rozmiar (obrót, marginesy): ponowne łamanie i powrót do tego samego miejsca.
     resize() {
       const box = size()
-      if (rendition && rendition.manager && box.width > 0 && box.height > 0) rendition.resize(box.width, box.height)
+      if (!rendition || !rendition.manager || box.width <= 0 || box.height <= 0) return
+      const location = rendition.currentLocation()
+      if (!restoreCfi) restoreCfi = location && location.start && location.start.cfi
+      rendition.resize(box.width, box.height)
+      // Powrót do miejsca sprzed zmiany dopiero, gdy rozmiar się ustali (kilka zdarzeń przy obrocie).
+      clearTimeout(restoreTimer)
+      restoreTimer = setTimeout(() => {
+        const cfi = restoreCfi
+        restoreCfi = null
+        if (cfi) rendition.display(cfi).then(repaint)
+      }, 400)
     }
   }
 
@@ -311,6 +316,8 @@
   }
 
   let resizeTimer = null
+  let restoreTimer = null
+  let restoreCfi = null
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer)
     resizeTimer = setTimeout(() => api.resize(), 120)

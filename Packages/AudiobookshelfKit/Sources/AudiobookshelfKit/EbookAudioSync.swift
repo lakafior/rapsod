@@ -56,22 +56,28 @@ public enum EbookAudioSync {
         guard !chapter.isEmpty else { return nil }
         let texts = chapter.map { normalized(map.sentences[$0].text) }
         let head = String(page.prefix(30))
+        // Powtórzone zdanie (np. „— Dlaczego?”) rozstrzyga następne zdanie, jeśli też jest na stronie.
+        func confirmed(_ k: Int) -> Bool {
+            guard k + 1 < texts.count else { return false }
+            return page.contains(String(texts[k + 1].prefix(20)))
+        }
+        func pick(_ ks: [Int]) -> Int? { ks.first(where: confirmed) ?? ks.first }
 
         // Strona zaczyna się w środku (albo na początku) zdania, które zawiera początek strony.
-        if head.count >= minimumPassage, let k = texts.firstIndex(where: { $0.contains(head) }) {
+        if head.count >= minimumPassage, let k = pick(texts.indices.filter({ texts[$0].contains(head) })) {
             return chapter[k]
         }
         // Strona zaczyna się końcówką zdania krótszą niż `head`: pierwsze zdanie, którego początek
         // jest na stronie, a przed nim — zdanie, które ta końcówka kończy.
-        var best: (offset: Int, k: Int)?
+        var found: [(offset: Int, k: Int)] = []
         for (k, text) in texts.enumerated() where text.count >= minimumPassage {
             let key = String(text.prefix(keyLength))
             guard let range = page.range(of: key) else { continue }
-            let offset = page.distance(from: page.startIndex, to: range.lowerBound)
-            if best == nil || offset < best!.offset { best = (offset, k) }
-            if offset == 0 { break }
+            found.append((page.distance(from: page.startIndex, to: range.lowerBound), k))
         }
-        guard let best else { return nil }
+        guard let nearest = found.map(\.offset).min(),
+              let k = pick(found.filter { $0.offset == nearest }.map(\.k)) else { return nil }
+        let best = (offset: nearest, k: k)
         if best.offset > 0, best.k > 0 {
             let previous = texts[best.k - 1]
             let tail = String(page.prefix(best.offset))
