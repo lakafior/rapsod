@@ -266,24 +266,31 @@ public enum SponsorClassification {
         zip(words, words.dropFirst()).compactMap { a, b in b.start - a.end >= minimum ? Pause(start: a.end, end: b.start) : nil }
     }
 
-    /// Docięcie granic segmentu: początek i koniec przesuwają się do środka najbliższej przerwy w pobliżu
-    /// (najpierw cisza w nagraniu, potem odstęp między słowami), więc pomijanie nie ucina słowa i nie
-    /// zostawia ogona reklamy. Bez przerwy w pobliżu granica zostaje na początku/końcu słowa.
-    public static func refine(_ candidate: Candidate, silences: [Pause], gaps: [Pause], duration: Double) -> Candidate {
+    /// Docięcie granic segmentu do przerwy w mowie. Granice wierszy to już granice słów (początek pierwszego,
+    /// koniec ostatniego słowa), więc docięcie nie wchodzi w słowa: początek cofa się w przerwę tuż przed
+    /// pierwszym słowem, koniec wydłuża w przerwę tuż po ostatnim — do jej środka, najwyżej o `pad` sekundy.
+    /// Najpierw cisza w nagraniu (czasy słów z rozpoznawania mowy bywają przesunięte o ułamki sekundy), potem
+    /// odstęp między słowami. Pomiar (README, 13b): szersze przyciąganie do najbliższej przerwy w promieniu
+    /// kilku sekund pogarszało granice — przesuwało koniec w przerwę wewnątrz ostatniego zdania reklamy.
+    public static func refine(_ candidate: Candidate, silences: [Pause], gaps: [Pause], duration: Double, pad: Double = 0.5) -> Candidate {
         var refined = candidate
-        func snap(_ time: Double, before: Double, after: Double) -> Double? {
-            for pauses in [silences, gaps] {
-                let near = pauses.filter { $0.end >= time - before && $0.start <= time + after }
-                if let best = near.min(by: { abs($0.middle - time) < abs($1.middle - time) }) { return best.middle }
+        let tolerance = 0.4
+        for pauses in [silences, gaps] {
+            let before = pauses.filter { $0.start < candidate.start && abs($0.end - candidate.start) <= tolerance }
+            if let best = before.min(by: { abs($0.end - candidate.start) < abs($1.end - candidate.start) }) {
+                refined.start = min(candidate.start, max(best.middle, best.end - pad))
+                break
             }
-            return nil
         }
-        // Początek: wstęp do reklamy bywa tuż przed wierszem; koniec: ostatnie słowa reklamy tuż po nim.
-        if let start = snap(candidate.start, before: 2.5, after: 1.5) { refined.start = start }
-        if let end = snap(candidate.end, before: 1.5, after: 2.5) { refined.end = end }
+        for pauses in [silences, gaps] {
+            let after = pauses.filter { $0.end > candidate.end && abs($0.start - candidate.end) <= tolerance }
+            if let best = after.min(by: { abs($0.start - candidate.end) < abs($1.start - candidate.end) }) {
+                refined.end = max(candidate.end, min(best.middle, best.start + pad))
+                break
+            }
+        }
         refined.start = max(0, refined.start)
         if duration > 0 { refined.end = min(duration, refined.end) }
-        if refined.end - refined.start < 1 { return candidate }
         return refined
     }
 

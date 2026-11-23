@@ -5,6 +5,7 @@
 import Foundation
 import Testing
 @testable import AudiobookshelfKit
+import AudiobookshelfPlayback
 
 typealias SC = SponsorClassification
 
@@ -115,18 +116,20 @@ private func speech(_ from: Double, _ to: Double, step: Double = 0.4, word: Stri
         #expect(overlapping[0].end == 159.5)
     }
 
-    @Test func refineSnapsToSilenceThenWordGap() {
+    @Test func refineExtendsIntoAdjacentPausesOnly() {
         let candidate = SC.Candidate(start: 100, end: 160, kind: .sponsor, confidence: 0.9, windows: 1)
-        let silences = [SC.Pause(start: 98.6, end: 99.2), SC.Pause(start: 161.0, end: 161.6), SC.Pause(start: 130, end: 131)]
-        let gaps = [SC.Pause(start: 99.8, end: 100.1), SC.Pause(start: 159.7, end: 160.0)]
+        // Cisza tuż przed pierwszym i tuż po ostatnim słowie (czasy słów przesunięte o 0,2 s), odstępy słów.
+        let silences = [SC.Pause(start: 99.0, end: 99.8), SC.Pause(start: 160.2, end: 161.4), SC.Pause(start: 158.0, end: 158.6)]
+        let gaps = [SC.Pause(start: 99.7, end: 100.0), SC.Pause(start: 160.0, end: 160.4)]
         let both = SC.refine(candidate, silences: silences, gaps: gaps, duration: 1000)
-        #expect(both.start == 98.9 && abs(both.end - 161.3) < 0.001)
+        #expect(abs(both.start - 99.4) < 0.001 && abs(both.end - 160.7) < 0.001)   // najwyżej 0,5 s w ciszę
         let gapsOnly = SC.refine(candidate, silences: [], gaps: gaps, duration: 1000)
-        #expect(abs(gapsOnly.start - 99.95) < 0.001 && abs(gapsOnly.end - 159.85) < 0.001)
-        let none = SC.refine(candidate, silences: [SC.Pause(start: 50, end: 51)], gaps: [], duration: 1000)
-        #expect(none == candidate)
+        #expect(abs(gapsOnly.start - 99.85) < 0.001 && abs(gapsOnly.end - 160.2) < 0.001)
+        // Przerwa wewnątrz segmentu (158 s) i daleko od granic — bez zmian; granica nie wchodzi w słowa.
+        let inside = SC.refine(candidate, silences: [SC.Pause(start: 158, end: 159), SC.Pause(start: 101, end: 102), SC.Pause(start: 95, end: 96)], gaps: [], duration: 1000)
+        #expect(inside == candidate)
         // Koniec nie wychodzi poza plik.
-        let tail = SC.refine(SC.Candidate(start: 900, end: 999, kind: .sponsor, confidence: 1, windows: 1), silences: [SC.Pause(start: 999.5, end: 1001)], gaps: [], duration: 1000)
+        let tail = SC.refine(SC.Candidate(start: 900, end: 999.8, kind: .sponsor, confidence: 1, windows: 1), silences: [SC.Pause(start: 999.9, end: 1001)], gaps: [], duration: 1000)
         #expect(tail.end == 1000)
     }
 
@@ -199,6 +202,45 @@ private func speech(_ from: Double, _ to: Double, step: Double = 0.4, word: Stri
         #expect(noMinimum.falseRegions == 3)
         // Za wysoki próg (20 s) gubi krótką autopromocję na końcu Kryminatorium (18 s).
         #expect(Self.score(policy: .init(minimumConfidence: 0, minimumDuration: 20)).found == 6)
+    }
+}
+
+/// Docinanie granic na zapisanych odpowiedziach z prawdziwymi nagraniami i transkrypcjami z rozpoznania
+/// (pliki poza repozytorium): `SKIP_EVAL_TX_DIR=<…/tx> SKIP_EVAL_AUDIO_DIR=<…/audio> swift test --filter SponsorBoundaryEvaluation`.
+@Suite struct SponsorBoundaryEvaluation {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SKIP_EVAL_AUDIO_DIR"] != nil))
+    func boundariesOnRecordings() throws {
+        let env = ProcessInfo.processInfo.environment
+        let tx = URL(filePath: env["SKIP_EVAL_TX_DIR"]!), audioDir = URL(filePath: env["SKIP_EVAL_AUDIO_DIR"]!)
+        var rows: [String] = []
+        var raw: [Double] = [], gapsOnly: [Double] = [], full: [Double] = []
+        for episode in SponsorRecordedAnswers.episodes {
+            let text = try String(contentsOf: tx.appending(path: episode.name + ".tsv"), encoding: .utf8)
+            let words = text.split(separator: "\n").compactMap { line -> TextSync.Word? in
+                let p = line.split(separator: "\t", maxSplits: 2)
+                guard p.count == 3, let a = Double(p[0]), let b = Double(p[1]) else { return nil }
+                return TextSync.Word(text: String(p[2]), start: a, end: b)
+            }
+            let findings = episode.answer.map { SC.Finding(first: $0, last: $0, kind: .sponsor, confidence: 0.9, window: 0) }
+            let candidates = SC.merge(findings, lines: episode.lines)
+            let audio = audioDir.appending(path: episode.name + ".mp3")
+            let silences = try AudioLevels.silences(in: audio, around: candidates.flatMap { [$0.start, $0.end] })
+            let gaps = SC.wordGaps(words)
+            for c in candidates {
+                guard let t = episode.truth.first(where: { min($0.1, c.end) - max($0.0, c.start) > 0.5 * ($0.1 - $0.0) }) else { continue }
+                let g = SC.refine(c, silences: [], gaps: gaps, duration: 1e9)
+                let f = SC.refine(c, silences: silences, gaps: gaps, duration: 1e9)
+                raw += [abs(c.start - t.0), abs(c.end - t.1)]
+                gapsOnly += [abs(g.start - t.0), abs(g.end - t.1)]
+                full += [abs(f.start - t.0), abs(f.end - t.1)]
+                rows.append(String(format: "%@ prawda %.1f–%.1f | wiersze %.1f–%.1f | słowa %.1f–%.1f | cisza %.1f–%.1f",
+                                   episode.name, t.0, t.1, c.start, c.end, g.start, g.end, f.start, f.end))
+            }
+        }
+        func median(_ v: [Double]) -> Double { let s = v.sorted(); return s.isEmpty ? 0 : s[s.count / 2] }
+        rows.append(String(format: "mediana |błędu granic|: wiersze %.2f s, + odstępy słów %.2f s, + cisza %.2f s (n=%d granic)", median(raw), median(gapsOnly), median(full), raw.count))
+        rows.append(String(format: "maks.: wiersze %.1f s, + odstępy %.1f s, + cisza %.1f s", raw.max() ?? 0, gapsOnly.max() ?? 0, full.max() ?? 0))
+        print(rows.joined(separator: "\n"))
     }
 }
 
