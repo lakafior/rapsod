@@ -122,37 +122,57 @@ import Testing
         #expect(TextSyncDocument.typeset("Rzekł \"tak\" i wyszedł") == "Rzekł „tak” i\(nb)wyszedł")
     }
 
-    @MainActor @Test func followModelTracksAndWindows() {
+    @MainActor @Test func followModelTracksAndJumps() {
         let sentences = (0..<3000).map { Self.sentence("Zdanie \($0).", block: $0 / 3, Double($0) * 2, Double($0) * 2 + 1.8) }
         let model = TextFollowModel()
         model.apply(.ready(TextSyncDocument(map: Self.map(sentences)), isStale: false, isOffline: false))
         #expect(model.phase == .ready)
         model.update(time: 1, rate: 1, isPlaying: false)
         #expect(model.currentSentence == 0)
-        #expect(model.window == 0..<120)
-        let before = model.scrollRequest
+        let jumps = model.jumpRequest
+        // Przeskok (suwak, rozdział) — prośba o natychmiastowe ustawienie tekstu.
         model.update(time: 2 * 900 + 0.5, rate: 1, isPlaying: false)
         #expect(model.currentSentence == 900)
         #expect(model.currentParagraph == 300)
-        #expect(model.window.contains(300))
-        #expect(model.scrollRequest == before + 1)
-        #expect(model.scrollIsJump)
-        // Ręczne przewinięcie: zdanie się zmienia, ale bez przewijania; wznowienie odtwarzania wraca do śledzenia.
+        #expect(model.jumpRequest == jumps + 1)
+        // Ręczne przewinięcie: zdanie się zmienia, bez prośby o przeskok; wznowienie odtwarzania wraca do śledzenia.
         model.userDidScroll()
-        let paused = model.scrollRequest
+        #expect(!model.isFollowing)
         model.update(time: 2 * 901 + 0.5, rate: 1, isPlaying: false)
         #expect(model.currentSentence == 901)
-        #expect(model.scrollRequest == paused)
-        model.update(time: 2 * 901 + 0.6, rate: 1, isPlaying: true)
+        #expect(model.jumpRequest == jumps + 1)
+        let returns = model.returnRequest
+        model.update(time: 2 * 901 + 0.5, rate: 1, isPlaying: true)
         #expect(model.isFollowing)
-        #expect(model.scrollRequest == paused + 1)
-        // Podświetlenie akapitów: bieżący — indeks zdania, inne — poza zakresem.
-        let doc = model.document!
-        #expect(model.highlight(for: doc.paragraphs[300]) == 901)
-        #expect(model.highlight(for: doc.paragraphs[299]) == 900)
-        #expect(model.highlight(for: doc.paragraphs[301]) == 902)
-        model.reachedWindowEdge(top: false)
-        #expect(model.window.upperBound > 300 + TextFollowModel.windowAfter)
+        #expect(model.returnRequest == returns + 1)
+        // Zwykłe tykanie zegara to nie przeskok.
+        model.update(time: 2 * 901 + 0.9, rate: 1, isPlaying: true)
+        #expect(model.jumpRequest == jumps + 1)
+        #expect(model.span(ofSentence: 901) == 1802...1803.8)
+    }
+
+    /// Granice zdań bez tyknięć zegara: kilka krótkich zdań w pół sekundy przechodzi po kolei,
+    /// a tyknięcie z czasem tuż sprzed przewidzianej granicy nie cofa podświetlenia.
+    @MainActor @Test func followModelChainsBoundariesWithoutFlicker() async throws {
+        let starts: [Double] = [0, 10, 10.12, 10.24, 10.36, 20]
+        let sentences = starts.enumerated().map { Self.sentence("Z \($0.offset).", block: $0.offset, $0.element, $0.element + 0.1) }
+        let model = TextFollowModel()
+        model.apply(.ready(TextSyncDocument(map: Self.map(sentences)), isStale: false, isOffline: false))
+        model.update(time: 9.95, rate: 1, isPlaying: true)
+        #expect(model.currentSentence == 0)
+        var seen: [Int] = []
+        for _ in 0..<60 {
+            try await Task.sleep(for: .milliseconds(10))
+            if let s = model.currentSentence, seen.last != s { seen.append(s) }
+        }
+        // Po kolei, bez cofania się; przy wolnym wybudzeniu (obciążona maszyna) zdanie może zostać przeskoczone.
+        #expect(seen.first == 0 && seen.last == 4 && zip(seen, seen.dropFirst()).allSatisfy { $0 < $1 }, "\(seen)")
+        // Zegar odtwarzacza „spóźniony” o 0,2 s względem przewidywania — zostajemy przy zdaniu 4.
+        model.update(time: 10.30, rate: 1, isPlaying: true)
+        #expect(model.currentSentence == 4)
+        // Prawdziwy przeskok wstecz działa.
+        model.update(time: 5, rate: 1, isPlaying: true)
+        #expect(model.currentSentence == 0)
     }
 
     @Test func staleness() throws {
