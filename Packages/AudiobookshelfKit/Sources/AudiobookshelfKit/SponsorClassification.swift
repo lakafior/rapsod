@@ -13,7 +13,7 @@ import Foundation
 /// Czyste funkcje — sieć jest w `SponsorAPIClient`, dźwięk (poziomy głośności) czyta Mac.
 public enum SponsorClassification {
     /// Wersja promptu i reguł (zapisywana w `SkipRun.detail` obok nazwy modelu).
-    public static let version = "13b.1"
+    public static let version = "13b.2"
 
     // MARK: - Wiersze
 
@@ -89,30 +89,19 @@ public enum SponsorClassification {
 
     // MARK: - Prompt
 
-    /// Instrukcja dla modelu. Po angielsku (małe modele najlepiej trzymają się angielskich instrukcji),
-    /// z przykładami polskich i angielskich zwrotów — ten sam prompt dla obu języków odcinka.
+    /// Instrukcja dla modelu: instrukcja z rozpoznania (Mistral Small: 7/10, 0 fałszywych obszarów), rozdzielona na
+    /// dwie kategorie. Po angielsku z przykładami polskich i angielskich zwrotów — ten sam prompt dla obu języków.
+    /// Pierwsza wersja 13b (segmenty z kategorią i pewnością, długa lista wyjątków) dawała z tym samym modelem
+    /// 0/10 — model odpowiadał pustą listą w każdym oknie (ocena 2026-11-23, README).
     public static let systemPrompt = """
-    You find sponsored segments in podcast transcripts. The transcript comes from automatic speech recognition \
-    (Polish or English): expect misheard words, missing punctuation and garbled brand names. Each line is "ID [mm:ss] text".
-
-    Mark only these two categories:
-    - "sponsor": paid advertising, read by the host or inserted as a pre-recorded ad. Typical signs: \
-    "partnerem odcinka jest", "sponsorem odcinka", "odcinek powstał we współpracy z", "this episode is brought to you by", \
-    "support for this show comes from", praise of a product or service, discount or promo codes ("kod rabatowy", "use code"), \
-    web addresses to visit, "link w opisie", calls to buy, download or sign up.
-    - "selfpromo": the hosts promoting their own things: their books, courses, shop or merch, newsletter, paid community, \
-    Patronite, Patreon or donations, live events, their other shows.
-
-    Do NOT mark: normal conversation that mentions companies or products; a guest talking about their own work as part \
-    of the interview; the intro or outro without promotion; a short "subscribe / zasubskrybuj / zostaw ocenę" reminder alone.
-
-    Return each segment as the range of line IDs from its first to its last line, covering the whole block including its \
-    lead-in ("a teraz chwila dla naszego partnera", "after the break") and its closing line. Merge adjacent lines of one \
-    block into one segment. "confidence" is 0.0–1.0: how sure you are the block is promotional and not content.
-
-    Answer with JSON only, no other text:
-    {"segments":[{"first":ID,"last":ID,"category":"sponsor","confidence":0.9}]}
-    If there is nothing to mark, answer {"segments":[]}.
+    You label podcast transcripts. A transcript fragment is given as lines "ID [mm:ss] text" (Polish or English, from speech \
+    recognition with errors). Return the IDs of every line that is part of a sponsored segment, in two lists:
+    - "sponsor_line_ids": advertisements and sponsor reads: "this episode is sponsored by", "partnerem odcinka jest", brand \
+    descriptions, offers, discount codes, URLs to buy something, calls to action to sign up or buy.
+    - "selfpromo_line_ids": host self-promotion of their own products, books, courses, newsletters, paid community, Patronite \
+    or Patreon.
+    Include the whole block from first to last line. Do NOT include normal conversation, even if it mentions companies. \
+    Answer ONLY with JSON: {"sponsor_line_ids": [..], "selfpromo_line_ids": [..]} (empty lists if none).
     """
 
     /// Wariant instrukcji z rozpoznania (2026-11-23, Mistral Small, cała transkrypcja: 7/10): lista numerów
@@ -136,7 +125,7 @@ public enum SponsorClassification {
     }
 
     /// Przypomnienie po odpowiedzi w złym formacie (jedna ponowna próba).
-    public static let formatReminder = "Your previous answer was not valid. Answer with JSON only, exactly in the form {\"segments\":[{\"first\":ID,\"last\":ID,\"category\":\"sponsor\" or \"selfpromo\",\"confidence\":0.0–1.0}]}, using line IDs from this fragment."
+    public static let formatReminder = "Your previous answer was not valid. Answer ONLY with JSON in the form {\"sponsor_line_ids\": [..], \"selfpromo_line_ids\": [..]}, using line IDs from this fragment."
 
     static func clock(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
@@ -163,6 +152,10 @@ public enum SponsorClassification {
         }
     }
 
+    /// Pewność segmentu z listy numerów (model jej nie podaje) — powyżej progu automatycznego pomijania,
+    /// więc o pomijaniu decyduje długość.
+    public static let listConfidence = 0.7
+
     public struct InvalidResponse: Error, Sendable, Equatable {
         public var reason: String
     }
@@ -175,13 +168,21 @@ public enum SponsorClassification {
               let object = try? JSONSerialization.jsonObject(with: Data(content[open...close].utf8)) as? [String: Any] else {
             throw InvalidResponse(reason: "to nie jest JSON")
         }
-        // Lista numerów wierszy (wariant z rozpoznania): kolejne numery to jeden segment „sponsor”.
-        if let ids = object["ad_line_ids"] as? [Any] {
-            let valid = ids.compactMap(integer).filter { window.ids.contains($0) }.sorted()
+        // Listy numerów wierszy (prompt 13b.2; `ad_line_ids` — instrukcja z rozpoznania, bez kategorii):
+        // kolejne numery to jeden segment. Model nie podaje pewności — stała `listConfidence`.
+        let lists: [(String, SkipKind)] = [("sponsor_line_ids", .sponsor), ("selfpromo_line_ids", .selfPromo), ("ad_line_ids", .sponsor)]
+        if lists.contains(where: { object[$0.0] != nil }) {
             var findings: [Finding] = []
-            for id in valid {
-                if let last = findings.last, id == last.last + 1 { findings[findings.count - 1].last = id }
-                else if findings.last?.last != id { findings.append(Finding(first: id, last: id, kind: .sponsor, confidence: 0.7, window: window.index)) }
+            for (key, kind) in lists {
+                guard let raw = object[key] else { continue }
+                guard let ids = raw as? [Any] else { throw InvalidResponse(reason: "„\(key)” to nie lista") }
+                var run: Finding?
+                for id in Set(ids.compactMap(integer).filter { window.ids.contains($0) }).sorted() {
+                    if var current = run, id == current.last + 1 { current.last = id; run = current; continue }
+                    if let current = run { findings.append(current) }
+                    run = Finding(first: id, last: id, kind: kind, confidence: listConfidence, window: window.index)
+                }
+                if let current = run { findings.append(current) }
             }
             return findings
         }

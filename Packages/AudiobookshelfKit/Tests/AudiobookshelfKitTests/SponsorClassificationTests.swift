@@ -82,6 +82,14 @@ private func speech(_ from: Double, _ to: Double, step: Double = 0.4, word: Stri
         #expect(findings == [.init(first: 12, last: 12, kind: .sponsor, confidence: 0.5, window: 3)])
     }
 
+    @Test func twoListsAnswer() throws {
+        let findings = try SC.parse(#"{"sponsor_line_ids": [12, 13, 14, 99], "selfpromo_line_ids": [18, 19]}"#, window: window)
+        #expect(findings == [.init(first: 12, last: 14, kind: .sponsor, confidence: 0.7, window: 3),
+                             .init(first: 18, last: 19, kind: .selfPromo, confidence: 0.7, window: 3)])
+        #expect(try SC.parse(#"{"sponsor_line_ids": [], "selfpromo_line_ids": []}"#, window: window).isEmpty)
+        #expect(throws: SC.InvalidResponse.self) { try SC.parse(#"{"sponsor_line_ids": "brak"}"#, window: window) }
+    }
+
     @Test func lineListAnswerFromReconPrompt() throws {
         let findings = try SC.parse(#"{"ad_line_ids": [11, 12, 13, 17, 2, 13]}"#, window: window)
         #expect(findings == [.init(first: 11, last: 13, kind: .sponsor, confidence: 0.7, window: 3),
