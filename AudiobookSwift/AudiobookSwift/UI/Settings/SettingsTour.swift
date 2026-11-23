@@ -41,6 +41,12 @@ enum SettingsTour {
             log("page \(page.rawValue)")
             try? await Task.sleep(for: delay)
         }
+        // „Dostęp zdalny” jeszcze raz, z rozwiniętym „Zaawansowane” (klucze, logowanie, kanały, log tunelu).
+        navigation.page = .general
+        navigation.pendingRemoteAdvanced = true
+        navigation.page = .sharing
+        log("page sharing-advanced")
+        try? await Task.sleep(for: delay + .seconds(1))
         for destination in await subpages(models: models) {
             navigation.show(destination)
             log("subpage \(destination.tourName)")

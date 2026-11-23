@@ -112,7 +112,7 @@ struct RSSFeedSheet: View {
                 } header: {
                     Text("Otwórz kanał RSS")
                 } footer: {
-                    Text("Kanał udostępnia „\(target.title)” jako podcast pod publicznym adresem, bez logowania. Zamkniesz go tutaj albo w Ustawieniach → Aktywność → Kanały RSS.")
+                    Text("Kanał udostępnia „\(target.title)” jako podcast pod publicznym adresem, bez logowania. Zamkniesz go tutaj albo w Ustawieniach → Dostęp zdalny → Zaawansowane → Publiczne kanały RSS.")
                         .foregroundStyle(.secondary)
                 }
             } else {

@@ -63,7 +63,7 @@ struct WelcomeView: View {
     }
 }
 
-/// Ręczne połączenie: adres serwera i klucz API (np. utworzony w ustawieniach „Dostęp” na Macu).
+/// Ręczne połączenie: adres serwera i klucz API (np. utworzony na Macu w ustawieniach „Dostęp zdalny” → Zaawansowane → Klucze API).
 struct ManualEntryView: View {
     let model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -85,7 +85,7 @@ struct ManualEntryView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } footer: {
-                    Text("Adres Maca w sieci domowej znajdziesz na Macu w ustawieniach AudiobookSwift → Dostęp zdalny. Poza siecią domową potrzebny jest adres https. Klucz API swojego konta (nie konta root) utworzysz na Macu na stronie „Dostęp” — prościej jednak podłączyć telefon kodem w swoim profilu.")
+                    Text("Adres Maca w sieci domowej znajdziesz na Macu w ustawieniach AudiobookSwift → Dostęp zdalny. Poza siecią domową potrzebny jest adres https. Klucz API swojego konta (nie konta root) utworzysz na Macu: Dostęp zdalny → Zaawansowane → Klucze API — prościej jednak podłączyć telefon kodem w swoim profilu.")
                 }
             }
             .safeAreaInset(edge: .bottom) {

@@ -24,6 +24,11 @@ struct SharingSettings: Codable, Sendable, Equatable {
     /// audiobookshelf nie ma własnego. Nadawany przy pierwszym parowaniu; leży w folderze
     /// danych, więc przenosi się razem z nim (kopia zapasowa, przeprowadzka na inny Mac).
     var serverID: String?
+    /// Adresy spoza domu, które znają już telefony z aplikacją AudiobookSwift: zapisywane przy
+    /// pokazaniu „Kodu z adresami” i przy podłączeniu pierwszego telefonu. Inne niż obecne —
+    /// baner na stronie „Dostęp zdalny”. Adresów w sieci domowej telefon szuka sam (Bonjour).
+    /// `nil` = jeszcze nie ustalone (instalacja sprzed etapu 3 albo żadnego telefonu).
+    var remoteAddressesKnownToPhones: [String]?
 
     init() {}
 
@@ -36,6 +41,7 @@ struct SharingSettings: Codable, Sendable, Equatable {
         externalAccess = (try? container.decodeIfPresent(ExternalAccessMode.self, forKey: .externalAccess))
             ?? (externalURL.isEmpty ? .none : .custom)
         serverID = try container.decodeIfPresent(String.self, forKey: .serverID)
+        remoteAddressesKnownToPhones = try container.decodeIfPresent([String].self, forKey: .remoteAddressesKnownToPhones)
     }
 
     /// Brak pliku albo plik nieczytelny daje ustawienia domyślne (udostępnianie wyłączone).

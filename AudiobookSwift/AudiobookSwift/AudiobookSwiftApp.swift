@@ -149,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) lazy var listening = ListeningController(supervisor: supervisor, account: account)
     private(set) lazy var libraryTasks = LibraryTasks(account: account)
     private(set) lazy var users = UsersModel(account: account)
+    let rootReset = RootPasswordReset()
     let avatars = AvatarStore()
     private(set) lazy var models = AppModels(
         supervisor: supervisor,
@@ -159,7 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         metadataSources: metadataSources,
         libraryTasks: libraryTasks,
         users: users,
-        avatars: avatars
+        avatars: avatars,
+        rootReset: rootReset
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -175,7 +177,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sharing.activate()
         metadataSources.activate()
         listening.activate()
-        supervisor.start()
+        Task {
+            // Reset hasła roota przerwany zamknięciem aplikacji: dokończ albo cofnij, zanim ruszy serwer.
+            if let problem = await RootPasswordReset.recoverIfNeeded() {
+                supervisor.blockStart(problem)
+            } else {
+                supervisor.start()
+            }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

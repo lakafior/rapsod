@@ -2,7 +2,7 @@
 
 Stan na 2026-11-23, gałąź `claude/rozpoznanie-uklad-ustawien-ef9541`. Dokument jest projektem do decyzji. Kod aplikacji nie był zmieniany.
 
-**Stan wdrożenia (2026-11-23):** etapy **1** i **2** (2a, 2b, 2c bez resetu hasła roota, 2d na Macu) są wykonane na gałęzi `claude/ustawienia-etap-1-2-uzytkownicy-631ae4`; szczegóły, odstępstwa i zrzuty w [części 10](#10-wdrożenie-etapów-1-i-2). Etapy 3–6 czekają.
+**Stan wdrożenia (2026-11-23):** etapy **1**, **2** (2a–2d, z resetem hasła roota) i **3** są wykonane. Etapy 1–2 są scalone do `main`. Etap 3 i reset hasła roota są na gałęzi `claude/ustawienia-etap-3-reset-roota`. Szczegóły, odstępstwa i zrzuty: [część 10](#10-wdrożenie-etapów-1-i-2) i [część 11](#11-wdrożenie-etapu-3-i-resetu-hasła-roota). Etapy 4–6 czekają.
 
 **Decyzje użytkownika (2026-11-23):** wariant B; telefony dla każdego domownika; pełna kontrola nad kontem root (zmiana i reset hasła); skrót „Podłącz telefon…” na pasku menu tylko jako opcja; wygląd jak w makietach, z własnymi awatarami. Szczegóły i wpływ na plan: [część 9](#9-decyzje-z-2026-11-23-i-ich-skutki).
 
@@ -719,7 +719,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - root: nie da się edytować ani usunąć,
   - VoiceOver na siatce, bo kafle to przyciski z etykietą.
 
-**Etap 3 — Dostęp zdalny**
+**Etap 3 — Dostęp zdalny** — ✅ wykonany (część 11)
 
 - **Zakres:** podsumowanie „Skąd można słuchać”, baner telefonów, segment spoza domu, token w arkuszu.
 - **Pod „Zaawansowane”:** zawartość strony „Dostęp” (klucze, SSO), kanały RSS z „Aktywności” i log tunelu.
@@ -918,7 +918,7 @@ Wersje jasne są wymuszone argumentem `-NSRequiresAquaSystemAppearance YES`, bo 
 
 ### Znane braki
 
-- **Reset hasła roota (decyzja z części 9, etap 2c) nie jest zrobiony.** To jedyna niespełniona decyzja. Jest zmiana hasła roota i „Zaloguj ponownie hasłem…”, ale nie ma wyjścia, gdy hasła roota nikt nie zna (np. po przywróceniu starej kopii na innym Macu). Propozycja: osobny etap. Zatrzymać serwer, zrobić kopię bazy, wygenerować skrót dołączonym Node i `bcryptjs` (koszt 8 jak `LocalAuthStrategy.hashPassword`), zapisać go w kolumnie `pash` roota, uruchomić serwer i zalogować się. Najpierw test na kopii danych.
+- **Reset hasła roota (decyzja z części 9, etap 2c)** — w etapach 1–2 go nie było; zrobiony razem z etapem 3 (część 11). Jest zmiana hasła roota i „Zaloguj ponownie hasłem…”, ale nie ma wyjścia, gdy hasła roota nikt nie zna (np. po przywróceniu starej kopii na innym Macu). Propozycja: osobny etap. Zatrzymać serwer, zrobić kopię bazy, wygenerować skrót dołączonym Node i `bcryptjs` (koszt 8 jak `LocalAuthStrategy.hashPassword`), zapisać go w kolumnie `pash` roota, uruchomić serwer i zalogować się. Najpierw test na kopii danych.
 - **Zmiana hasła roota zapisuje nowe hasło w pęku kluczy zaraz po tym, jak serwer je przyjmie.** Ponowne logowanie przychodzi dopiero potem i jego błąd nie przerywa zmiany. Inaczej np. limit logowań mógłby zostawić roota z hasłem, którego nikt nie zna.
 - **Powrót z „Administratora” do „Użytkownika”** zabiera tylko „Edycję pozycji”, jak dawne `setListenerAdmin`. Usuwanie, wgrywanie i treści dla dorosłych zostają, ale można je wyłączyć w „Zarządzaj dostępem…”. Wyjątek to `createEreader` (podpięcie czytnika): przełącznika nie ma nigdzie, tak samo jak przed zmianą.
 - **Administrator bez „Edycji pozycji”** (nadany przed etapem 10e albo w web UI) ma przy roli baner z przyciskiem „Napraw”. Tej ścieżki nie dało się wywołać na testowej kopii.
@@ -926,3 +926,98 @@ Wersje jasne są wymuszone argumentem `-NSRequiresAquaSystemAppearance YES`, bo 
 - **Daty podłączenia telefonów** w testach wyświetlały się po angielsku, bo `formatted()` bierze język systemu. Tak samo było przed zmianą.
 - **Klawiatura:** kafle i nagłówek „Zaawansowane” są przyciskami. Tab do nich działa przy włączonym w systemie „Poruszaniu się po klawiaturze”, jak wszystkie przyciski w macOS. Nie sprawdzałem tego ręcznie.
 - **VoiceOver:** z mową nie był sprawdzany. Drzewo dostępności pokazuje kafle jako przyciski z etykietami, np. „tomek, Użytkownik · 1 telefon”.
+
+
+## 11. Wdrożenie etapu 3 i resetu hasła roota
+
+Gałąź `claude/ustawienia-etap-3-reset-roota` (z `main` po scaleniu etapów 1–2), 2026-11-23. Nie scalona.
+
+### Reset hasła roota (etap 2c)
+
+- **Gdzie:** strona „Administrator serwera”, sekcja „Reset hasła”. Jest widoczna tylko wtedy, gdy aplikacja nie zna działającego hasła roota (`needsPassword`). Działa za potwierdzeniem z opisem skutków.
+- **Jak:** `Server/RootPasswordReset.swift`.
+  - Serwer zostaje zatrzymany, a `ServerSupervisor.isMaintenanceLocked` blokuje jego start z menu i z przełącznika sieci.
+  - Baza (`config/absdatabase.sqlite` i jej ewentualne pliki pomocnicze) trafia do kopii `root-password-reset/<data>/` z prawami 0600. Obok powstaje znacznik `in-progress.json`.
+  - Skrypt uruchamiany **dołączonym Node** zmienia `pash` w tabeli `users` dla `type = 'root'`, w jednej transakcji i ze sprawdzeniem zapisu. Używa bibliotek serwera: `dist-server/server/libs/bcryptjs` (koszt 8, prefiks `$2a$08$`, jak `LocalAuthStrategy.hashPassword` w `vendor/audiobookshelf`) i `node_modules/sqlite3`.
+  - Hasło jest losowe i trafia do skryptu przez stdin. Potem zapis w pęku kluczy, usunięcie znacznika (punkt zatwierdzenia), start serwera i logowanie.
+- **Przy błędzie** przed zatwierdzeniem baza wraca z kopii, a serwer startuje jak wcześniej. Przywracanie kopiuje każdy plik obok bazy i atomowo podmienia bieżący (`replaceItemAt`). Jeśli samo przywrócenie się nie uda, serwer **nie** startuje, bo założyłby pustą bazę i nowego roota (`ServerSupervisor.blockStart`). Znacznik zostaje, a strona „Ogólne” podaje miejsce kopii. Tak samo działa przywracanie przy starcie aplikacji.
+- **Po przerwaniu:** `RootPasswordReset.recoverIfNeeded()` przy następnym starcie, zanim ruszy serwer, sprawdza tym samym skryptem, czy hasło z pęku kluczy pasuje do bazy. Pasuje — reset był skończony. Nie pasuje — baza wraca z kopii.
+- **Co zostaje bez zmian:** inne konta, ich sesje i klucze API (telefony). Zmienia się jedna kolumna jednego wiersza, a `tokenSecret` serwera zostaje ten sam.
+
+### Etap 3 — strona „Dostęp zdalny”
+
+- **Sekcje strony** (`UI/Settings/RemoteAccessPage.swift`):
+  - „Skąd można słuchać”;
+  - baner o adresach na telefonach;
+  - „Sieć domowa”;
+  - „Spoza domu” z wyborem segmentowym; token tunelu jest polem w wierszu przy pierwszym ustawieniu, a potem „Zmień…” otwiera `TunnelTokenSheet` z „Usuń token…”;
+  - „Aplikacja AudiobookSwift na telefonie” (kod z adresami, liczba telefonów, przejście do „Użytkowników”);
+  - zwinięte „Zaawansowane”.
+- **„Zaawansowane”** (`AdvancedHeader`; modele kluczy, logowania i kanałów powstają i ładują się dopiero po rozwinięciu):
+  - logowanie: stan SSO i wiadomości oraz „Ustawienia logowania…”, czyli arkusz z całym dawnym formularzem i jednym „Anuluj/Zapisz”;
+  - klucze API: klucze telefonów mają ikonę, znacznik i „Profil…”; wyłączenie i usunięcie pytają z ostrzeżeniem;
+  - publiczne kanały RSS;
+  - log tunelu.
+- **Znikają:**
+  - strona „Dostęp” (zapisana ostatnia strona `access` prowadzi teraz do „Dostępu zdalnego”);
+  - karta „Kanały RSS” na „Aktywności”, która ma teraz tylko sesje, bez przełącznika kart.
+- **Profil osoby › Zaawansowane** pokazuje liczbę innych kluczy API tej osoby i ma „Klucze API…”, który otwiera „Dostęp zdalny” z rozwiniętym „Zaawansowane” (druga część D1).
+- **Baner** — pierwsza wersja z planu:
+  - Telefony dostają adresy spoza domu tylko z kodu. Adresy w sieci domowej znajdują same przez Bonjour (`AddressRefresh` w iOS), więc baner porównuje tylko adresy spoza domu.
+  - „Znane telefonom” adresy zapisują się w `sharing.json` przy pokazaniu „Kodu z adresami” i przy podłączeniu **pierwszego** telefonu. Kolejny telefon nie gasi banera, bo inne mogą nie znać adresu.
+  - Instalacja sprzed etapu 3 z telefonami: obecny stan przyjmuje się bez alarmu. Tunel, który dopiero się łączy, odkłada to ustalenie. To założenie: Mac nie wie, który telefon zeskanował kod.
+- **Teksty:**
+  - `ShareSheets` (kanał RSS) wskazuje „Dostęp zdalny → Zaawansowane → Publiczne kanały RSS”;
+  - iOS `WelcomeView` (klucz API) wskazuje „Dostęp zdalny → Zaawansowane → Klucze API”;
+  - etykieta „Kod z adresami…” w iOS `SettingsView` odpowiada przyciskowi na stronie.
+
+### Poprawki przy okazji
+
+- **`SettingsNavigation.show(_:)` do podstrony innej strony** (np. „Profil…” przy kluczu, baner „wymaga konta root” na stronach administracyjnych) lądowało na stronie zamiast na podstronie. Stary `NavigationStack` zerował ścieżkę przy znikaniu. Teraz podstrona dochodzi w następnym obiegu. Błąd był też w etapie 2 (baner do strony roota), gdzie nie był sprawdzany uruchomieniem.
+- **Dwa `confirmationDialog` na jednej sekcji kluczy** — drugi się nie pokazywał, więc jest jedno okno z wyborem akcji.
+
+### Zrzuty
+
+W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
+
+- `dostep-zdalny`
+- `dostep-zdalny-zaawansowane`
+- `dostep-zdalny-baner`
+- `arkusz-logowania`
+- `root-reset` (strona roota przy nieznanym haśle)
+- `root-reset-wynik` (hasło zakryte)
+
+### Sprawdzone uruchomieniem (testowa kopia)
+
+- **Reset przy nieznanym haśle.** Skrót roota w bazie testowej nadpisany przy zamkniętej aplikacji. Wynik:
+  - aplikacja zalogowała się nowym hasłem także po ponownym uruchomieniu;
+  - konto tego Maca działa;
+  - testowy klucz telefonu innej osoby odpowiada 200 przed resetem i po nim;
+  - przetrwanie zalogowanych sesji wynika z niezmienionego `tokenSecret`, nie było osobno sprawdzane.
+- **Przerwanie (SIGKILL aplikacji) przed zapisem w bazie i po nim.** Przy kolejnym starcie baza wróciła z kopii (skrót jak przed resetem), znacznik zniknął, serwer wstał, nie zostały osierocone procesy.
+- **Błąd w trakcie** (`-ABSRootResetFail after`, po rzeczywistym zapisie w bazie): baza wróciła z kopii, serwer działa, znacznik usunięty, arkusz mówi o przywróceniu.
+- **Dokończenie przy starcie:** znacznik wskazujący starą kopię przy pasującym haśle w pęku kluczy. Znacznik został usunięty, a baza nie została cofnięta.
+- **Klucze API:** klucz telefonu wyłączony z ostrzeżeniem daje 401, po ponownym włączeniu 200. Usunięcie ostrzega. „Profil…” prowadzi do profilu.
+- **Logowanie:** zapis wiadomości przetrwał ponowne otwarcie arkusza. „Anuluj” odrzuciło włączenie OpenID. Formularz OpenID się rysuje.
+- **Sieć domowa:** włączenie i wyłączenie (restart serwera; nasłuch `*` / `127.0.0.1`).
+- **Baner:** pojawia się po zmianie adresu spoza domu (także znak przy „Dostępie zdalnym”) i znika po pokazaniu „Kodu z adresami”.
+- **Tunel z atrapą `cloudflared`** (`-ABSCloudflared`; aplikacja nie łączy się z Cloudflare sama, uruchamia tylko wskazany program). Sprawdzone z tokenami zmyślonymi, ale w poprawnym formacie:
+  - token wpisany w pole i zapisany daje „zapisany w pęku kluczy” i stan „Łączenie…”, a działa tylko atrapa;
+  - „Zmień…” podmienia token (tunel `…0001` → `…0002`);
+  - „Usuń token…” z potwierdzeniem daje „Brak tokenu”, a atrapa się zatrzymuje.
+- **Własny adres wpisany w pole:** błędny pokazuje komunikat nad sekcjami, poprawny się zapisuje, a baner reaguje na zmianę.
+- **OpenID:** niepełny formularz kończy się komunikatem z listą brakujących pól. Pełny (zmyślone adresy) zapisuje się jako „włączone”, wartości są po ponownym otwarciu, a wyłączenie przywraca stan.
+- **Tryb sprawdzający** z rozwiniętym „Zaawansowane” i zrzut drzewa dostępności rozwiniętej strony: bez awarii.
+
+### Odstępstwa
+
+- **Wiadomość na stronie logowania (D7)** jest w arkuszu „Ustawienia logowania…”, a na stronie widać tylko jej stan („brak” / „ustawiona”). Cały formularz logowania ma jeden zapis.
+- **Sekcja „Aplikacja AudiobookSwift na telefonie”** została na stronie, bo daje stałe miejsce na „Kod z adresami…”, także gdy banera nie ma. Makieta jej nie ma.
+- **Własny adres** ma pole z „Zapisz” i pod nim wiersz z „Kopiuj”, więc adres widać dwa razy.
+
+### Znane braki
+
+- **Pierwsza wersja banera** może raz pokazać fałszywy alarm, np. przy zmianie adresu tam i z powrotem przed pokazaniem kodu.
+- **Punkt odniesienia banera** w instalacji sprzed etapu 3 ustala się dopiero przy pierwszym otwarciu „Dostępu zdalnego” po wczytaniu telefonów. Zmiana adresu przed tą chwilą zostanie przyjęta bez alarmu.
+- **Reset w układzie wydania** (`Contents/Resources/Server`): ścieżki do `bcryptjs` i `sqlite3` w paczce sprawdzone tylko listingiem, reset nie był uruchamiany na zainstalowanej aplikacji.
+- **„Zakończ” z menu** nie zamyka aplikacji, gdy w oknie ustawień jest otwarty arkusz. Nie sprawdzałem, czy tak było przed tymi zmianami.

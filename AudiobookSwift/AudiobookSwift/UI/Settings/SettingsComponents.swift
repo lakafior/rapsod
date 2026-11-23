@@ -93,6 +93,39 @@ struct AdvancedSection<Content: View, Footer: View>: View {
     }
 }
 
+/// Sam nagłówek „Zaawansowane” sterowany z zewnątrz — dla stron, na których po rozwinięciu
+/// dochodzą całe sekcje (np. „Dostęp zdalny”), a ich modele mają powstać dopiero wtedy.
+struct AdvancedHeader: View {
+    let summary: String
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Section {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                EmptyView()
+            } label: {
+                Button {
+                    withAnimation { isExpanded.toggle() }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Zaawansowane")
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Zaawansowane")
+                .accessibilityValue(isExpanded ? "rozwinięte" : "zwinięte")
+                .accessibilityHint(summary)
+            }
+        }
+    }
+}
+
 // MARK: - Harmonogram
 
 /// Wiersze harmonogramu (wyłączony, codziennie, co tydzień, własny cron z web UI) — wspólne dla
@@ -255,6 +288,35 @@ struct PasswordRow: View {
     private func hide() {
         isRevealed = false
         hideTask?.cancel()
+    }
+}
+
+// MARK: - Wartość do skopiowania
+
+/// Wiersz z wartością do przepisania i przyciskiem kopiowania.
+struct CopyableRow<Accessory: View>: View {
+    let title: String
+    let value: String
+    var shown: String?
+    @ViewBuilder var accessory: Accessory
+
+    init(title: String, value: String, shown: String? = nil, @ViewBuilder accessory: () -> Accessory = { EmptyView() }) {
+        self.title = title
+        self.value = value
+        self.shown = shown
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack {
+                Text(shown ?? value)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                accessory
+                Button("Kopiuj") { NSPasteboard.copy(value) }
+            }
+        }
     }
 }
 

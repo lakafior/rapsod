@@ -160,6 +160,43 @@ final class SharingController {
         return true
     }
 
+    // MARK: - Adresy znane telefonom (baner na „Dostępie zdalnym”)
+
+    /// Obecne adresy spoza domu w postaci porównywalnej (pusta lista = brak dostępu spoza domu
+    /// albo tunel jeszcze bez adresu).
+    var currentRemoteAddresses: [String] {
+        externalURL.map { [$0.absoluteString] } ?? []
+    }
+
+    /// Telefony mogą nie znać obecnego adresu spoza domu: adres jest znany (np. tunel połączony)
+    /// i różni się od tego, który ostatnio trafił do telefonów. Pierwsza wersja z planu (etap 3):
+    /// Mac nie wie, który telefon zeskanował kod, więc baner wisi do pokazania „Kodu z adresami”.
+    var phonesMayLackRemoteAddress: Bool {
+        guard let known = settings.remoteAddressesKnownToPhones else { return false }
+        let current = currentRemoteAddresses
+        return !current.isEmpty && current != known
+    }
+
+    /// Telefony właśnie dostały obecne adresy (pokazany „Kod z adresami” albo podłączony
+    /// pierwszy telefon).
+    func markRemoteAddressesKnownToPhones() {
+        let current = currentRemoteAddresses
+        guard settings.remoteAddressesKnownToPhones != current else { return }
+        settings.remoteAddressesKnownToPhones = current
+        saveSettings()
+    }
+
+    /// Instalacja sprzed etapu 3 z podłączonymi telefonami: zakładamy, że znają obecny stan
+    /// (także „brak adresu spoza domu”), bez fałszywego alarmu. Wywoływane, gdy wiadomo, że telefony
+    /// są. Tunel, który jeszcze nie ma adresu (łączy się po starcie), odkłada ustalenie — inaczej
+    /// pierwsze połączenie wyglądałoby jak nowy adres.
+    func establishPhoneAddressBaseline() {
+        guard settings.remoteAddressesKnownToPhones == nil else { return }
+        if settings.externalAccess == .cloudflareTunnel, currentRemoteAddresses.isEmpty { return }
+        settings.remoteAddressesKnownToPhones = currentRemoteAddresses
+        saveSettings()
+    }
+
     /// Identyfikator serwera do kodów parowania; przy pierwszym użyciu nadaje go i zapisuje.
     func ensureServerID() -> String {
         if let id = settings.serverID { return id }

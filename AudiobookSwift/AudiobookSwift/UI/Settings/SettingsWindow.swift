@@ -13,6 +13,7 @@ struct AppModels {
     let libraryTasks: LibraryTasks
     let users: UsersModel
     let avatars: AvatarStore
+    let rootReset: RootPasswordReset
 }
 
 /// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,
@@ -28,7 +29,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     case libraries
     case users
     case serverSettings
-    case access
     case activity
     case notifications
     case backups
@@ -40,6 +40,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch storedValue {
         // Etap 2: „Konta” weszły do „Użytkowników”.
         case "accounts": self = .users
+        // Etap 3: „Dostęp” wszedł do „Dostępu zdalnego”.
+        case "access": self = .sharing
         default: self = storedValue.flatMap(SettingsPage.init(rawValue:)) ?? .general
         }
     }
@@ -54,7 +56,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .metadata: "Źródła metadanych"
         case .log: "Log serwera"
         case .serverSettings: "Ustawienia serwera"
-        case .access: "Dostęp"
         case .activity: "Aktywność"
         case .notifications: "Powiadomienia i e-mail"
         }
@@ -78,7 +79,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .metadata: "text.book.closed"
         case .log: "doc.text.magnifyingglass"
         case .serverSettings: "server.rack"
-        case .access: "key"
         case .activity: "waveform"
         case .notifications: "bell.badge"
         }
@@ -91,11 +91,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .libraries: LibrariesSettingsPage(models: models)
         case .users: UsersPage(models: models)
         case .backups: BackupsSettingsPage(models: models)
-        case .sharing: SharingSettingsPage(models: models)
+        case .sharing: RemoteAccessPage(models: models)
         case .metadata: MetadataSettingsPage(models: models)
         case .log: LogSettingsPage(models: models)
         case .serverSettings: ServerSettingsPage(models: models)
-        case .access: AccessSettingsPage(models: models)
         case .activity: ActivitySettingsPage(models: models)
         case .notifications: NotificationsSettingsPage(models: models)
         }
@@ -119,10 +118,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             case .missing, .invalid: return true
             case .unknown, .ready: return false
             }
-        case .backups, .serverSettings, .access, .activity, .notifications:
+        case .backups, .serverSettings, .activity, .notifications:
             return false
         case .sharing:
+            if case .failed = models.sharing.tunnel.state, models.sharing.externalAccess == .cloudflareTunnel { return true }
             return models.sharing.lastError != nil
+                || (!models.pairing.devices.isEmpty && models.sharing.phonesMayLackRemoteAddress)
         case .metadata:
             let sources = models.metadataSources
             guard sources.isEnabled else { return false }
@@ -199,6 +200,8 @@ final class SettingsNavigation {
         case changePassword
     }
     var pendingProfileAction: ProfileAction?
+    /// Strona „Dostęp zdalny” ma się otworzyć z rozwiniętym „Zaawansowane” (np. z profilu osoby).
+    var pendingRemoteAdvanced = false
 
     init() {
         page = SettingsPage(storedValue: UserDefaults.standard.string(forKey: Self.lastPageKey))
@@ -206,8 +209,22 @@ final class SettingsNavigation {
 
     /// Przechodzi do miejsca: strona z paska bocznego, a dla podstron także ścieżka.
     func show(_ destination: SettingsDestination) {
+        guard destination.isSubpage else {
+            page = destination.page
+            path = []
+            return
+        }
+        if page == destination.page {
+            path = [destination]
+            return
+        }
+        // Nowa strona to nowy `NavigationStack` (`.id(page)`); stary przy znikaniu zeruje ścieżkę,
+        // więc podstronę dokładamy dopiero w następnym obiegu, gdy nowy stos już jest.
         page = destination.page
-        path = destination.isSubpage ? [destination] : []
+        Task { @MainActor in
+            await Task.yield()
+            if self.page == destination.page { self.path = [destination] }
+        }
     }
 }
 

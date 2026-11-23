@@ -2,55 +2,15 @@ import AppKit
 import AudiobookshelfKit
 import SwiftUI
 
-/// Aktywność: sesje słuchania (`client/pages/config/sessions.vue`) i otwarte kanały RSS
-/// (`client/pages/config/rss-feeds.vue`), przełączane u góry strony.
+/// Aktywność: sesje słuchania (`client/pages/config/sessions.vue`). Otwarte kanały RSS są od
+/// etapu 3 nowego układu na stronie „Dostęp zdalny” › Zaawansowane (`FeedsContent`).
 struct ActivitySettingsPage: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case sessions = "Sesje słuchania"
-        case feeds = "Kanały RSS"
-        var id: Self { self }
-    }
-
     let models: AppModels
-    @State private var tab: Tab = .sessions
-    // Modele kart trzymane tutaj, żeby przełączenie karty nie wyrzucało ich (i stanu filtrów) — wracając, karta tylko się odświeża.
-    @State private var sessionsModel: SessionsModel?
-    @State private var feedsModel: FeedsModel?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("Widok", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .padding(.top, 12)
-            switch tab {
-            case .sessions:
-                AdminPage(account: models.account, title: "Sesje słuchania", make: { cachedSessionsModel() }, load: { await $0.load() }) { model in
-                    SessionsContent(model: model)
-                }
-            case .feeds:
-                AdminPage(account: models.account, title: "Kanały RSS", make: { cachedFeedsModel() }, load: { await $0.load() }) { model in
-                    FeedsContent(model: model)
-                }
-            }
+        AdminPage(account: models.account, title: "Sesje słuchania", make: { SessionsModel(account: models.account) }, load: { await $0.load() }) { model in
+            SessionsContent(model: model)
         }
-    }
-
-    private func cachedSessionsModel() -> SessionsModel {
-        if let sessionsModel { return sessionsModel }
-        let made = SessionsModel(account: models.account)
-        sessionsModel = made
-        return made
-    }
-
-    private func cachedFeedsModel() -> FeedsModel {
-        if let feedsModel { return feedsModel }
-        let made = FeedsModel(account: models.account)
-        feedsModel = made
-        return made
     }
 }
 
@@ -245,7 +205,7 @@ private struct SessionDetailsSheet: View {
 
 // MARK: - Kanały RSS
 
-private struct FeedsContent: View {
+struct FeedsContent: View {
     let model: FeedsModel
     @State private var feedToClose: AudiobookshelfClient.Feed?
 
@@ -279,7 +239,7 @@ private struct FeedsContent: View {
             }
         } header: {
             HStack {
-                Text("Otwarte kanały RSS")
+                Text("Publiczne kanały RSS")
                 Spacer()
                 Button("Odśwież") { Task { await model.load() } }
                     .buttonStyle(.borderless)
