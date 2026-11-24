@@ -7,6 +7,7 @@ struct GeneralSettingsPage: View {
     let models: AppModels
 
     @AppStorage(MenuOptions.showsPairPhoneKey) private var showsPairPhone = false
+    @Environment(\.openWindow) private var openWindow
 
     private var supervisor: ServerSupervisor { models.supervisor }
     private var loginItem: LoginItem { models.loginItem }
@@ -15,6 +16,7 @@ struct GeneralSettingsPage: View {
         SettingsForm {
             serverSection
             loginItemSection
+            webUISection
             Section {
                 NavigationLink(value: SettingsDestination.sponsorDetection) {
                     Text("Fragmenty sponsorowane w podcastach")
@@ -69,6 +71,29 @@ struct GeneralSettingsPage: View {
         if !settings.isConfigured { return "Wyłączone — najpierw ustaw usługę modelu językowego" }
         if !settings.hasConsent { return "Wyłączone — brak zgody na wysyłanie transkrypcji" }
         return "Wyłączone"
+    }
+
+    // MARK: Web UI
+
+    /// Widoczne wejście do web UI audiobookshelf; w menu te same pozycje są tylko pod Option (etap 9i).
+    private var webUISection: some View {
+        Section {
+            LabeledContent {
+                HStack {
+                    Button("Web UI słuchacza") { openWebUI(management: false) }
+                    Button("Zarządzanie serwerem") { openWebUI(management: true) }
+                }
+                .disabled(models.account.state != .ready)
+            } label: {
+                Text("Web UI audiobookshelf")
+                Text("Przeglądarkowy interfejs serwera, gdy czegoś brakuje w oknach aplikacji. W menu: z klawiszem Option.")
+            }
+        }
+    }
+
+    private func openWebUI(management: Bool) {
+        models.webMode.isManagement = management
+        openWindow.bringToFront(id: WebUIWindow.windowID)
     }
 
     // MARK: Zaawansowane

@@ -30,6 +30,8 @@ struct SettingsSearchEntry: Identifiable {
               terms: ["logowaniu", "start", "autostart"], target: .page(.general)),
         .init(title: "„Podłącz telefon…” w menu na pasku menu", path: "Ogólne › Aplikacja",
               terms: ["pasek menu", "menu", "skrót"], target: .page(.general)),
+        .init(title: "Web UI audiobookshelf", path: "Ogólne › Web UI",
+              terms: ["web ui", "przeglądarka", "zarządzanie serwerem", "root", "strona www"], target: .page(.general)),
         .init(title: "Fragmenty sponsorowane w podcastach", path: "Ogólne › Fragmenty sponsorowane",
               terms: ["sponsor", "reklama", "reklamy", "autopromocja", "pomijaj", "model językowy", "llm", "openai", "mistral", "gemini", "klucz api modelu", "transkrypcja", "zgoda"],
               target: .subpage(.sponsorDetection)),

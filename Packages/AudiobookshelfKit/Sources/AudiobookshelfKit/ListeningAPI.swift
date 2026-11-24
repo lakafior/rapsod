@@ -101,7 +101,8 @@ extension AudiobookshelfClient {
         }
 
         public let id: String
-        public let title: String?
+        /// Bez białych znaków na brzegach: kanały RSS potrafią zacząć tytuł od nowej linii i wcięcia.
+        @TrimmedText public var title: String?
         public let subtitle: String?
         /// HTML z kanału RSS.
         public let description: String?
@@ -457,5 +458,32 @@ extension AudiobookshelfClient {
                     startedAt: ($0.startedAt.timeIntervalSince1970 * 1000).rounded(), updatedAt: ($0.updatedAt.timeIntervalSince1970 * 1000).rounded())
         }, deviceInfo: device)
         return try decode(Response.self, from: await send("POST", "api/session/local-all", body: body, token: token)).results
+    }
+}
+
+/// Tekst przycięty z białych znaków przy dekodowaniu; pusty traktowany jak brak.
+@propertyWrapper
+public struct TrimmedText: Decodable, Sendable, Hashable {
+    public var wrappedValue: String?
+
+    public init(wrappedValue: String?) {
+        self.wrappedValue = Self.trim(wrappedValue)
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(wrappedValue: container.decodeNil() ? nil : try container.decode(String.self))
+    }
+
+    static func trim(_ text: String?) -> String? {
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// Brak klucza daje `nil` zamiast błędu, jak przy zwykłym `String?`.
+    public func decode(_ type: TrimmedText.Type, forKey key: Key) throws -> TrimmedText {
+        try decodeIfPresent(type, forKey: key) ?? TrimmedText(wrappedValue: nil)
     }
 }

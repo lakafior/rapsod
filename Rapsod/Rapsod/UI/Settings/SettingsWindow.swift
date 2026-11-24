@@ -14,6 +14,7 @@ struct AppModels {
     let users: UsersModel
     let avatars: AvatarStore
     let rootReset: RootPasswordReset
+    let webMode: WebUIMode
 }
 
 /// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,

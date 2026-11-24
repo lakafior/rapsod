@@ -42,7 +42,8 @@ struct HomeView: View {
         switch shelf.entities {
         case .items(let items):
             ShelfRow(title: title) {
-                ForEach(items) { item in
+                // Odcinki jednego podcastu mają ten sam `id` pozycji, a powtórzony klucz zostawia pustą kartę.
+                ForEach(items, id: \.shelfKey) { item in
                     ItemCard(browser: browser, item: item, sequence: shelf.id == "continue-series" ? item.sequence() : nil)
                 }
             }
@@ -208,4 +209,8 @@ struct LatestEpisodesView: View {
             self.error = error.localizedDescription
         }
     }
+}
+
+private extension AudiobookshelfClient.LibraryItem {
+    var shelfKey: String { recentEpisode.map { "\(id)/\($0.id)" } ?? id }
 }

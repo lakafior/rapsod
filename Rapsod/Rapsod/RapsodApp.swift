@@ -161,7 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         libraryTasks: libraryTasks,
         users: users,
         avatars: avatars,
-        rootReset: rootReset
+        rootReset: rootReset,
+        webMode: webMode
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
