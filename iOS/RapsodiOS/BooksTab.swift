@@ -219,7 +219,7 @@ private struct CategoryTiles: View {
             Category(title: "Serie", symbol: "square.stack", route: .allSeries),
             Category(title: "Autorzy", symbol: "person.2", route: .allAuthors),
             Category(title: "Lektorzy", symbol: "waveform", route: .narrators),
-            Category(title: "Kolekcje", symbol: "rectangle.stack", route: .collections),
+            Category(title: "Kolekcje", symbol: "folder", route: .collections),
             Category(title: "Playlisty", symbol: "music.note.list", route: .playlists),
         ] + (hasDownloads ? [Category(title: "Pobrane", symbol: "arrow.down.circle", route: .downloads)] : [])
         ScrollView(.horizontal) {
