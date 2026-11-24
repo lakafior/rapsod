@@ -11,7 +11,7 @@
 #
 # Czysta kompilacja trwa ok. 30 minut, więc wynik trafia do pamięci podręcznej
 # wspólnej dla wszystkich kopii repozytorium (worktree):
-#   ${ABS_BUILD_CACHE:-~/Library/Caches/AudiobookSwift-build}/node-<wersja>-<skrót opcji>
+#   ${ABS_BUILD_CACHE:-~/Library/Caches/Rapsod-build}/node-<wersja>-<skrót opcji>
 # Kolejne wywołania i nowe worktree tylko kopiują gotowy plik.
 #
 # Wymaga narzędzi Xcode i Pythona 3.9–3.14 (wystarczy systemowy /usr/bin/python3).
@@ -36,7 +36,7 @@ if [[ "$(uname -m)" != "arm64" ]]; then
 fi
 
 KEY="$(echo "$NODE_VERSION $NODE_SHA256_SOURCE ${NODE_CONFIGURE[*]} $(xcrun clang --version | head -1)" | shasum -a 256 | cut -c1-12)"
-CACHE="${ABS_BUILD_CACHE:-$HOME/Library/Caches/AudiobookSwift-build}/node-$NODE_VERSION-$KEY"
+CACHE="${ABS_BUILD_CACHE:-$HOME/Library/Caches/Rapsod-build}/node-$NODE_VERSION-$KEY"
 STAMP="node-$NODE_VERSION $KEY"
 
 if [[ "${1-}" == "--clean" ]]; then rm -rf "$OUT" "$CACHE"; fi

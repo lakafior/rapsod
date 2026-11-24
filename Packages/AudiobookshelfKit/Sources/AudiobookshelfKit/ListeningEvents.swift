@@ -5,7 +5,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "AudiobookSwift", category: "Listening")
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Rapsod", category: "Listening")
 
 /// Zdarzenia serwera na żywo — to samo połączenie Socket.IO, którego używa web UI
 /// (`server/SocketAuthority.js`). Dzięki niemu okno „Biblioteka” widzi bez odświeżania postęp

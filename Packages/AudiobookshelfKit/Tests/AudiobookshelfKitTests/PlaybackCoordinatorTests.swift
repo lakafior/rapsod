@@ -21,7 +21,7 @@ extension Stubbed {
 
     private func makeCoordinator() -> (PlaybackCoordinator, ConnectionErrors) {
         let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
-        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
+        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "Rapsod", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
         let coordinator = PlaybackCoordinator(device: device) { auth }
         let errors = ConnectionErrors()
         coordinator.onConnectionError = { errors.count += 1 }
@@ -134,7 +134,7 @@ extension Stubbed {
 
     private func makeCoordinator() -> PlaybackCoordinator {
         let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
-        let device = AudiobookshelfClient.DeviceInfo(deviceId: "mac-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "Mac")
+        let device = AudiobookshelfClient.DeviceInfo(deviceId: "mac-test", clientName: "Rapsod", clientVersion: "1", manufacturer: "Apple", model: "Mac")
         let coordinator = PlaybackCoordinator(device: device) { auth }
         coordinator.localFile = { FileManager.default.isReadableFile(atPath: $0) ? URL(filePath: $0) : nil }
         return coordinator
@@ -240,7 +240,7 @@ extension Stubbed {
 
     func makeCoordinator(_ store: ProgressJournal) -> PlaybackCoordinator {
         let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
-        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
+        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "Rapsod", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
         let coordinator = PlaybackCoordinator(device: device) { auth }
         coordinator.journal = store
         coordinator.streamProbe = { url in (url, 600) }

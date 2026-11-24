@@ -284,7 +284,7 @@ extension AudiobookshelfClient {
 
     /// Okładka z pliku (`multipart/form-data`, pole `cover` jak w `Cover.vue`).
     public func uploadCover(itemID: String, data: Data, filename: String, mimeType: String, token: String) async throws {
-        let boundary = "AudiobookSwift-\(UUID().uuidString)"
+        let boundary = "Rapsod-\(UUID().uuidString)"
         let safeName = filename.replacingOccurrences(of: "\"", with: "")
         var body = Data()
         body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"cover\"; filename=\"\(safeName)\"\r\nContent-Type: \(mimeType)\r\n\r\n".utf8))

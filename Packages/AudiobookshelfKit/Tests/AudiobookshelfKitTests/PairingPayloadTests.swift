@@ -6,7 +6,7 @@ import Foundation
 import Testing
 import AudiobookshelfKit
 
-/// Format kodu parowania `abswift://pair?d=…` (etap 10b).
+/// Format kodu parowania `rapsod://pair?d=…` (etap 10b).
 @Suite struct PairingPayloadTests {
     private let sample = PairingPayload(
         server: .init(id: "srv-1", name: "Mac mini Marka"),
@@ -26,12 +26,12 @@ import AudiobookshelfKit
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
         if !padded { text = text.replacingOccurrences(of: "=", with: "") }
-        return URL(string: "abswift://pair?d=\(text)")!
+        return URL(string: "rapsod://pair?d=\(text)")!
     }
 
     @Test func roundTrip() throws {
         let url = try sample.url()
-        #expect(url.scheme == "abswift")
+        #expect(url.scheme == "rapsod")
         #expect(url.host() == "pair")
         // base64url bez dopełnienia: nic do escapowania w adresie i w kodzie QR.
         let value = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value)
@@ -78,13 +78,13 @@ import AudiobookshelfKit
             try PairingPayload(url: URL(string: "https://example.com/pair?d=abc")!)
         }
         #expect(throws: PairingPayload.DecodingError.notPairingLink) {
-            try PairingPayload(url: URL(string: "abswift://other?d=abc")!)
+            try PairingPayload(url: URL(string: "rapsod://other?d=abc")!)
         }
         #expect(throws: PairingPayload.DecodingError.malformed) {
-            try PairingPayload(url: URL(string: "abswift://pair")!)
+            try PairingPayload(url: URL(string: "rapsod://pair")!)
         }
         #expect(throws: PairingPayload.DecodingError.malformed) {
-            try PairingPayload(url: URL(string: "abswift://pair?d=%21%21%21")!)
+            try PairingPayload(url: URL(string: "rapsod://pair?d=%21%21%21")!)
         }
         #expect(throws: PairingPayload.DecodingError.malformed) {
             try PairingPayload(url: link(json: "nie json"))

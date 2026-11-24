@@ -264,7 +264,7 @@ extension AudiobookshelfClient {
     /// zamyka poprzednią tego samego urządzenia (`PlaybackSessionManager.startSession`).
     public struct DeviceInfo: Encodable, Sendable {
         public let deviceId: String
-        public var clientName = "AudiobookSwift"
+        public var clientName = "Rapsod"
         public let clientVersion: String
         public var manufacturer = "Apple"
         public var model = "Mac"

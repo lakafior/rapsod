@@ -7,7 +7,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "Skip")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "Skip")
 
 /// Plik znaczników odcinka na serwerze: leży obok pliku audio w folderze podcastu i jest jednym
 /// z plików pozycji (`libraryFiles`), więc każde konto z dostępem pobierze go przez

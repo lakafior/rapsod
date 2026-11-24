@@ -22,7 +22,10 @@ import Foundation
 /// - Odcisk pliku (`audio`) mówi, do którego pliku pasują czasy; przy niezgodności odtwarzacz nie pomija.
 public struct SkipMap: Codable, Sendable, Equatable {
     public static let currentVersion = 1
-    public static let formatName = "abswift-skip"
+    public static let formatName = "rapsod-skip"
+    /// Nazwa formatu sprzed zmiany nazwy aplikacji (Rapsod). Pliki z nią czytają się
+    /// jak bieżące, a przy ponownym zapisie dostają `formatName`.
+    public static let legacyFormatNames: Set<String> = ["abswift-skip"]
     public static let fileSuffix = ".skip.json"
 
     public var format: String
@@ -76,7 +79,8 @@ public struct SkipMap: Codable, Sendable, Equatable {
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        format = try c.decodeIfPresent(String.self, forKey: .format) ?? Self.formatName
+        let format = try c.decodeIfPresent(String.self, forKey: .format) ?? Self.formatName
+        self.format = Self.legacyFormatNames.contains(format) ? Self.formatName : format
         version = try c.decode(Int.self, forKey: .version)
         generatedAt = try c.decodeIfPresent(Date.self, forKey: .generatedAt) ?? .distantPast
         episode = try c.decodeIfPresent(EpisodeRef.self, forKey: .episode) ?? .init()

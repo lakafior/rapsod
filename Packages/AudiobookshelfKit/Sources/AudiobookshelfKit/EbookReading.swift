@@ -7,7 +7,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "Ebook")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "Ebook")
 
 /// Format e-booka z punktu widzenia czytnika na telefonie.
 public enum EbookFormat: Equatable, Sendable {
@@ -39,7 +39,7 @@ public enum EbookFormat: Equatable, Sendable {
     public var unsupportedMessage: String? {
         guard case .unsupported(let name) = self else { return nil }
         let label = name.isEmpty ? "Ten format e-booka" : "Format \(name)"
-        return "\(label) nie jest obsługiwany na telefonie — czytnik iOS otwiera EPUB i PDF. Książkę w tym formacie przeczytasz w AudiobookSwift na Macu albo w przeglądarce."
+        return "\(label) nie jest obsługiwany na telefonie — czytnik iOS otwiera EPUB i PDF. Książkę w tym formacie przeczytasz w aplikacji Rapsod na Macu albo w przeglądarce."
     }
 }
 

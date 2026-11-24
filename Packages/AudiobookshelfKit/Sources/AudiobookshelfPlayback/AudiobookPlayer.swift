@@ -4,7 +4,7 @@
 
 // Pochodzenie: odtwarzacz z projektu Dove tego samego autora
 // (`Packages/DoveKit/Sources/DoveAppCore/AudiobookPlayer.swift`, MPL-2.0), w etapie 9a dostosowany
-// w aplikacji na Maca (`AudiobookSwift/Listening/AudiobookPlayer.swift`: jedna oś czasu książki
+// w aplikacji na Maca (`Rapsod/Listening/AudiobookPlayer.swift`: jedna oś czasu książki
 // z serwera, rozdziały z serwera, kolejka plików w `AVQueuePlayer`), a tu (etap 10c) przeniesiony
 // do pakietu dla iOS: obliczenia osi czasu w `PlaybackTimeline`, okładka jako `PlatformImage`,
 // pliki przez otwartą sesję zamiast z dysku. Sesja audio iOS (kategoria, przerwania, trasy)

@@ -152,7 +152,7 @@ extension AudiobookshelfClient {
         token: String,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
-        let boundary = "AudiobookSwift-\(UUID().uuidString)"
+        let boundary = "Rapsod-\(UUID().uuidString)"
         let body = FileManager.default.temporaryDirectory.appending(path: "item-upload-\(UUID().uuidString)")
         FileManager.default.createFile(atPath: body.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: body) }

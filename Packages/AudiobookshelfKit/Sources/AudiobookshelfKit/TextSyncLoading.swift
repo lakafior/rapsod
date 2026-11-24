@@ -7,7 +7,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "TextSync")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "TextSync")
 
 extension AudiobookshelfClient {
     /// Zawartość pliku pozycji (`GET /api/items/:id/file/:ino`). W przeciwieństwie do `…/download`

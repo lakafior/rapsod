@@ -6,10 +6,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>net.smigi.abswift.ios.pair</string>
+			<string>net.smigi.rapsod.ios.pair</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>abswift</string>
+				<string>rapsod</string>
 			</array>
 		</dict>
 	</array>
@@ -24,11 +24,11 @@
 	</dict>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_abswift._tcp</string>
+		<string>_rapsod._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>AudiobookSwift łączy się z serwerem audiobookshelf na Twoim Macu w sieci domowej.</string>
+	<string>Rapsod łączy się z serwerem audiobookshelf na Twoim Macu w sieci domowej.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Aparat służy tylko do zeskanowania kodu parowania wyświetlonego przez AudiobookSwift na Macu.</string>
+	<string>Aparat służy tylko do zeskanowania kodu parowania wyświetlonego przez Rapsod na Macu.</string>
 </dict>
 </plist>

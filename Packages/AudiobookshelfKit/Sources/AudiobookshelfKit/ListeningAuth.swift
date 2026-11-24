@@ -5,7 +5,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "AudiobookSwift", category: "Listening")
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Rapsod", category: "Listening")
 
 /// Tokeny jednego konta na serwerze (słuchacza albo administracyjnego).
 ///

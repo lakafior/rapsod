@@ -7,7 +7,7 @@
 import Foundation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "Feeds")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "Feeds")
 
 /// Kanał RSS pobierany przez telefon wprost od wydawcy (bez serwera i bez uprawnień
 /// administratora), z granicą rozmiaru i czasu, warunkowym pobraniem (`ETag`, `Last-Modified`)
@@ -58,7 +58,7 @@ public final class PodcastFeedLoader: Sendable {
             configuration.timeoutIntervalForRequest = 30
             configuration.httpCookieAcceptPolicy = .never
             configuration.httpShouldSetCookies = false
-            configuration.httpAdditionalHeaders = ["User-Agent": "AudiobookSwift (podcast reader)"]
+            configuration.httpAdditionalHeaders = ["User-Agent": "Rapsod (podcast reader)"]
             self.session = URLSession(configuration: configuration)
         }
     }

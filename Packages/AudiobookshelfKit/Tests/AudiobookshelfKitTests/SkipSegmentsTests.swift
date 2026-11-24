@@ -244,7 +244,7 @@ struct SkipMapTests {
 
         // Nowsza wersja dopisuje rodzaj i źródło, których ta nie zna; uszkodzony segment wypada.
         let json = """
-        {"format":"abswift-skip","version":1,"audio":{"duration":600},
+        {"format":"rapsod-skip","version":1,"audio":{"duration":600},
          "segments":[{"id":"x","start":10,"end":20,"kind":"intro","source":"model","confidence":0.7},
                      {"id":"bad","start":30,"end":20,"kind":"sponsor","source":"model","confidence":1},
                      {"start":40,"end":50}],
@@ -255,8 +255,25 @@ struct SkipMapTests {
         #expect(decoded.segments[0].kind.rawValue == "intro")
         #expect(decoded.segments[0].source == .model)
         #expect(decoded.runs.first?.detail == "mistral-small")
-        #expect(throws: SkipMap.Damaged.self) { try SkipMap.decode(Data(#"{"format":"abswift-skip","version":99,"audio":{"duration":1}}"#.utf8)) }
+        #expect(throws: SkipMap.Damaged.self) { try SkipMap.decode(Data(#"{"format":"rapsod-skip","version":99,"audio":{"duration":1}}"#.utf8)) }
         #expect(throws: SkipMap.Damaged.self) { try SkipMap.decode(Data("[]".utf8)) }
+    }
+
+    /// Pliki zapisane przed zmianą nazwy aplikacji (format `abswift-skip`) nadal się czytają,
+    /// a ponowny zapis używa nowej nazwy formatu.
+    @Test func readsLegacyFormatName() throws {
+        let json = """
+        {"format":"abswift-skip","version":1,"audio":{"duration":600},
+         "segments":[{"id":"a","start":10,"end":20,"kind":"sponsor","source":"description","confidence":1}],
+         "corrections":{"added":[],"removed":[]}}
+        """
+        let decoded = try SkipMap.decode(Data(json.utf8))
+        #expect(decoded.format == SkipMap.formatName)
+        #expect(decoded.segments.count == 1)
+        let reencoded = String(decoding: try decoded.encoded(), as: UTF8.self)
+        #expect(reencoded.contains("rapsod-skip"))
+        #expect(!reencoded.contains("abswift-skip"))
+        #expect(throws: SkipMap.Damaged.self) { try SkipMap.decode(Data(#"{"format":"inny-format","version":1,"audio":{"duration":1}}"#.utf8)) }
     }
 
     @Test func correctionsSurviveNewDetection() {

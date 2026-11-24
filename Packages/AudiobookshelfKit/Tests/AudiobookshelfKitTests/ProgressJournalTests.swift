@@ -162,7 +162,7 @@ extension Stubbed {
 
     private func makeCoordinator(reachable: Reachability, journal: ProgressJournal) -> PlaybackCoordinator {
         let auth = ListeningAuth(client: StubServer.client(), secret: .apiKey("KLUCZ"))
-        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "AudiobookSwift", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
+        let device = AudiobookshelfClient.DeviceInfo(deviceId: "telefon-test", clientName: "Rapsod", clientVersion: "1", manufacturer: "Apple", model: "iPhone")
         let coordinator = PlaybackCoordinator(device: device) { auth }
         coordinator.journal = journal
         coordinator.isReachable = { reachable.value }

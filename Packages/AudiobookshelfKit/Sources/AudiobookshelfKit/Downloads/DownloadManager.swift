@@ -13,7 +13,7 @@ import Foundation
 import Observation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "Downloads")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "Downloads")
 
 /// Pobieranie plików audio pozycji na urządzenie przez sesję tła `URLSession`: pliki pobierają się
 /// także po zamknięciu aplikacji, a system budzi ją, żeby oddać gotowe.

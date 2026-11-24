@@ -1,6 +1,6 @@
 # AudiobookshelfKit
 
-Wspólny pakiet Swift aplikacji AudiobookSwift na Maca i klienta iOS: klient HTTP API serwera
+Wspólny pakiet Swift aplikacji Rapsod na Maca i klienta iOS: klient HTTP API serwera
 [audiobookshelf](https://github.com/advplyr/audiobookshelf) z modelami i punktami API, zdarzenia
 serwera (Socket.IO), odnawianie tokenów kilku kont naraz (hasło albo klucz API, sekrety za
 protokołem `SecretStore`) i pamięć okładek (`PlatformImage`: `NSImage`/`UIImage`).

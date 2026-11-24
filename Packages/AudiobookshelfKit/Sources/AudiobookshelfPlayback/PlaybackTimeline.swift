@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Pochodzenie: kod własny projektu — wydzielony z odtwarzacza aplikacji na Maca
-// (`AudiobookSwift/Listening/AudiobookPlayer.swift`, który sam wywodzi się z Dove, MPL-2.0)
+// (`Rapsod/Listening/AudiobookPlayer.swift`, który sam wywodzi się z Dove, MPL-2.0)
 // i z `ListeningController.swift` / `ChapterTitles.swift` (napisane w etapie 9a, nie tłumaczone
 // z audiobookshelf). Same wartości i obliczenia — bez AVFoundation, więc łatwe do testów.
 

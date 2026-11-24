@@ -16,7 +16,7 @@ import AudiobookshelfKit
 import Observation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "Playback")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "Playback")
 
 /// Słuchanie z serwera: sesja odtwarzania, pliki przez sesję i synchronizacja postępu.
 ///

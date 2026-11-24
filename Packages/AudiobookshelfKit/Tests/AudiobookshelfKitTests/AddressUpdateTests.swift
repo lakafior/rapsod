@@ -108,7 +108,7 @@ import AudiobookshelfKit
                         .init(url: URL(string: "https://ksiazki.example.com")!, kind: .remote)]
         )
         let url = try payload.url()
-        #expect(url.absoluteString.hasPrefix("abswift://addresses?d="))
+        #expect(url.absoluteString.hasPrefix("rapsod://addresses?d="))
         #expect(AddressesPayload.matches(url))
         #expect(try AddressesPayload(url: url) == payload)
         // Kod adresów to nie kod parowania i odwrotnie.
@@ -118,7 +118,7 @@ import AudiobookshelfKit
 
     @Test func rejectsNewerVersionAndMissingServer() throws {
         func link(_ json: String) -> URL {
-            URL(string: "abswift://addresses?d=" + Data(json.utf8).base64EncodedString()
+            URL(string: "rapsod://addresses?d=" + Data(json.utf8).base64EncodedString()
                 .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
                 .replacingOccurrences(of: "=", with: ""))!
         }

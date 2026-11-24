@@ -10,7 +10,7 @@ import CoreText
 import Foundation
 import QuartzCore
 import os
-let flowLog = Logger(subsystem: "net.smigi.abswift.textflow", category: "Flow")
+let flowLog = Logger(subsystem: "net.smigi.rapsod.textflow", category: "Flow")
 
 /// Rdzeń widoku tekstu książki (etap 11d), wspólny dla Maca i iOS. Widok platformy daje tylko
 /// przewijanie (NSScrollView / UIScrollView), zegar klatek, dotyk i dostępność; tutaj jest

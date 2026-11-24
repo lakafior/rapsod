@@ -11,7 +11,7 @@ import Foundation
 import Observation
 import OSLog
 
-private let logger = Logger(subsystem: "net.smigi.abswift", category: "ProgressJournal")
+private let logger = Logger(subsystem: "net.smigi.rapsod", category: "ProgressJournal")
 
 /// Ostatnia znana pozycja w pozycji (albo odcinku) serwera — zapisana na tym urządzeniu.
 public struct PositionRecord: Codable, Sendable, Equatable {

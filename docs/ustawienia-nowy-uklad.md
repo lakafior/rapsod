@@ -93,7 +93,7 @@ Legenda:
 - **Częstość:** C = codziennie albo często, K = przy konfiguracji, R = prawie nigdy.
 - **Zależności:** S = działający serwer, R = zalogowane konto root, L = istnieje konto słuchacza, rst = zmiana wymaga restartu serwera.
 
-Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
+Pliki podaję względem `Rapsod/Rapsod/`.
 
 #### Menu na pasku menu i menu aplikacji (`UI/ServerMenu.swift`, `UI/AppCommands.swift`)
 
@@ -105,8 +105,8 @@ Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
 | M4 | Ustawienia aplikacji… ⌘, (⌥: Zarządzanie serwerem (web UI)…) | apl | K | – / R |
 | M5 | Uruchom serwer / Zatrzymaj serwer / Uruchom ponownie | srw | R | – |
 | M6 | Uruchamiaj przy logowaniu (przełącznik) + „Wymaga zgody — otwórz Ustawienia systemowe…” | apl | K | – |
-| M7 | O programie AudiobookSwift (okno: wersje, „Pokaż teksty licencji”, kod źródłowy, audiobookshelf.org) | apl | R | – |
-| M8 | Zakończ (pasek menu); w menu aplikacji „Zamknij okna (serwer działa dalej)” ⌘Q i „Zakończ AudiobookSwift i wyłącz serwer” | apl | R | – |
+| M7 | O programie Rapsod (okno: wersje, „Pokaż teksty licencji”, kod źródłowy, audiobookshelf.org) | apl | R | – |
+| M8 | Zakończ (pasek menu); w menu aplikacji „Zamknij okna (serwer działa dalej)” ⌘Q i „Zakończ Rapsod i wyłącz serwer” | apl | R | – |
 
 #### Ogólne (`UI/Settings/GeneralSettingsPage.swift`)
 
@@ -137,7 +137,7 @@ Pliki podaję względem `AudiobookSwift/AudiobookSwift/`.
 | U12 | Log tunelu (rozwijany) + „Kopiuj log tunelu” | srw | R | U6 |
 | U13 | Ostrzeżenia: krótkie hasło przy tunelu, ograniczenia planu darmowego Cloudflare | srw | K | U6 |
 
-#### Udostępnianie › Aplikacja AudiobookSwift na telefonie (`UI/PhonePairingSection.swift`, `Sharing/PhonePairing.swift`)
+#### Udostępnianie › Aplikacja Rapsod na telefonie (`UI/PhonePairingSection.swift`, `Sharing/PhonePairing.swift`)
 
 | ID | Pozycja | Dotyczy | Częst. | Zależn. |
 |---|---|---|---|---|
@@ -511,7 +511,7 @@ Ustawienia
 
 ### 3.3 Makiety (wariant B)
 
-Makiety to prawdziwe widoki SwiftUI z danymi przykładowymi, w samodzielnej aplikacji [`ustawienia-nowy-uklad/makiety/Makieta.swift`](ustawienia-nowy-uklad/makiety/Makieta.swift). Leżą poza celem AudiobookSwift: folder `AudiobookSwift/AudiobookSwift/` jest synchronizowany z celem, `docs/` nie jest. Okna są wyrenderowane i przechwycone skryptem [`render.sh`](ustawienia-nowy-uklad/makiety/render.sh) w jasnym i ciemnym wyglądzie przy szerokości obecnego okna (860 pt). Profil i „Dostęp zdalny” mają wyższe okno, żeby było widać całą stronę. Osoby i adresy są zmyślone. Pliki PNG są w [`ustawienia-nowy-uklad/makiety-png/`](ustawienia-nowy-uklad/makiety-png/).
+Makiety to prawdziwe widoki SwiftUI z danymi przykładowymi, w samodzielnej aplikacji [`ustawienia-nowy-uklad/makiety/Makieta.swift`](ustawienia-nowy-uklad/makiety/Makieta.swift). Leżą poza celem Rapsod: folder `Rapsod/Rapsod/` jest synchronizowany z celem, `docs/` nie jest. Okna są wyrenderowane i przechwycone skryptem [`render.sh`](ustawienia-nowy-uklad/makiety/render.sh) w jasnym i ciemnym wyglądzie przy szerokości obecnego okna (860 pt). Profil i „Dostęp zdalny” mają wyższe okno, żeby było widać całą stronę. Osoby i adresy są zmyślone. Pliki PNG są w [`ustawienia-nowy-uklad/makiety-png/`](ustawienia-nowy-uklad/makiety-png/).
 
 **Użytkownicy — siatka profili**
 
@@ -781,7 +781,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - historia sesji przy profilach i jako „Historia słuchania wszystkich…”,
   - „słucha teraz” na kaflach.
 - **Znikają:** strony „Log serwera”, „Ustawienia serwera” (reszta) i „Aktywność”.
-- **Ryzyko:** strona błędu serwera otwiera dziś „Ogólne”, a `AudiobookSwiftApp` otwiera je sam przy `.failed`. Musi to zostać.
+- **Ryzyko:** strona błędu serwera otwiera dziś „Ogólne”, a `RapsodApp` otwiera je sam przy `.failed`. Musi to zostać.
 - **Do sprawdzenia:** błąd startu (np. zajęty port) pokazuje się z logiem, przewijanie dziennika, kopiowanie, zamknięcie otwartej sesji, usunięcie sesji z historii.
 
 **Etap 6 — Powiadomienia, Kopie, porządki** — ✅ wykonany (część 14)
@@ -813,13 +813,13 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
 | `WelcomeView.swift:24` | „Ustawienia aplikacji → Udostępnianie → „Sparuj telefon…”” | „Ustawienia → Użytkownicy → (konto Maca) → „Podłącz telefon…”” |
 | `WelcomeView.swift:88` | adres „w Ustawieniach → Udostępnianie”; klucz API „na podstronie „Dostęp”” | „Ustawienia → Dostęp zdalny”; „Dostęp zdalny → Zaawansowane → Klucze API” |
 | `SettingsView.swift:98` | „Ustawienia aplikacji → Udostępnianie → „Kod z adresami…”” | „Ustawienia → Dostęp zdalny → „Pokaż kod z adresami…” (albo profil konta Maca)” |
-| `PodcastStore.swift:175, 177` | „Udostępnianie → Aplikacja AudiobookSwift na telefonie → Uprawnienia administratora → „Nadaj…”” | „Użytkownicy → (konto Maca) → Rola: Administrator” (włącza też „Edycję pozycji”) |
-| `SettingsView.swift:104`, `PairedServer.swift:62`, `AudiobookSwiftiOSApp.swift:75` | „usuń telefon z listy sparowanych”, „unieważniony na Macu” | słownictwo „odłącz” („Odłącz telefon na Macu”) |
+| `PodcastStore.swift:175, 177` | „Udostępnianie → Aplikacja Rapsod na telefonie → Uprawnienia administratora → „Nadaj…”” | „Użytkownicy → (konto Maca) → Rola: Administrator” (włącza też „Edycję pozycji”) |
+| `SettingsView.swift:104`, `PairedServer.swift:62`, `RapsodiOSApp.swift:75` | „usuń telefon z listy sparowanych”, „unieważniony na Macu” | słownictwo „odłącz” („Odłącz telefon na Macu”) |
 
 **Starsze wersje aplikacji iOS** będą pokazywać stare ścieżki do czasu aktualizacji. Proponuję:
 
 - zmieniać teksty iOS w tym samym etapie co Maca (etap 2 dla parowania i uprawnień, etap 3 dla adresów),
-- pisać je ogólniej („na Macu w ustawieniach AudiobookSwift, przy swoim profilu”), żeby przetrwały przyszłe drobne zmiany,
+- pisać je ogólniej („na Macu w ustawieniach aplikacji Rapsod, przy swoim profilu”), żeby przetrwały przyszłe drobne zmiany,
 - opcjonalnie dodać do okna ustawień Maca pole wyszukiwania (`.searchable`), które znajdzie też stare nazwy („Udostępnianie”, „Sparuj”, „Konta”) i przeniesie do nowego miejsca.
 
 ## 8. Pytania do użytkownika
@@ -857,7 +857,7 @@ Każdy etap kończy się spójną aplikacją: nowa strona przejmuje pozycje, a s
   - baner w „Dostępie zdalnym” liczy telefony wszystkich osób.
 - **Uprawnienie do pobierania odcinków z telefonu** (administrator + „Edycja pozycji”) staje się ustawieniem roli każdej osoby. Dla innych niż konto Maca zostaje to samo potwierdzenie i wyjaśnienie, że administrator zarządza całym serwerem.
 - **Konto „Gość”:** parowanie dozwolone, ale bez pytania o administratora.
-- **Hasło innych osób:** serwer go nie zwraca, więc „Pokaż/Kopiuj” jest tylko dla konta Maca i roota. Telefon z aplikacją AudiobookSwift hasła nie potrzebuje. Dla innych aplikacji audiobookshelf (np. dziewczyna z oficjalną aplikacją) jest „Zmień…” i „Dane logowania…” pokazujące nowe hasło raz, zaraz po zmianie.
+- **Hasło innych osób:** serwer go nie zwraca, więc „Pokaż/Kopiuj” jest tylko dla konta Maca i roota. Telefon z aplikacją Rapsod hasła nie potrzebuje. Dla innych aplikacji audiobookshelf (np. dziewczyna z oficjalną aplikacją) jest „Zmień…” i „Dane logowania…” pokazujące nowe hasło raz, zaraz po zmianie.
 - **iOS:**
   - Protokół bez zmian.
   - Tekst w `PodcastStore` ma mówić o profilu tej osoby, nie „koncie Maca”.
@@ -981,7 +981,7 @@ Gałąź `claude/ustawienia-etap-3-reset-roota` (z `main` po scaleniu etapów 1�
   - baner o adresach na telefonach;
   - „Sieć domowa”;
   - „Spoza domu” z wyborem segmentowym; token tunelu jest polem w wierszu przy pierwszym ustawieniu, a potem „Zmień…” otwiera `TunnelTokenSheet` z „Usuń token…”;
-  - „Aplikacja AudiobookSwift na telefonie” (kod z adresami, liczba telefonów, przejście do „Użytkowników”);
+  - „Aplikacja Rapsod na telefonie” (kod z adresami, liczba telefonów, przejście do „Użytkowników”);
   - zwinięte „Zaawansowane”.
 - **„Zaawansowane”** (`AdvancedHeader`; modele kluczy, logowania i kanałów powstają i ładują się dopiero po rozwinięciu):
   - logowanie: stan SSO i wiadomości oraz „Ustawienia logowania…”, czyli arkusz z całym dawnym formularzem i jednym „Anuluj/Zapisz”;
@@ -1042,7 +1042,7 @@ W `ustawienia-nowy-uklad/wdrozenie-png/`, każdy jasny i ciemny:
 ### Odstępstwa
 
 - **Wiadomość na stronie logowania (D7)** jest w arkuszu „Ustawienia logowania…”, a na stronie widać tylko jej stan („brak” / „ustawiona”). Cały formularz logowania ma jeden zapis.
-- **Sekcja „Aplikacja AudiobookSwift na telefonie”** została na stronie, bo daje stałe miejsce na „Kod z adresami…”, także gdy banera nie ma. Makieta jej nie ma.
+- **Sekcja „Aplikacja Rapsod na telefonie”** została na stronie, bo daje stałe miejsce na „Kod z adresami…”, także gdy banera nie ma. Makieta jej nie ma.
 - **Własny adres** ma od części 16 jedno pole z „Zapisz” albo „Kopiuj”.
 
 ### Znane braki
@@ -1293,7 +1293,7 @@ Decyzja użytkownika z 2026-11-23: oba punkty otwarte w części 14 zrobić od r
   - wiersz na liście „Bibliotek” da się przeciągnąć na miejsce innej biblioteki (`draggable` / `dropDestination`, działa także w formularzu, który nie jest listą);
   - linia nad wierszem pokazuje miejsce upuszczenia;
   - kolejność idzie od razu na serwer (`ServerAccount.reorderLibraries`);
-  - przeciągany jest tekst z przedrostkiem `abswift-library:`, więc upuszczenie zwykłego tekstu z innej aplikacji niczego nie zmienia;
+  - przeciągany jest tekst z przedrostkiem `rapsod-library:`, więc upuszczenie zwykłego tekstu z innej aplikacji niczego nie zmienia;
   - „Wyżej/Niżej” na podstronie zostaje dla klawiatury i VoiceOver.
 - **Sprawdzone uruchomieniem** (testowa kopia, prawdziwe przeciągnięcie myszą za zgodą użytkownika):
   - „Podcasty” przeciągnięte na „lib” dały w bazie kolejność `Podcasty:1 lib:2`;

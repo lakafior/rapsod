@@ -1,15 +1,15 @@
-# AudiobookSwift na iOS
+# Rapsod na iOS
 
 Klient iOS (iOS 27, Swift 6, SwiftUI) dla serwera audiobookshelf uruchamianego przez
-aplikację AudiobookSwift na Macu. Licencja **MPL-2.0** (`LICENSE`), tak jak wspólny pakiet
+aplikację Rapsod na Macu. Licencja **MPL-2.0** (`LICENSE`), tak jak wspólny pakiet
 `Packages/AudiobookshelfKit`, z którego korzysta. Nie zawiera kodu aplikacji na Maca (GPL-3.0)
 ani kodu przetłumaczonego ze źródeł audiobookshelf — rozmawia z serwerem wyłącznie przez jego API.
 
-Osobny projekt (`AudiobookSwiftiOS.xcodeproj`), a nie cel w projekcie Maca: schematy projektu
+Osobny projekt (`RapsodiOS.xcodeproj`), a nie cel w projekcie Maca: schematy projektu
 Maca są generowane automatycznie, a `scripts/release.sh` buduje go po nazwie schematu — osobny
 projekt nie może niczego tam zmienić; granica licencji przebiega też po granicy projektu.
 
-Etap 10b: parowanie z Makiem kodem QR (`abswift://pair?d=…`, format w `PairingPayload`
+Etap 10b: parowanie z Makiem kodem QR (`rapsod://pair?d=…`, format w `PairingPayload`
 pakietu) albo ręcznie (adres i klucz API), wybór działającego adresu (najpierw sieć lokalna,
 potem dostęp spoza domu), klucz w pęku kluczy iOS oraz prosty ekran z bibliotekami i okładkami.
 
@@ -62,7 +62,7 @@ Etap 11d: płynny ruch trybu „Tekst” — skład CoreText i ruch ze wspólneg
 (pakiet), widok to `BookTextCanvas` (`UIScrollView` z warstwami wierszy): przewijanie o wiersz,
 gdy lektor do niego dochodzi, jedną ciągłą animacją; jasność zdań zmienia tylko krycie nakładki
 (układ się nie zmienia); bez okna akapitów i bez późniejszych korekt po przeskoku. Tryb pokazowy
-(tylko Debug) do nagrań i pomiarów bez serwera: `xcrun simctl launch booted net.smigi.abswift.ios
+(tylko Debug) do nagrań i pomiarów bez serwera: `xcrun simctl launch booted net.smigi.rapsod.ios
 -BookTextDemo <folder z *.m4a i *.sync.json> [-BookTextDemoStart s] [-BookTextDemoRate r]
 [-BookTextDemoScript plik]`. Szczegóły w głównym `README.md` („Płynny ruch tekstu”).
 
@@ -76,7 +76,7 @@ głównym `README.md` („Segmenty sponsorowane w podcastach”).
 
 Etap 10g: czytnik e-booków — „Czytaj” na stronie pozycji (i „Czytaj e-book” na liście „Pobrane”),
 EPUB w WKWebView z epub.js 0.3.93 (BSD-2-Clause) i JSZip 3.10.1 (MIT; noty w
-`AudiobookSwiftiOS/Reader/THIRD-PARTY-NOTICES.txt`, dołączone do aplikacji), PDF w PDFKit. Pozycja
+`RapsodiOS/Reader/THIRD-PARTY-NOTICES.txt`, dołączone do aplikacji), PDF w PDFKit. Pozycja
 czytania w tym samym zapisie co czytnik Maca i web UI (CFI epub.js / numer strony), zapamiętywana
 też na telefonie do czytania bez sieci; e-book pobiera się razem z książką. Treść książki bez
 skryptów i bez sieci. MOBI i inne formaty — komunikat o braku obsługi. Szczegóły w głównym

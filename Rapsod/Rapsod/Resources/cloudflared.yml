@@ -1,0 +1,3 @@
+# Celowo prawie pusty: Rapsod podaje go cloudflared zamiast ~/.cloudflared/config.yml,
+# żeby tunel aplikacji nie przejął ustawień innych tuneli użytkownika. Reszta w argumentach.
+no-autoupdate: true

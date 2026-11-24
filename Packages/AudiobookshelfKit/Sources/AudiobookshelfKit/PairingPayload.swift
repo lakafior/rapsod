@@ -6,7 +6,7 @@ import Foundation
 
 /// Zawartość kodu parowania telefonu z aplikacją na Macu (etap 10b).
 ///
-/// Adres ma postać `abswift://pair?d=<base64url JSON>`; JSON wygląda tak:
+/// Adres ma postać `rapsod://pair?d=<base64url JSON>`; JSON wygląda tak:
 ///
 /// ```json
 /// {"v":1,
@@ -28,7 +28,7 @@ import Foundation
 /// Kod niesie klucz API bez terminu ważności — to sekret. Typ nie wypisuje go w opisie
 /// (`description`), więc przypadkowe `print`/`Logger` go nie ujawni.
 public struct PairingPayload: Codable, Sendable, Equatable {
-    public static let scheme = "abswift"
+    public static let scheme = "rapsod"
     public static let host = "pair"
     /// Najwyższa wersja formatu, którą ten kod rozumie.
     public static let currentVersion = 1
@@ -152,7 +152,7 @@ public struct PairingPayload: Codable, Sendable, Equatable {
     // MARK: - Adres
 
     public enum DecodingError: Error, Equatable, LocalizedError {
-        /// To nie jest adres `abswift://pair`.
+        /// To nie jest adres `rapsod://pair`.
         case notPairingLink
         /// Uszkodzona zawartość (base64, JSON albo brak wymaganych pól).
         case malformed
@@ -163,7 +163,7 @@ public struct PairingPayload: Codable, Sendable, Equatable {
 
         public var errorDescription: String? {
             switch self {
-            case .notPairingLink: "To nie jest kod parowania AudiobookSwift."
+            case .notPairingLink: "To nie jest kod parowania Rapsod."
             case .malformed: "Kod parowania jest uszkodzony. Wygeneruj nowy na Macu."
             case .unsupportedVersion: "Kod pochodzi z nowszej wersji aplikacji na Macu. Zaktualizuj aplikację na telefonie."
             case .incomplete: "Kod parowania nie zawiera klucza albo adresu serwera."
@@ -184,7 +184,7 @@ public struct PairingPayload: Codable, Sendable, Equatable {
         return url
     }
 
-    /// Odczytuje kod z adresu `abswift://pair?d=…` i sprawdza, czy da się z nim połączyć.
+    /// Odczytuje kod z adresu `rapsod://pair?d=…` i sprawdza, czy da się z nim połączyć.
     public init(url: URL) throws {
         guard url.scheme?.lowercased() == Self.scheme, url.host()?.lowercased() == Self.host,
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

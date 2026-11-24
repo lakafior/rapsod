@@ -58,7 +58,7 @@ extension AudiobookshelfClient {
     /// jak `BackupUploader.vue`). Treść jest składana w pliku tymczasowym, nie w pamięci.
     public func uploadBackup(file: URL, token: String) async throws -> [Backup] {
         struct Response: Decodable { let backups: [Backup] }
-        let boundary = "AudiobookSwift-\(UUID().uuidString)"
+        let boundary = "Rapsod-\(UUID().uuidString)"
         let name = file.lastPathComponent.replacingOccurrences(of: "\"", with: "")
         let body = FileManager.default.temporaryDirectory.appending(path: "backup-upload-\(UUID().uuidString)")
         FileManager.default.createFile(atPath: body.path, contents: nil)

@@ -1,5 +1,5 @@
-// Makieta nowego układu ustawień AudiobookSwift (wariant B, rekomendowany).
-// Samodzielna aplikacja z danymi przykładowymi — NIE należy do celu AudiobookSwift.
+// Makieta nowego układu ustawień Rapsod (wariant B, rekomendowany).
+// Samodzielna aplikacja z danymi przykładowymi — NIE należy do celu Rapsod.
 // Budowanie i zrzuty: ./render.sh (w tym folderze).
 // Uruchomienie jednego ekranu: ./Makieta <ekran> [dark]   ekrany: users, profile, root, remote, libraries
 

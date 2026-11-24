@@ -11,7 +11,7 @@
 #   --skip-notarize   wszystko poza notaryzacją (do testów lokalnych; plik
 #                     dostaje dopisek „-nienotaryzowany” i nie nadaje się do publikacji)
 # Zmienne:
-#   ABS_NOTARY_PROFILE  nazwa profilu notarytool w pęku kluczy (domyślnie audiobookswift-notary)
+#   ABS_NOTARY_PROFILE  nazwa profilu notarytool w pęku kluczy (domyślnie rapsod-notary)
 #   ABS_BUILD_NUMBER    numer builda (domyślnie liczba commitów)
 set -euo pipefail
 
@@ -19,9 +19,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REL="$ROOT/build/release"
 SERVER_SRC="$ROOT/build/abs-server"
 TEAM_ID="5TA8RF548P"
-SCHEME="AudiobookSwift"
-APP_NAME="AudiobookSwift"
-NOTARY_PROFILE="${ABS_NOTARY_PROFILE:-audiobookswift-notary}"
+SCHEME="Rapsod"
+APP_NAME="Rapsod"
+NOTARY_PROFILE="${ABS_NOTARY_PROFILE:-rapsod-notary}"
 BUILD_NUMBER="${ABS_BUILD_NUMBER:-$(git -C "$ROOT" rev-list --count HEAD)}"
 
 NOTARIZE=1
@@ -136,7 +136,7 @@ MACHO_COUNT=0
 while IFS= read -r -d '' file; do
   if file -b "$file" | grep -q '^Mach-O'; then
     lipo -archs "$file" | grep -qx 'arm64' || die "Binarka nie jest wyłącznie arm64: $file"
-    args=(--force --options runtime --timestamp --sign "$IDENTITY" --prefix "net.smigi.abswift.")
+    args=(--force --options runtime --timestamp --sign "$IDENTITY" --prefix "net.smigi.rapsod.")
     # Tylko Node dostaje uprawnienie runtime (JIT silnika V8) — zob. packaging/node.entitlements.
     if [[ "$file" == "$PAYLOAD/node" ]]; then args+=(--entitlements "$ROOT/packaging/node.entitlements"); fi
     codesign "${args[@]}" "$file" 2> /dev/null || codesign "${args[@]}" "$file"
@@ -197,7 +197,7 @@ echo "  aio-abs-providers: start, /healthz, klucz, zapis ustawień: ok"
 step "Archiwum Xcode (Release, build $BUILD_NUMBER)"
 ARCHIVE="$REL/$APP_NAME.xcarchive"
 xcodebuild archive \
-  -project "$ROOT/AudiobookSwift/AudiobookSwift.xcodeproj" -scheme "$SCHEME" -configuration Release \
+  -project "$ROOT/Rapsod/Rapsod.xcodeproj" -scheme "$SCHEME" -configuration Release \
   -destination 'generic/platform=macOS' -archivePath "$ARCHIVE" \
   -derivedDataPath "$REL/DerivedData" -allowProvisioningUpdates \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" > "$REL/xcodebuild-archive.log" 2>&1 \
@@ -223,7 +223,7 @@ ditto "$PAYLOAD" "$RESOURCES/Server"
 LICENSES="$RESOURCES/Licenses"
 mkdir -p "$LICENSES"
 cp "$ROOT/LICENSE" "$LICENSES/LICENSE.txt"
-cp "$ROOT/AudiobookSwift/AudiobookSwift/Resources/THIRD-PARTY-NOTICES.txt" "$LICENSES/"
+cp "$ROOT/Rapsod/Rapsod/Resources/THIRD-PARTY-NOTICES.txt" "$LICENSES/"
 cp "$SERVER_SRC/LICENSE" "$LICENSES/audiobookshelf-LICENSE.txt"
 cp "$ROOT/build/node-runtime/LICENSE" "$LICENSES/Node.js-LICENSE.txt"
 cp "$ROOT/build/node-runtime/SOURCE.txt" "$LICENSES/Node.js-SOURCE.txt"
@@ -232,7 +232,7 @@ cp "$ROOT/packaging/licenses/nunicode-LICENSE.txt" "$LICENSES/nunicode-sqlite-LI
 cp "$PROVIDERS_SRC/LICENSE" "$LICENSES/aio-abs-providers-LICENSE.txt"
 cp "$ROOT/packaging/licenses/epub.js-LICENSE.txt" "$ROOT/packaging/licenses/JSZip-LICENSE.txt" "$ROOT/packaging/licenses/koodo-reader-LICENSE.txt" "$LICENSES/"
 cat > "$LICENSES/VERSIONS.txt" <<EOF
-AudiobookSwift $VERSION ($BUILD_NUMBER), commit $(git -C "$ROOT" rev-parse HEAD)
+Rapsod $VERSION ($BUILD_NUMBER), commit $(git -C "$ROOT" rev-parse HEAD)
 audiobookshelf $(git -C "$ROOT/vendor/audiobookshelf" describe --tags --always), commit $(git -C "$ROOT/vendor/audiobookshelf" rev-parse HEAD)
 aio-abs-providers, commit $(git -C "$ROOT/vendor/aio-abs-providers" rev-parse HEAD) (https://github.com/lakafior/aio-abs-providers)
 Node.js $("$PAYLOAD/node" --version) (własny build ze źródeł z https://nodejs.org/dist/, zob. Node.js-SOURCE.txt)
@@ -246,7 +246,7 @@ step "Podpis aplikacji"
 # aplikacji). Binarki serwera są już podpisane; bez --deep, żeby ich nie ruszać.
 [[ -f "$APP/Contents/embedded.provisionprofile" ]] || die "Eksport nie osadził profilu aprowizacji."
 codesign -d --entitlements "$REL/app.entitlements" --xml "$APP" 2> /dev/null
-grep -q "$TEAM_ID.net.smigi.abswift" "$REL/app.entitlements" || die "W uprawnieniach aplikacji brakuje grupy pęku kluczy."
+grep -q "$TEAM_ID.net.smigi.rapsod" "$REL/app.entitlements" || die "W uprawnieniach aplikacji brakuje grupy pęku kluczy."
 if grep -q 'get-task-allow' "$REL/app.entitlements"; then die "Uprawnienia aplikacji zawierają get-task-allow."; fi
 codesign --force --options runtime --timestamp --entitlements "$REL/app.entitlements" --sign "$IDENTITY" "$APP"
 codesign --verify --deep --strict --verbose=1 "$APP"

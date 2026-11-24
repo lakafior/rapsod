@@ -124,7 +124,7 @@ public final class TextFlowLayout {
     private var cached = Set<Int>()
 
     /// Atrybut zdania w tekście akapitu.
-    static let sentenceKey = NSAttributedString.Key("net.smigi.abswift.sentence")
+    static let sentenceKey = NSAttributedString.Key("net.smigi.rapsod.sentence")
 
     public init(document: TextSyncDocument, style: TextFlowStyle, width: CGFloat, topInset: CGFloat, bottomInset: CGFloat) {
         self.document = document

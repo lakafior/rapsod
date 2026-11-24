@@ -6,7 +6,7 @@ import Foundation
 
 /// Kod „Odśwież adresy” (etap 10c): aktualne adresy sparowanego serwera bez klucza.
 ///
-/// `abswift://addresses?d=<base64url JSON>`, JSON:
+/// `rapsod://addresses?d=<base64url JSON>`, JSON:
 /// `{"v":1,"server":{"id":"…","name":"Mac mini"},"addresses":[{"url":"…","kind":"local"}]}`.
 /// Nie jest sekretem — telefon przyjmuje go tylko dla serwera, z którym jest już sparowany
 /// (ten sam `server.id`), a każdy nowy adres i tak sprawdza kluczem (`AddressUpdate`).
@@ -66,11 +66,11 @@ public struct AddressesPayload: Codable, Sendable, Equatable {
 }
 
 /// Ogłoszenie serwera w sieci lokalnej przez Bonjour (etap 10c). Mac ogłasza usługę
-/// `_abswift._tcp` z identyfikatorem serwera i adresem w rekordzie TXT; telefon szuka jej,
+/// `_rapsod._tcp` z identyfikatorem serwera i adresem w rekordzie TXT; telefon szuka jej,
 /// gdy żaden zapisany adres lokalny nie odpowiada (np. Mac dostał nowy adres w sieci).
 /// Ogłoszenie nie jest uwierzytelnione — to tylko propozycja adresu, sprawdzana kluczem.
 public enum LocalDiscovery {
-    public static let serviceType = "_abswift._tcp"
+    public static let serviceType = "_rapsod._tcp"
     /// Klucze rekordu TXT.
     public static let serverIDKey = "id"
     public static let urlKey = "url"
