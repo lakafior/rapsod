@@ -28,6 +28,12 @@ struct ShelfPage: View {
                             ContinueCard(entry: entry, model: model, session: session) { playError = $0 }
                         }
                     }
+                case .continueBooks:
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 12) {
+                        ForEach(feed.continueBooks(session: session, limit: 100).entries) { entry in
+                            ContinueCard(entry: entry, model: model, session: session) { playError = $0 }
+                        }
+                    }
                 case .newEpisodes:
                     LazyVStack(spacing: 0) {
                         ForEach(episodes.isEmpty ? feed.recentEpisodes : episodes) { episode in

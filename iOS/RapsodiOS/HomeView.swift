@@ -43,15 +43,21 @@ final class HomeFeed {
                                 local: session.library.podcasts.localEpisodes.inProgress,
                                 lastUpdate: session.library.progress.lastUpdateByKey, limit: limit)
     }
+
+    /// „Słuchaj dalej” zakładki Audiobooki: same książki, od ostatnio słuchanych.
+    func continueBooks(session: ServerSession, limit: Int = 20) -> ContinueListening.Result {
+        ContinueListening.merge(books: shelves?.continueListening ?? [], serverEpisodes: [], local: [],
+                                lastUpdate: session.library.progress.lastUpdateByKey, limit: limit)
+    }
 }
 
 /// Półki Startu, do których prowadzi „Zobacz wszystko”.
 enum HomeShelf: String, Hashable {
-    case continueListening, continueSeries, newEpisodes, recentlyAdded, discover, listenAgain, recentSeries, newestAuthors
+    case continueListening, continueBooks, continueSeries, newEpisodes, recentlyAdded, discover, listenAgain, recentSeries, newestAuthors
 
     var title: String {
         switch self {
-        case .continueListening: "Słuchaj dalej"
+        case .continueListening, .continueBooks: "Słuchaj dalej"
         case .continueSeries: "Kolejne w serii"
         case .newEpisodes: "Nowe odcinki"
         case .recentlyAdded: "Ostatnio dodane"

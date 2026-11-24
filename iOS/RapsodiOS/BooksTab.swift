@@ -172,9 +172,10 @@ final class EntityListModel<Element: Decodable & Sendable & Identifiable> where 
     }
 }
 
-/// Zakładka „Audiobooki”: wszystkie biblioteki książek jako jedna. Na górze kategorie jak w
-/// bibliotece systemowej aplikacji muzycznej (serie, autorzy, lektorzy, kolekcje, pobrane),
-/// pod nimi wszystkie książki w siatce albo na liście.
+/// Zakładka „Audiobooki”: wszystkie biblioteki książek jako jedna. Na górze duże karty
+/// „Słuchaj dalej” (same książki), pod nimi kafle kategorii (serie, autorzy, lektorzy, kolekcje,
+/// playlisty, pobrane) i półki z Startu dotyczące książek, na dole wszystkie książki w siatce
+/// albo na liście.
 struct BooksTab: View {
     let model: AppModel
     let session: ServerSession
@@ -187,11 +188,11 @@ struct BooksTab: View {
                     // Bez sieci nie czekamy na limit czasu zapytań — od razu to, co jest na telefonie.
                     OfflineFallback(model: model, session: session, message: nil) { Task { await model.reconnect() } }
                 case .loading:
-                    ProgressView()
+                    ShelvesSkeleton()
                 case .failed(let message):
                     OfflineFallback(model: model, session: session, message: message) { Task { await session.library.load() } }
                 case .ready(let combined):
-                    BooksGrid(combined: combined, session: session)
+                    BooksGrid(combined: combined, model: model, session: session)
                 }
             }
             .navigationTitle("Audiobooki")
@@ -200,41 +201,70 @@ struct BooksTab: View {
     }
 }
 
-/// Kategorie biblioteki — wiersze z ikoną jak w bibliotece systemowej.
-private struct LibraryCategories: View {
+/// Kategorie biblioteki jako poziomy rząd kafli (na iPadzie mieszczą się wszystkie naraz).
+private struct CategoryTiles: View {
     let session: ServerSession
+    @ScaledMetric(relativeTo: .body) private var tileWidth: CGFloat = 112
+
+    private struct Category: Identifiable {
+        let title: String
+        let symbol: String
+        let route: Route
+        var id: String { title }
+    }
 
     var body: some View {
         let hasDownloads = !session.downloads.manager.items(scope: session.scope).isEmpty
-        VStack(spacing: 0) {
-            row("Serie", "square.stack", .allSeries)
-            row("Autorzy", "person.2", .allAuthors)
-            row("Lektorzy", "waveform", .narrators)
-            row("Kolekcje", "rectangle.stack", .collections)
-            row("Playlisty", "music.note.list", .playlists)
-            if hasDownloads { row("Pobrane", "arrow.down.circle", .downloads) }
+        let categories = [
+            Category(title: "Serie", symbol: "square.stack", route: .allSeries),
+            Category(title: "Autorzy", symbol: "person.2", route: .allAuthors),
+            Category(title: "Lektorzy", symbol: "waveform", route: .narrators),
+            Category(title: "Kolekcje", symbol: "rectangle.stack", route: .collections),
+            Category(title: "Playlisty", symbol: "music.note.list", route: .playlists),
+        ] + (hasDownloads ? [Category(title: "Pobrane", symbol: "arrow.down.circle", route: .downloads)] : [])
+        ScrollView(.horizontal) {
+            HStack(spacing: 10) {
+                ForEach(categories) { tile($0) }
+            }
         }
+        .contentMargins(.horizontal, Design.margin, for: .scrollContent)
+        .scrollIndicators(.hidden)
     }
 
-    private func row(_ title: String, _ symbol: String, _ route: Route) -> some View {
-        NavigationLink(value: route) {
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    Image(systemName: symbol)
-                        .font(.title3)
-                        .foregroundStyle(.tint)
-                        .frame(width: 30)
-                        .accessibilityHidden(true)
-                    Text(title).font(.title3)
-                    Spacer()
-                    Image(systemName: "chevron.forward").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
-                }
-                .padding(.vertical, 11)
-                Divider().padding(.leading, 44)
+    private func tile(_ category: Category) -> some View {
+        NavigationLink(value: category.route) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: category.symbol)
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+                    .frame(height: 28)
+                    .accessibilityHidden(true)
+                Text(category.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
             }
-            .contentShape(.rect)
+            .padding(12)
+            .frame(minWidth: min(tileWidth, 180), alignment: .leading)
+            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 16, style: .continuous))
+            .contentShape(.rect(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// „Słuchaj dalej” z samymi książkami — te same duże karty co na Starcie.
+private struct ContinueBooksShelf: View {
+    let model: AppModel
+    let session: ServerSession
+    let failed: (String) -> Void
+
+    var body: some View {
+        let entries = session.home.continueBooks(session: session).entries
+        Shelf(title: HomeShelf.continueBooks.title, destination: entries.count > 3 ? .shelf(.continueBooks) : nil,
+              width: .wide, items: entries) { entry in
+            ContinueCard(entry: entry, model: model, session: session, failed: failed)
+        }
     }
 }
 
@@ -255,6 +285,7 @@ private struct BookQuery: Hashable {
 
 private struct BooksGrid: View {
     let combined: CombinedLibraries
+    let model: AppModel
     let session: ServerSession
 
     @AppStorage("books.layout") private var layout: BookLayout = .grid
@@ -266,6 +297,11 @@ private struct BooksGrid: View {
     /// Zapytanie, dla którego lista jest wczytana — powrót z podstrony nie wczytuje jej od nowa.
     @State private var loadedQuery: BookQuery?
     @ScaledMetric(relativeTo: .body) private var cardWidth: CGFloat = 104
+    @State private var playError: String?
+    /// Stan serwera, dla którego półki są wczytane — powrót z podstrony nie pyta serwera ponownie.
+    @State private var loadedFeed: FeedTrigger?
+
+    private var feed: HomeFeed { session.home }
 
     private var filter: CombinedLibraries.ProgressFilter? { CombinedLibraries.ProgressFilter(rawValue: filterRaw) }
     private var scopedLibrary: String? { combined.libraries.contains { $0.id == libraryID } ? libraryID : nil }
@@ -276,56 +312,48 @@ private struct BooksGrid: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                LibraryCategories(session: session)
-                FailureNotice(failures: list.failures)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Wszystkie książki").font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                    if let summary {
-                        Text(summary).font(.subheadline).foregroundStyle(.secondary)
-                    }
+            VStack(alignment: .leading, spacing: 28) {
+                if model.isOffline {
+                    Label("Brak połączenia z serwerem.", systemImage: "wifi.slash")
+                        .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, Design.margin)
                 }
-                .padding(.top, 12)
-                switch layout {
-                case .grid:
-                    LazyVGrid(columns: coverColumns(minimum: cardWidth), spacing: 20) {
-                        ForEach(list.items) { entry in
-                            BookCard(item: entry.value, session: session, libraryName: badge(entry.libraryID))
-                                .onAppear { list.appeared(entry.id) }
-                        }
+                ContinueBooksShelf(model: model, session: session) { playError = $0 }
+                CategoryTiles(session: session)
+                if let shelves = feed.shelves {
+                    bookShelf(.continueSeries, shelves.continueSeries)
+                    // Przy małej bibliotece „Ostatnio dodane” powtarzałyby siatkę tuż pod spodem.
+                    if shelves.recentlyAdded.count > Self.smallLibrary {
+                        bookShelf(.recentlyAdded, shelves.recentlyAdded)
                     }
-                case .list:
-                    LazyVStack(spacing: 0) {
-                        ForEach(list.items) { entry in
-                            NavigationLink(value: Route.item(entry.value.id)) {
-                                VStack(spacing: 0) {
-                                    BookRow(book: entry.value, session: session)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.vertical, 8)
-                                        .contentShape(.rect)
-                                    Divider().padding(.leading, 64)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .onAppear { list.appeared(entry.id) }
-                        }
+                    Shelf(title: HomeShelf.recentSeries.title, destination: .shelf(.recentSeries), items: shelves.recentSeries) { series in
+                        SeriesCard(series: series, session: session)
                     }
+                    bookShelf(.listenAgain, shelves.listenAgain)
                 }
-                footer
+                allBooks
+                    .padding(.horizontal, Design.margin)
             }
-            .padding(.horizontal)
-            .padding(.bottom)
-        }
-        .overlay {
-            if list.hasLoaded, list.items.isEmpty, list.error == nil, list.stalled == nil {
-                ContentUnavailableView(filter == nil ? "Brak książek" : "Nic nie pasuje do filtra", systemImage: "books.vertical",
-                                       description: Text(filter == nil ? "W bibliotekach książek nie ma jeszcze pozycji." : "Zmień filtr postępu albo bibliotekę."))
-            }
+            .padding(.vertical, 8)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { sortMenu }
         }
-        .refreshable { await reload() }
+        .alert("Nie udało się odtworzyć", isPresented: Binding(get: { playError != nil }, set: { if !$0 { playError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(playError ?? "")
+        }
+        .refreshable {
+            await model.reconnect()
+            await reload()
+        }
+        // Półki (wspólne ze Startem) — po zdarzeniach serwera, nowym postępie i włączeniu innej książki.
+        .task(id: FeedTrigger(items: session.library.itemsRevision, progress: session.library.progressRevision, playing: model.playback.nowPlayingKey)) {
+            let trigger = FeedTrigger(items: session.library.itemsRevision, progress: session.library.progressRevision, playing: model.playback.nowPlayingKey)
+            guard loadedFeed != trigger || !feed.isLoaded else { return }
+            await feed.load(combined, session: session, model: model)
+            if !Task.isCancelled { loadedFeed = trigger }
+        }
         .task(id: query) {
             guard loadedQuery != query else { return }
             var sameList = loadedQuery
@@ -337,6 +365,66 @@ private struct BooksGrid: View {
         .onChange(of: sort) { _, new in descending = new.defaultDescending }
         // Zmiany pozycji na serwerze (skan, edycja, ukończenie) — pozycja przewijania zostaje.
         .onChange(of: session.library.itemsRevision) { list.refresh(makeMerge()) }
+    }
+
+    /// Do tylu pozycji „Ostatnio dodane” obejmują całą bibliotekę, więc półka się chowa.
+    static let smallLibrary = 6
+
+    private struct FeedTrigger: Hashable {
+        let items: Int
+        let progress: Int
+        let playing: String?
+    }
+
+    /// „Wszystkie książki”: nagłówek, siatka albo lista, stan pusty i stopka doczytywania.
+    private var allBooks: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            FailureNotice(failures: list.failures)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Wszystkie książki").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                if let summary {
+                    Text(summary).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            if list.hasLoaded, list.items.isEmpty, list.error == nil, list.stalled == nil {
+                // Pod nagłówkiem, nie na całym ekranie — półki i kategorie nad nim zostają widoczne.
+                ContentUnavailableView(filter == nil ? "Brak książek" : "Nic nie pasuje do filtra", systemImage: "books.vertical",
+                                       description: Text(filter == nil ? "W bibliotekach książek nie ma jeszcze pozycji." : "Zmień filtr postępu albo bibliotekę."))
+                    .frame(maxWidth: .infinity)
+            }
+            switch layout {
+            case .grid:
+                LazyVGrid(columns: coverColumns(minimum: cardWidth), spacing: 20) {
+                    ForEach(list.items) { entry in
+                        BookCard(item: entry.value, session: session, libraryName: badge(entry.libraryID))
+                            .onAppear { list.appeared(entry.id) }
+                    }
+                }
+            case .list:
+                LazyVStack(spacing: 0) {
+                    ForEach(list.items) { entry in
+                        NavigationLink(value: Route.item(entry.value.id)) {
+                            VStack(spacing: 0) {
+                                BookRow(book: entry.value, session: session)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 8)
+                                    .contentShape(.rect)
+                                Divider().padding(.leading, 64)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .onAppear { list.appeared(entry.id) }
+                    }
+                }
+            }
+            footer
+        }
+    }
+
+    private func bookShelf(_ shelf: HomeShelf, _ items: [Client.LibraryItem]) -> some View {
+        Shelf(title: shelf.title, destination: .shelf(shelf), items: items) { item in
+            BookCard(item: item, session: session, libraryName: combined.hasSeveralLibraries ? combined.libraryName(item.libraryId) : nil)
+        }
     }
 
     private func makeMerge() -> SortedMerge<Client.LibraryItem> {
