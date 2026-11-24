@@ -189,7 +189,7 @@ struct CollectionsPage: View {
             } else if collections == nil {
                 ProgressView()
             } else if collections?.isEmpty == true {
-                EmptyState(title: "Brak kolekcji", systemImage: "rectangle.stack", message: "Kolekcje tworzy się w audiobookshelf na Macu.")
+                EmptyState(title: "Brak kolekcji", systemImage: "folder", message: "Kolekcje tworzy się w audiobookshelf na Macu.")
             }
         }
         .navigationTitle("Kolekcje")
