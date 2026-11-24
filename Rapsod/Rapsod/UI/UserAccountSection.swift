@@ -7,6 +7,7 @@ private struct UserAccountForm: View {
     @State private var password = ""
     @State private var isWorking = false
     @State private var error: String?
+    @State private var confirmingAdmin = false
 
     var body: some View {
         TextField("Nazwa użytkownika", text: $username)
@@ -23,14 +24,22 @@ private struct UserAccountForm: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(isWorking || username.trimmingCharacters(in: .whitespaces).isEmpty)
         }
+        .confirmationDialog("Konto „\(username)” ma rolę Administrator", isPresented: $confirmingAdmin) {
+            Button("Używaj konta administratora") { submit(allowAdmin: true) }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Do słuchania zwykle wystarcza zwykłe konto. Wybierz to konto, jeśli to Twoje dotychczasowe konto (np. po przenosinach aplikacji) — zachowasz postęp słuchania.")
+        }
     }
 
-    private func submit() {
+    private func submit(allowAdmin: Bool = false) {
         isWorking = true
         error = nil
         Task {
             do {
-                try await account.setUpUser(username: username, password: password)
+                try await account.setUpUser(username: username, password: password, allowAdmin: allowAdmin)
+            } catch ServerAccount.UserSetupError.notRegularUser where !allowAdmin {
+                confirmingAdmin = true
             } catch {
                 self.error = error.localizedDescription
             }

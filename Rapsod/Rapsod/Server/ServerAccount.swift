@@ -288,14 +288,17 @@ final class ServerAccount {
             switch self {
             case .usernameTaken: "Ta nazwa jest już zajęta na serwerze. Jeśli to Twoje konto, podaj jego hasło."
             case .reserved: "Konto root służy do zarządzania serwerem — wybierz inną nazwę."
-            case .notRegularUser: "To konto ma uprawnienia administratora. Do słuchania wybierz zwykłe konto użytkownika — jego hasło wpisujesz w telefonie."
+            case .notRegularUser: "To konto ma uprawnienia administratora. Do słuchania zwykle wystarcza zwykłe konto użytkownika — jego hasło wpisujesz w telefonie."
             }
         }
     }
 
     /// Ustawia konto użytkownika: z hasłem najpierw próbuje zalogować się na istniejące
     /// konto, a gdy go nie ma — zakłada nowe. Puste hasło oznacza losowe (trafia do pęku kluczy).
-    func setUpUser(username: String, password: String) async throws {
+    ///
+    /// Konto administratora wymaga świadomej zgody (`allowAdmin`), chyba że to samo konto było już
+    /// zapisane w pęku kluczy. Bez zgody rzuca `UserSetupError.notRegularUser`, a formularz pyta.
+    func setUpUser(username: String, password: String, allowAdmin: Bool = false) async throws {
         guard state == .ready, let userStore else { throw AudiobookshelfClient.APIError.unauthorized }
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard username.lowercased() != ServerEnvironment.rootUsername else { throw UserSetupError.reserved }
@@ -322,7 +325,11 @@ final class ServerAccount {
         // parowaniu telefonu (etap 10b) — ponowne podanie jego hasła nie może go odrzucić.
         let type = try await client.me(token: login.accessToken).type
         let previous = (try? userStore.load())?.username
-        guard type == "user" || (type == "admin" && previous == login.username) else { throw UserSetupError.notRegularUser }
+        // Przy przenosinach na nowy pęk kluczy (np. po zmianie nazwy aplikacji) `previous` jest puste,
+        // a konto już istnieje jako administrator — wtedy decyduje użytkownik (`allowAdmin`).
+        guard type == "user" || (type == "admin" && (allowAdmin || previous == login.username)) else {
+            throw UserSetupError.notRegularUser
+        }
         try userStore.save(credentials)
         userCredentials = credentials
         userState = .ready(username: login.username)

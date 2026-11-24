@@ -177,6 +177,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sharing.activate()
         metadataSources.activate()
         listening.activate()
+        Task.detached(priority: .utility) {
+            let removed = KeychainOrphans.prune()
+            if removed > 0 { NSLog("Pęk kluczy: usunięto %d wpisów po nieistniejących folderach danych", removed) }
+        }
         Task {
             // Reset hasła roota przerwany zamknięciem aplikacji: dokończ albo cofnij, zanim ruszy serwer.
             if let problem = await RootPasswordReset.recoverIfNeeded() {

@@ -12,7 +12,7 @@ import Observation
 @Observable
 final class SponsorDetectionStore {
     static let shared = SponsorDetectionStore()
-    static let keychainService = "net.smigi.rapsod.sponsor-api"
+    nonisolated static let keychainService = "net.smigi.rapsod.sponsor-api"
 
     private(set) var settings = SponsorDetectionSettings()
     /// Klucz jest zapisany (samej wartości widoki nie dostają).

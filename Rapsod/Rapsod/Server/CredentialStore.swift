@@ -71,6 +71,63 @@ struct CredentialStore<Value: Codable & Sendable & Equatable>: Sendable {
 /// Pęk kluczy Maca jako miejsce na sekrety kont dla kodu wspólnego (`SecretStore` z AudiobookshelfKit).
 extension CredentialStore: SecretStore {}
 
+/// Sprzątanie wpisów, których folder danych już nie istnieje. Sekrety są zapisywane osobno dla każdego
+/// folderu danych (konto pozycji = ścieżka folderu), więc testowe serwery w folderach tymczasowych
+/// zostawiały po sobie wpisy na zawsze. Przy starcie aplikacji usuwamy wpisy z usług aplikacji,
+/// których ścieżka nie istnieje. Folder na odłączonym dysku (`/Volumes/<dysk>` niedostępny)
+/// nie jest „sierotą” — ten wpis zostaje.
+enum KeychainOrphans {
+    static let services = [
+        ServerEnvironment.keychainService,
+        ServerEnvironment.userKeychainService,
+        ServerEnvironment.cloudflareTunnelKeychainService,
+        ServerEnvironment.metadataSourcesKeychainService,
+        SponsorDetectionStore.keychainService,
+    ]
+
+    /// Zwraca liczbę usuniętych wpisów.
+    @discardableResult
+    static func prune(fileManager: FileManager = .default) -> Int {
+        var removed = 0
+        for service in services {
+            for account in accounts(service: service) where isOrphan(path: account, fileManager: fileManager) {
+                let query: [String: Any] = [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service,
+                    kSecAttrAccount as String: account,
+                    kSecUseDataProtectionKeychain as String: true,
+                ]
+                if SecItemDelete(query as CFDictionary) == errSecSuccess { removed += 1 }
+            }
+        }
+        return removed
+    }
+
+    /// Ścieżka bezwzględna, której nie ma, przy dostępnym dysku. Inne wartości konta zostają.
+    static func isOrphan(path: String, fileManager: FileManager = .default) -> Bool {
+        guard path.hasPrefix("/"), !fileManager.fileExists(atPath: path) else { return false }
+        let components = (path as NSString).pathComponents
+        if components.count > 2, components[1] == "Volumes" {
+            return fileManager.fileExists(atPath: "/Volumes/" + components[2])
+        }
+        return true
+    }
+
+    private static func accounts(service: String) -> [String] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+    }
+}
+
 struct KeychainError: LocalizedError {
     let status: OSStatus
 
