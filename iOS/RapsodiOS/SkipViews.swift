@@ -94,35 +94,52 @@ struct SkipBanner: View {
 
 // MARK: - Lista segmentów odcinka
 
-/// Segmenty bieżącego odcinka: granice, rodzaj, usuwanie i dodawanie. Poprawki zostają na telefonie.
+/// Segmenty odcinka: granice, rodzaj, usuwanie i dodawanie. Poprawki zostają na telefonie.
+/// Z odtwarzacza (`init(playback:)`) albo z menu odcinka bez odtwarzania (`EpisodeSkipSheet`).
 struct SkipEditorSheet: View {
-    let playback: PlaybackCoordinator
+    let title: String?
+    let context: PlaybackCoordinator.SkipContext?
+    let duration: Double
+    /// Ten odcinek gra: są przyciski „bieżące miejsce” (sam czas czytany dopiero przy dotknięciu).
+    let isLive: Bool
+    let current: () -> Double
+    /// Odsłuch od miejsca (odcinek, który nie gra, zaczyna grać).
+    let seek: (Double) -> Void
+    let save: (SkipMap) async throws -> Void
+    var unavailable = "Ten odcinek nie ma znaczników. Mac liczy je po pobraniu odcinka na serwer."
     @State private var map: SkipMap?
+    @State private var baseline: SkipMap?
     @State private var error: String?
     @Environment(\.dismiss) private var dismiss
 
-    private var player: AudiobookPlayer { playback.player }
+    private func reset() {
+        map = context.map { $0.map ?? SkipMap(episode: .init(itemID: $0.podcastID), audio: $0.actual) }
+        baseline = map
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                if let context = playback.skipContext {
+                if let title {
+                    Text(title).font(.headline)
+                }
+                if let context {
                     statusSection(context)
                     Section {
                         let segments = map?.effectiveSegments ?? []
                         if segments.isEmpty { Text("Brak segmentów.").foregroundStyle(.secondary) }
                         ForEach(segments) { segment in
-                            SkipSegmentEditor(segment: segment, duration: player.duration, current: { player.currentTime },
-                                              seek: { player.seek(to: $0) }) { start, end, kind in
+                            SkipSegmentEditor(segment: segment, duration: duration, current: isLive ? current : nil,
+                                              seek: seek) { start, end, kind in
                                 map?.adjust(segment, start: start, end: end, kind: kind)
                             }
                             .swipeActions {
                                 Button("Usuń", role: .destructive) { map?.remove(segment) }
                             }
                         }
-                        Button("Dodaj w bieżącym miejscu", systemImage: "plus") {
-                            let start = player.currentTime
-                            map?.add(start: start, end: min(start + 30, player.duration), kind: .sponsor)
+                        Button(isLive ? "Dodaj w bieżącym miejscu" : "Dodaj segment", systemImage: "plus") {
+                            let start = isLive ? current() : 0
+                            map?.add(start: start, end: min(start + 30, duration), kind: .sponsor)
                         }
                         if map?.corrections.isEmpty == false {
                             Button("Przywróć wykryte", role: .destructive) { map?.resetCorrections() }
@@ -133,8 +150,7 @@ struct SkipEditorSheet: View {
                         Text("Poprawki zapisują się na tym telefonie. Na Macu poprawki trafiają do pliku na serwerze i widzą je wszystkie urządzenia.")
                     }
                 } else {
-                    Text("Ten odcinek nie ma znaczników. Mac liczy je po pobraniu odcinka na serwer.")
-                        .foregroundStyle(.secondary)
+                    Text(unavailable).foregroundStyle(.secondary)
                 }
                 if let error { Text(error).foregroundStyle(.red) }
             }
@@ -143,13 +159,13 @@ struct SkipEditorSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Anuluj") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Zapisz") { save() }.disabled(map == nil || map == playback.skipContext?.map)
+                    Button("Zapisz") { saveMap() }.disabled(map == nil || map == baseline)
                 }
             }
         }
-        .onAppear {
-            map = playback.skipContext.map { $0.map ?? SkipMap(episode: .init(itemID: $0.podcastID), audio: $0.actual) }
-        }
+        .onAppear(perform: reset)
+        // Znaczniki doczytane po otwarciu (odtwarzacz dopiero je wczytał): bez poprawek — pokaż nowe.
+        .onChange(of: context?.map) { if map == baseline { reset() } }
     }
 
     @ViewBuilder private func statusSection(_ context: PlaybackCoordinator.SkipContext) -> some View {
@@ -182,11 +198,11 @@ struct SkipEditorSheet: View {
         return "Plik ma reklamy wstawiane dynamicznie\(amount), ale nie wiadomo gdzie — bez zgadywania granic."
     }
 
-    private func save() {
+    private func saveMap() {
         guard let map else { return }
         Task {
             do {
-                try await playback.saveSkips(map)
+                try await save(map)
                 dismiss()
             } catch {
                 self.error = "Nie udało się zapisać: \(error.localizedDescription)"
@@ -199,7 +215,8 @@ struct SkipEditorSheet: View {
 struct SkipSegmentEditor: View {
     let segment: SkipSegment
     let duration: Double
-    let current: () -> Double
+    /// `nil` — odcinek nie gra, bez „bieżącego miejsca”.
+    let current: (() -> Double)?
     let seek: (Double) -> Void
     let change: (_ start: Double, _ end: Double, _ kind: SkipKind?) -> Void
 
@@ -230,10 +247,76 @@ struct SkipSegmentEditor: View {
                 LabeledContent(label, value: PlaybackFormat.clock(value)).monospacedDigit()
             }
             .accessibilityValue(Text(PlaybackFormat.spokenDuration(value)))
-            Button("Bieżące miejsce", systemImage: "scope") { set(current()) }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .accessibilityLabel(Text("\(label): bieżące miejsce"))
+            if let current {
+                Button("Bieżące miejsce", systemImage: "scope") { set(current()) }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(Text("\(label): bieżące miejsce"))
+            }
+        }
+    }
+}
+
+/// Edytor bieżącego odcinka w odtwarzaczu (znaczniki czytane na bieżąco — mogą dojść po otwarciu).
+struct PlayerSkipEditorSheet: View {
+    let playback: PlaybackCoordinator
+
+    var body: some View {
+        let player = playback.player
+        SkipEditorSheet(title: nil, context: playback.skipContext, duration: player.duration,
+                        isLive: true, current: { player.currentTime }, seek: { player.seek(to: $0) },
+                        save: { try await playback.saveSkips($0) })
+    }
+}
+
+/// Segmenty odcinka z menu odcinka, bez odtwarzania: gdy ten odcinek gra — edytor odtwarzacza,
+/// inaczej znaczniki wczytane osobno (plik z serwera albo kopia pobrana z odcinkiem) i poprawki
+/// zapisane na telefonie, które odtwarzacz nałoży przy starcie odcinka.
+struct EpisodeSkipSheet: View {
+    let itemID: String
+    let episodeID: String
+    let title: String
+    let model: AppModel
+    /// Wybór przy otwarciu (nie zmienia się, gdy odcinek ruszy z „Odtwórz” — edycja zostaje).
+    @State private var fromPlayer: Bool?
+    @State private var loaded: PlaybackCoordinator.SkipContext??
+
+    private var key: String { PlaybackTimeline.key(itemID, episodeID) }
+
+    var body: some View {
+        let playback = model.playback
+        let player = playback.player
+        if fromPlayer == nil {
+            Color.clear.onAppear { fromPlayer = player.book?.key == key && playback.skipContext != nil }
+        } else if fromPlayer == true {
+            PlayerSkipEditorSheet(playback: playback)
+        } else if let loaded {
+            SkipEditorSheet(
+                title: title, context: loaded, duration: loaded?.actual.duration ?? 0,
+                isLive: player.book?.key == key, current: { player.currentTime },
+                seek: { position in
+                    if player.book?.key == key {
+                        player.seek(to: position)
+                        if !player.isPlaying { player.play() }
+                    } else {
+                        Task { await playback.play(itemID: itemID, episodeID: episodeID, from: position) }
+                    }
+                },
+                save: { map in
+                    try SkipSupport.saveCorrections(map, itemID: itemID, episodeID: episodeID)
+                    if player.book?.key == key { playback.reloadSkips() }
+                },
+                unavailable: model.isOffline
+                    ? "Bez połączenia z serwerem znaczniki są dostępne tylko dla odcinków pobranych na telefon."
+                    : "Nie udało się wczytać znaczników tego odcinka.")
+        } else {
+            NavigationStack {
+                ProgressView("Wczytywanie segmentów…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationTitle("Segmenty sponsorowane")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .task { loaded = .some(await SkipSupport.episodeContext(itemID: itemID, episodeID: episodeID, model: model)) }
         }
     }
 }

@@ -141,10 +141,21 @@ final class SkipController {
         case .serverFile(let file), .file(let file): url = file
         default: return nil
         }
-        let duration = book.duration
-        return await Task.detached(priority: .userInitiated) {
+        return await context(audio: url, duration: book.duration, podcastID: book.itemID)
+    }
+
+    /// Znaczniki odcinka bez odtwarzania (menu odcinka): plik obok odcinka na dysku tego Maca,
+    /// z tym samym odciskiem, który policzy odtwarzacz. `nil` — pliku odcinka nie ma na tym Macu.
+    nonisolated static func context(for episode: AudiobookshelfClient.PodcastEpisode, itemID: String) async -> PlaybackCoordinator.SkipContext? {
+        guard let audio = audioURL(episode),
+              let duration = (episode.audioFile?.duration ?? episode.duration).flatMap({ $0 > 0 ? $0 : nil }) else { return nil }
+        return await context(audio: audio, duration: duration, podcastID: itemID)
+    }
+
+    nonisolated private static func context(audio url: URL, duration: Double, podcastID: String) async -> PlaybackCoordinator.SkipContext? {
+        await Task.detached(priority: .userInitiated) {
             guard let actual = try? SkipAudioFingerprint.of(fileAt: url, duration: duration) else { return nil }
-            return PlaybackCoordinator.SkipContext(podcastID: book.itemID, map: map(forAudio: url), actual: actual, origin: .server, savesToServer: true)
+            return PlaybackCoordinator.SkipContext(podcastID: podcastID, map: map(forAudio: url), actual: actual, origin: .server, savesToServer: true)
         }.value
     }
 

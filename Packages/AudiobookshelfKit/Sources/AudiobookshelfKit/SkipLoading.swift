@@ -19,6 +19,18 @@ public enum SkipMapLoader {
         public var audioSize: Int64?
         public var audioFileName: String?
         public var skipFile: AudiobookshelfClient.ItemDetail.LibraryFile?
+
+        /// Długość odcinka według serwera (plik audio, a bez niego — odcinek).
+        public var audioDuration: Double? {
+            (episode.audioFile?.duration ?? episode.duration).flatMap { $0 > 0 ? $0 : nil }
+        }
+
+        /// Odcisk pliku odcinka na serwerze, bez pobierania nagrania (rozmiar i długość) — do znaczników
+        /// oglądanych bez odtwarzania (menu odcinka). `duration` — długość znana skądinąd (np. z odtwarzacza).
+        public func streamFingerprint(duration: Double? = nil) -> SkipAudioFingerprint? {
+            guard let length = duration ?? audioDuration else { return nil }
+            return SkipAudioFingerprint(size: audioSize, duration: length)
+        }
     }
 
     public static func locate(episodeID: String, in item: AudiobookshelfClient.ItemDetail) -> Located? {

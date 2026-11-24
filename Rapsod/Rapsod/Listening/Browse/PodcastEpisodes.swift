@@ -12,6 +12,7 @@ struct EpisodeRow: View {
     let showDetails: () -> Void
     @State private var editing = false
     @State private var removing = false
+    @State private var showsSkips = false
 
     var body: some View {
         let listening = browser.listening
@@ -66,6 +67,7 @@ struct EpisodeRow: View {
             if progress != nil {
                 Button("Wyzeruj postęp") { Task { await listening.resetProgress(itemID: itemID, episodeID: episode.id) } }
             }
+            Button("Fragmenty sponsorowane…") { showsSkips = true }
             Button("Wykryj segmenty sponsorowane") { listening.skip.analyze(itemID: itemID, episodeID: episode.id) }
                 .disabled(SkipController.audioURL(episode) == nil)
             if listening.skip.isModelQueued(itemID: itemID, episodeID: episode.id) {
@@ -75,6 +77,7 @@ struct EpisodeRow: View {
             EpisodeManageMenu(browser: browser, episode: episode, editing: $editing, removing: $removing)
         }
         .episodeManagement(browser: browser, itemID: itemID, episode: episode, editing: $editing, removing: $removing)
+        .sheet(isPresented: $showsSkips) { EpisodeSkipSheet(listening: listening, itemID: itemID, episode: episode) }
         .accessibilityIdentifier("episode.\(episode.id)")
     }
 }

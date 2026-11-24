@@ -92,48 +92,75 @@ struct SkipBanner: View {
 
 // MARK: - Edytor
 
-/// Segmenty bieżącego odcinka: przesuwanie granic, rodzaj, usuwanie i dodawanie, z informacją
-/// o źródle i o reklamach, których położenia nie znamy. Zapis — plik obok odcinka na serwerze.
+/// Segmenty odcinka: przesuwanie granic, rodzaj, usuwanie i dodawanie, z informacją o źródle
+/// i o reklamach, których położenia nie znamy. Zapis — plik obok odcinka na serwerze.
+/// Z odtwarzacza (`init(listening:)`) albo z menu odcinka bez odtwarzania (`EpisodeSkipSheet`).
 struct SkipEditorSheet: View {
-    let listening: ListeningController
+    let title: String?
+    let context: PlaybackCoordinator.SkipContext?
+    let duration: Double
+    /// Ten odcinek gra: są przyciski „bieżące miejsce” (sam czas czytany dopiero przy kliknięciu).
+    let isLive: Bool
+    let current: () -> Double
+    /// Odsłuch od miejsca (odcinek, który nie gra, zaczyna grać).
+    let seek: (Double) -> Void
+    let save: (SkipMap) async throws -> Void
+    /// Wykrywanie tego odcinka od nowa (menu odcinka); `nil` — bez przycisku.
+    var detect: (() -> Void)?
+    var detecting = false
+    var unavailable = "Ten odcinek nie ma jeszcze znaczników. Użyj „Wykryj segmenty” na stronie podcastu albo dodaj segment ręcznie."
     @State private var map: SkipMap?
+    /// Stan przed poprawkami (do „Zapisz” i do odświeżenia po wykryciu od nowa).
+    @State private var baseline: SkipMap?
     @State private var error: String?
     @State private var saving = false
     @Environment(\.dismiss) private var dismiss
 
-    private var playback: PlaybackCoordinator { listening.playback }
-    private var player: AudiobookPlayer { listening.player }
+    private var edited: Bool { map != baseline }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Segmenty sponsorowane").font(.title2.weight(.semibold))
-            if let book = player.book { Text(book.title).foregroundStyle(.secondary).lineLimit(1) }
-            if let context = playback.skipContext {
+            if let title { Text(title).foregroundStyle(.secondary).lineLimit(1) }
+            if let context {
                 status(context)
                 if map != nil { segmentList }
             } else {
-                Text("Ten odcinek nie ma jeszcze znaczników. Użyj „Wykryj segmenty” na stronie podcastu albo dodaj segment ręcznie.")
-                    .foregroundStyle(.secondary)
+                Text(unavailable).foregroundStyle(.secondary)
             }
             if let error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout) }
             HStack {
-                Button("Dodaj w bieżącym miejscu", systemImage: "plus") { addSegment() }
-                    .disabled(playback.skipContext == nil)
-                    .help("Nowy segment od bieżącej pozycji (30 s) — potem popraw granice")
+                Button(isLive ? "Dodaj w bieżącym miejscu" : "Dodaj segment", systemImage: "plus") { addSegment() }
+                    .disabled(context == nil)
+                    .help(isLive ? "Nowy segment od bieżącej pozycji (30 s) — potem popraw granice"
+                                 : "Nowy segment od początku odcinka (30 s) — potem popraw granice")
                 if map?.corrections.isEmpty == false {
                     Button("Przywróć wykryte") { map?.resetCorrections() }
                         .help("Usuwa wszystkie ręczne poprawki tego odcinka")
                 }
+                if let detect {
+                    Button(context?.map == nil ? "Wykryj teraz" : "Wykryj ponownie", systemImage: "wand.and.stars", action: detect)
+                        .disabled(detecting || edited)
+                        .help(edited ? "Najpierw zapisz albo cofnij poprawki" : "Wykrywanie segmentów w tym odcinku (ręczne poprawki zostają)")
+                    if detecting { ProgressView().controlSize(.small) }
+                }
                 Spacer()
                 Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Zapisz") { save() }
+                Button("Zapisz") { saveMap() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(saving || map == nil || map == playback.skipContext?.map)
+                    .disabled(saving || map == nil || !edited)
             }
         }
         .padding(20)
         .frame(width: 600, height: 520)
-        .onAppear { map = playback.skipContext.map { $0.map ?? Self.emptyMap($0) } }
+        .onAppear(perform: reset)
+        // Znaczniki policzone od nowa (np. „Wykryj teraz”): bez poprawek — pokaż nowe.
+        .onChange(of: context?.map) { if !edited { reset() } }
+    }
+
+    private func reset() {
+        map = context.map { $0.map ?? Self.emptyMap($0) }
+        baseline = map
     }
 
     static func emptyMap(_ context: PlaybackCoordinator.SkipContext) -> SkipMap {
@@ -171,8 +198,8 @@ struct SkipEditorSheet: View {
                 Text("Brak segmentów.").foregroundStyle(.secondary)
             }
             ForEach(segments) { segment in
-                SkipSegmentRow(segment: segment, duration: player.duration, current: { player.currentTime },
-                               seek: { player.seek(to: $0) }) { start, end, kind in
+                SkipSegmentRow(segment: segment, duration: duration, current: isLive ? current : nil,
+                               seek: seek) { start, end, kind in
                     map?.adjust(segment, start: start, end: end, kind: kind)
                 } remove: {
                     map?.remove(segment)
@@ -184,16 +211,16 @@ struct SkipEditorSheet: View {
 
     private func addSegment() {
         guard map != nil else { return }
-        let start = player.currentTime
-        map?.add(start: start, end: min(start + 30, player.duration), kind: .sponsor)
+        let start = isLive ? current() : 0
+        map?.add(start: start, end: min(start + 30, duration), kind: .sponsor)
     }
 
-    private func save() {
+    private func saveMap() {
         guard let map else { return }
         saving = true
         Task {
             do {
-                try await playback.saveSkips(map)
+                try await save(map)
                 dismiss()
             } catch {
                 self.error = "Nie udało się zapisać: \(error.localizedDescription)"
@@ -203,11 +230,71 @@ struct SkipEditorSheet: View {
     }
 }
 
+/// Edytor bieżącego odcinka w odtwarzaczu (znaczniki czytane na bieżąco).
+struct PlayerSkipEditorSheet: View {
+    let listening: ListeningController
+
+    var body: some View {
+        let playback = listening.playback, player = listening.player
+        SkipEditorSheet(title: player.book?.title, context: playback.skipContext, duration: player.duration,
+                        isLive: true, current: { player.currentTime }, seek: { player.seek(to: $0) },
+                        save: { try await playback.saveSkips($0) })
+    }
+}
+
+/// Segmenty odcinka z menu odcinka, bez odtwarzania: gdy ten odcinek gra — edytor odtwarzacza,
+/// inaczej znaczniki z pliku obok odcinka na tym Macu, z „Wykryj teraz” i zapisem do tego pliku.
+struct EpisodeSkipSheet: View {
+    let listening: ListeningController
+    let itemID: String
+    let episode: AudiobookshelfClient.PodcastEpisode
+    /// Wybór przy otwarciu (nie zmienia się, gdy odcinek ruszy z „Odtwórz” — edycja zostaje).
+    @State private var fromPlayer: Bool?
+    @State private var loaded: PlaybackCoordinator.SkipContext??
+
+    private var key: String { ListeningController.key(itemID, episode.id) }
+
+    var body: some View {
+        let player = listening.player
+        let skip = listening.skip
+        Group {
+            if fromPlayer == true {
+                PlayerSkipEditorSheet(listening: listening)
+            } else if fromPlayer == false, let loaded {
+                let hasAudio = SkipController.audioURL(episode) != nil
+                SkipEditorSheet(
+                    title: episode.title, context: loaded, duration: loaded?.actual.duration ?? 0,
+                    isLive: player.book?.key == key, current: { player.currentTime },
+                    seek: { position in Task { await listening.play(itemID: itemID, episodeID: episode.id, at: position) } },
+                    save: { map in
+                        guard let audio = SkipController.audioURL(episode) else { return }
+                        try await skip.save(map, audio: audio, itemID: itemID)
+                        skip.onChanged?(itemID, episode.id)
+                    },
+                    detect: hasAudio ? { skip.analyze(itemID: itemID, episodeID: episode.id) } : nil,
+                    detecting: skip.phase(itemID: itemID, episodeID: episode.id)?.isActive == true,
+                    unavailable: hasAudio ? "Nie udało się odczytać pliku odcinka."
+                                          : "Pliku tego odcinka nie ma na tym Macu — serwer go jeszcze nie pobrał.")
+            } else {
+                ProgressView("Wczytywanie segmentów…").frame(width: 600, height: 520)
+            }
+        }
+        .onAppear {
+            if fromPlayer == nil { fromPlayer = player.book?.key == key && listening.playback.skipContext != nil }
+        }
+        // Także po zapisie znaczników tego podcastu (np. „Wykryj teraz” skończyło).
+        .task(id: skip.revision[itemID] ?? 0) {
+            loaded = .some(await SkipController.context(for: episode, itemID: itemID))
+        }
+    }
+}
+
 /// Jeden segment w edytorze: rodzaj, granice (pole czasu, „bieżące miejsce”), odsłuch i usunięcie.
 struct SkipSegmentRow: View {
     let segment: SkipSegment
     let duration: Double
-    let current: () -> Double
+    /// `nil` — odcinek nie gra, bez „bieżącego miejsca”.
+    let current: (() -> Double)?
     let seek: (Double) -> Void
     let change: (_ start: Double, _ end: Double, _ kind: SkipKind?) -> Void
     let remove: () -> Void
@@ -233,12 +320,16 @@ struct SkipSegmentRow: View {
             }
             HStack(spacing: 6) {
                 ClockField(label: "Początek", value: segment.start) { change($0, segment.end, nil) }
-                Button("Bieżące miejsce jako początek", systemImage: "arrow.down.to.line") { change(current(), segment.end, nil) }
-                    .labelStyle(.iconOnly).buttonStyle(.borderless)
+                if let current {
+                    Button("Bieżące miejsce jako początek", systemImage: "arrow.down.to.line") { change(current(), segment.end, nil) }
+                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                }
                 Text("–")
                 ClockField(label: "Koniec", value: segment.end) { change(segment.start, $0, nil) }
-                Button("Bieżące miejsce jako koniec", systemImage: "arrow.down.to.line") { change(segment.start, current(), nil) }
-                    .labelStyle(.iconOnly).buttonStyle(.borderless)
+                if let current {
+                    Button("Bieżące miejsce jako koniec", systemImage: "arrow.down.to.line") { change(segment.start, current(), nil) }
+                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                }
                 Text(PlaybackFormat.clock(segment.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             if let label = segment.label { Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1) }

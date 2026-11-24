@@ -128,7 +128,7 @@ struct PlayerPanel: View {
                 }
             }
             .padding()
-            .sheet(isPresented: $editsSkips) { SkipEditorSheet(listening: listening) }
+            .sheet(isPresented: $editsSkips) { PlayerSkipEditorSheet(listening: listening) }
             // Licznik okładki: po edycji okładki odtwarzacz wczytuje nową, jak `AsyncCover`.
             .task(id: "\(book.itemID)#\(listening.coverRevision[book.itemID] ?? 0)") {
                 cover = await listening.cover(for: book.itemID, path: book.coverPath, size: 300)

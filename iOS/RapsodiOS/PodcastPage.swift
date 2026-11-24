@@ -495,6 +495,7 @@ private struct EpisodeRowView: View {
     @Environment(\.editMode) private var editMode
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var downloadError: String?
+    @State private var showsSkips = false
 
     private var podcasts: PodcastStore { session.library.podcasts }
 
@@ -528,12 +529,20 @@ private struct EpisodeRowView: View {
         .contentShape(.rect)
         .contextMenu {
             Button("Opis odcinka", systemImage: "info.circle", action: info)
+            if row.server != nil {
+                Button("Fragmenty sponsorowane…", systemImage: "forward.end.alt") { showsSkips = true }
+            }
             if row.canOrder, PodcastStore.canRequest(download) {
                 Button("Pobierz na serwer", systemImage: "externaldrive.badge.plus", action: order)
                     .disabled(!podcasts.permission.canOrder)
             }
             if let phoneDownload {
                 DownloadMenuItems(target: phoneDownload, session: session) { downloadError = $0 }
+            }
+        }
+        .sheet(isPresented: $showsSkips) {
+            if let server = row.server {
+                EpisodeSkipSheet(itemID: row.itemID, episodeID: server.id, title: row.title, model: model)
             }
         }
         .alert("Nie udało się pobrać", isPresented: Binding(get: { downloadError != nil }, set: { if !$0 { downloadError = nil } })) {
@@ -559,6 +568,9 @@ private struct EpisodeRowView: View {
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Opis odcinka", info)
         .accessibilityActions {
+            if row.server != nil {
+                Button("Fragmenty sponsorowane") { showsSkips = true }
+            }
             if row.canOrder, PodcastStore.canRequest(download), podcasts.permission.canOrder {
                 Button("Pobierz na serwer", action: order)
             }

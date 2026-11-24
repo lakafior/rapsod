@@ -201,7 +201,7 @@ struct PlayerScreen: View {
             ChapterList(player: player)
         }
         .sheet(isPresented: $showsSkips) {
-            SkipEditorSheet(playback: model.playback)
+            PlayerSkipEditorSheet(playback: model.playback)
         }
         // Ekran nie gaśnie, gdy czyta się tekst w trakcie słuchania; blokada znika po pauzie i wyjściu.
         .onChange(of: textMode && player.isPlaying, initial: true) { _, keepAwake in

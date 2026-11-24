@@ -464,6 +464,11 @@ struct SkipSourcesTests {
         let located = try #require(SkipMapLoader.locate(episodeID: "ep1", in: item))
         #expect(located.skipFile?.ino == "13")
         #expect(located.audioSize == 1000)
+        // Odcisk do znaczników oglądanych bez odtwarzania: rozmiar i długość z serwera.
+        let print = try #require(located.streamFingerprint())
+        #expect(print == SkipAudioFingerprint(size: 1000, duration: 600))
+        #expect(SkipAudioFingerprint(size: 1000, duration: 600.4).match(print) == .exact)
+        #expect(located.streamFingerprint(duration: 601)?.duration == 601)
         #expect(SkipMapLoader.locate(episodeID: "nie-ma", in: item) == nil)
     }
 

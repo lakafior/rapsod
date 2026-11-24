@@ -52,41 +52,68 @@ enum SkipSupport {
         } else if let episodeID = book.episodeID {
             context = await serverContext(book: book, episodeID: episodeID, model: model)
         }
-        guard var result = context else { return nil }
+        guard let context else { return nil }
+        return withCorrections(context, key: book.key, episodeID: book.episodeID)
+    }
+
+    /// Poprawki z telefonu nałożone na znaczniki (klucz odtwarzacza odcinka).
+    private static func withCorrections(_ context: PlaybackCoordinator.SkipContext, key: String, episodeID: String?) -> PlaybackCoordinator.SkipContext {
+        var result = context
         if let map = result.map {
-            result.map = SkipCorrectionsStore.merged(map, with: corrections.corrections(key: book.key, audio: result.actual))
-        } else if let local = corrections.corrections(key: book.key, audio: result.actual) {
+            result.map = SkipCorrectionsStore.merged(map, with: corrections.corrections(key: key, audio: result.actual))
+        } else if let local = corrections.corrections(key: key, audio: result.actual) {
             // Bez znaczników z serwera, ale z segmentami dodanymi ręcznie na telefonie.
-            result.map = SkipMap(episode: .init(itemID: book.itemID, episodeID: book.episodeID), audio: result.actual, corrections: local)
+            result.map = SkipMap(episode: .init(itemID: result.podcastID, episodeID: episodeID), audio: result.actual, corrections: local)
         }
         return result
     }
 
+    /// Znaczniki odcinka z serwera bez odtwarzania (menu odcinka): plik z serwera albo kopia pobrana
+    /// z odcinkiem, z poprawkami z telefonu — to samo, co odtwarzacz wczyta przy starcie odcinka.
+    static func episodeContext(itemID: String, episodeID: String, model: AppModel) async -> PlaybackCoordinator.SkipContext? {
+        let downloaded = model.downloads.playbackBook(itemID: itemID, episodeID: episodeID)
+        let context = await serverContext(itemID: itemID, episodeID: episodeID, duration: downloaded?.duration,
+                                          localFile: downloaded.flatMap(localFile), model: model)
+        return context.map { withCorrections($0, key: PlaybackTimeline.key(itemID, episodeID), episodeID: episodeID) }
+    }
+
+    /// Poprawki odcinka oglądanego z menu (nie gra) — zostają na telefonie, odtwarzacz nałoży je przy starcie.
+    static func saveCorrections(_ map: SkipMap, itemID: String, episodeID: String) throws {
+        try corrections.save(map, key: PlaybackTimeline.key(itemID, episodeID))
+    }
+
+    private static func localFile(_ book: PlaybackBook) -> URL? {
+        guard book.tracks.count == 1, case .file(let url) = book.tracks[0].source else { return nil }
+        return url
+    }
+
     private static func serverContext(book: PlaybackBook, episodeID: String, model: AppModel) async -> PlaybackCoordinator.SkipContext? {
+        await serverContext(itemID: book.itemID, episodeID: episodeID, duration: book.duration, localFile: localFile(book), model: model)
+    }
+
+    /// `duration` — długość odtwarzanego pliku; `nil` (odcinek nie gra i nie jest pobrany) — z serwera.
+    private static func serverContext(itemID: String, episodeID: String, duration: Double?, localFile: URL?,
+                                      model: AppModel) async -> PlaybackCoordinator.SkipContext? {
         let session = model.currentSession
         let downloads = model.downloads.manager
-        let localFile: URL? = book.tracks.count == 1 ? { if case .file(let url) = book.tracks[0].source { url } else { nil } }() : nil
         var localPrint: SkipAudioFingerprint?
-        if let localFile {
-            let duration = book.duration
+        if let localFile, let duration {
             localPrint = await Task.detached(priority: .userInitiated) { try? SkipAudioFingerprint.of(fileAt: localFile, duration: duration) }.value
         }
         // Z serwera (także dla pobranego odcinka — Mac mógł policzyć od nowa albo poprawić).
         if !model.isOffline, let auth = session?.auth {
-            let itemID = book.itemID
             if let item = try? await auth.perform({ try await $0.item(id: itemID, token: $1) }),
                let loaded = await SkipMapLoader.load(episodeID: episodeID, item: item, fetchFile: { ino in
                    try await auth.perform { try await $0.libraryFile(itemID: itemID, ino: ino, token: $1) }
-               }) {
+               }), let actual = localPrint ?? loaded.located.streamFingerprint(duration: duration) {
                 if let data = loaded.data { downloads.storeSkip(data, itemID: itemID, episodeID: episodeID) }
-                let actual = localPrint ?? SkipAudioFingerprint(size: loaded.located.audioSize, duration: book.duration)
                 return .init(podcastID: itemID, map: loaded.map, actual: actual, origin: localFile == nil ? .server : .downloaded, savesToServer: false)
             }
         }
         // Bez sieci: kopia pobrana z odcinkiem.
         guard let localPrint else { return nil }
-        let map = downloads.skipData(itemID: book.itemID, episodeID: episodeID).flatMap { try? SkipMap.decode($0) }
-        return .init(podcastID: book.itemID, map: map, actual: localPrint, origin: .downloaded, savesToServer: false)
+        let map = downloads.skipData(itemID: itemID, episodeID: episodeID).flatMap { try? SkipMap.decode($0) }
+        return .init(podcastID: itemID, map: map, actual: localPrint, origin: .downloaded, savesToServer: false)
     }
 
     private static func feedContext(book: PlaybackBook, episode: PlaybackCoordinator.ExternalEpisode) async -> PlaybackCoordinator.SkipContext {
