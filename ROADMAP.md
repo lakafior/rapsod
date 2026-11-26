@@ -106,12 +106,19 @@ Decyzja użytkownika: 13a i 13b od razu.
   - Kategorie osobno z wyborem działania dla każdej (jak w SponsorBlock: pomijaj / tylko pokaż / ignoruj): sponsor (reklama czytana i wstawiana), autopromocja (własne produkty, książki, gry, newsletter, Patronite prowadzącego). Sloty dynamiczne to źródło, nie kategoria.
   - Przykład w ustawieniach API: „mały model, np. Mistral Small albo Gemini Flash”. Użytkownik używa `mistral-small`.
 
-### Bardziej natywna aplikacja
+### Bardziej natywna aplikacja na Maca (etap 14)
 
-- Angielska wersja językowa (dziś interfejs jest tylko po polsku).
-- ~~Okno Ustawień pod ⌘, zamiast jednego okna statusu~~ — zrobione: „Ustawienia aplikacji” z podstronami i ikona w Docku, gdy otwarte jest jakiekolwiek okno.
-- Integracja z systemem: powiadomienie po zakończeniu skanu, akcje dla Skrótów, upuszczenie folderu na ikonę w pasku menu.
-- Automatyczne aktualizacje (Sparkle).
+Cel: aplikacja wpisana w system i zgodna z wytycznymi Apple dla Maca (HIG). Już zrobione: „Ustawienia aplikacji” z podstronami pod ⌘, i ikona w Docku, gdy otwarte jest jakiekolwiek okno. Stan na 2026-11-26: brak lokalizacji (teksty po polsku wprost w kodzie, bez katalogu napisów), brak powiadomień systemowych i App Intents, menu w pasku systemowym to `MenuBarExtra` z samą obsługą serwera.
+
+- **14a. Przegląd zgodności z HIG.** Bez zmian w kodzie: wszystkie okna, menu, pasek narzędzi, skróty klawiszowe, pasek boczny, arkusze, przeciąganie, menu kontekstowe, VoiceOver, Dynamic Type/rozmiary tekstu, tryb ciemny, przezroczystość, przywracanie stanu okien, ⌘F, Cofnij. Wynik: lista zmian z priorytetami w `docs/`, z której powstaje 14f.
+- **14b. Aktualizacje z GitHuba, bez zależności.** Sprawdzanie GitHub Releases (przy starcie i raz na dobę, wyłączalne), powiadomienie i okno z opisem zmian, pobranie DMG w tle, weryfikacja (podpis Developer ID tego samego zespołu, notaryzacja przez `spctl`, suma z wydania), podmiana aplikacji i ponowne uruchomienie przez mały pomocniczy skrypt po wyjściu, „Pomiń tę wersję”, „Sprawdź aktualizacje…” w menu. `scripts/release.sh` publikuje wydanie (`gh release create`). **Do decyzji:** repozytorium jest prywatne, więc anonimowe API nie widzi wydań — upublicznić `lakafior/rapsod` albo osobne publiczne repozytorium tylko z wydaniami.
+- **14c. Biblioteka: lista jak w Finderze.** Przełącznik siatka/lista w pasku narzędzi (zapamiętany dla widoku) dla książek, podcastów, serii i wyników wyszukiwania; lista jako `Table` z kolumnami do sortowania i ukrywania (tytuł, autor, lektor, seria, czas, postęp, data dodania…), zaznaczanie wielu wierszy zgodne z trybem „Zaznacz” z 9h, menu kontekstowe, podwójne kliknięcie otwiera.
+- **14d. Menu w pasku systemowym.** Rozszerzone menu: teraz odtwarzane ze sterowaniem, „Słuchaj dalej” (kilka pozycji), stan serwera i skanu, szybkie akcje. Upuszczenie folderu na ikonę dodaje go do biblioteki albo wgrywa książkę (wymaga `NSStatusItem` zamiast `MenuBarExtra` albo okna przechwytującego przeciąganie — do sprawdzenia).
+- **14e. Powiadomienia systemowe i Skróty.** Powiadomienia (`UserNotifications`) z wyborem na stronie „Powiadomienia” obok opcji serwera: koniec skanu, nowe odcinki pobrane na serwer, koniec wgrywania i scalania, dostępna aktualizacja, wykryte segmenty sponsorowane. App Intents: odtwarzanie/pauza, „kontynuuj słuchanie”, otwórz książkę (encje książek i podcastów do wyszukiwania w Skrótach i Spotlight), skanuj bibliotekę, dodaj podcast z adresu.
+- **14f. Zmiany z przeglądu 14a.**
+- **14g. Angielska wersja językowa.** Na końcu, po zmianach w interfejsie: katalog napisów (`Localizable.xcstrings`), teksty spoza `Text(...)` przez `String(localized:)`, liczby mnogie (polskie trzy formy), formaty dat, czasu i liczb z ustawień systemu, komunikaty z pakietu `AudiobookshelfKit`, Info.plist i opisy uprawnień. Angielski jako język bazowy albo polski z angielskim tłumaczeniem — do ustalenia na starcie. iOS osobno później.
+
+Kolejność: 14a, 14b i 14c mogą iść równolegle (różne pliki); 14d i 14e po nich (wspólne menu z 14b); 14f po 14a; 14g na końcu.
 
 ## Poza zakresem
 
