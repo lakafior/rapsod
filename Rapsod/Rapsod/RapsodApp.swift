@@ -180,7 +180,8 @@ private struct MenuBarLabel: View {
             .onChange(of: menuBar.dropRequest) {
                 openWindow.bringToFront(id: DropWindow.windowID)
             }
-            .onChange(of: menuBar.windowRequest) {
+            // `initial`: kliknięcie powiadomienia, które uruchomiło aplikację, przychodzi przed narysowaniem ikony.
+            .onChange(of: menuBar.windowRequest, initial: true) {
                 // Kliknięte powiadomienie albo Skrót (etap 14e).
                 switch menuBar.windowRequest?.target {
                 case .library: openWindow.bringToFront(id: LibraryWindow.windowID)

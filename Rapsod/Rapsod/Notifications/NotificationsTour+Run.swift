@@ -36,7 +36,21 @@ extension NotificationsTour {
             log("defaults restored (\(saved.count) keys)")
         }
 
+        // Kliknięcie powiadomienia, które uruchomiło aplikację: zanim cokolwiek jest gotowe.
+        let coldItem = UserDefaults.standard.string(forKey: "ABSNotificationsTourColdItem")
+        app.follow(.update(version: "9.9.9"), action: nil)
+        if let coldItem { app.follow(.item(itemID: coldItem, libraryID: nil), action: .play) }
+        await pause(2)
+        log("cold route update → window \(window(UpdateWindow.windowID) != nil)")
+        window(UpdateWindow.windowID)?.close()
+
         guard await prepare(app) else { log("FAIL prepare"); return }
+        if let coldItem {
+            for _ in 0..<20 where app.listening.player.book == nil { await pause(0.5) }
+            log("cold route play → \(app.listening.player.book?.itemID == coldItem ? "OK" : "nothing") \(app.listening.player.book?.title ?? "-")")
+            await app.listening.stopPlayback()
+        }
+        await resume(app)
         await settingsPage(app)
         await scans(app)
         await upload(app)
@@ -72,6 +86,33 @@ extension NotificationsTour {
         return app.listening.availability == .ready
     }
 
+    // MARK: Kontynuowanie bez wczytanej pozycji
+
+    /// Dłuższe nagranie (`-ABSNotificationsTourLong <tytuł>`): 5 s słuchania, zatrzymanie, potem
+    /// „Odtwarzaj lub wstrzymaj” i „Kontynuuj” bez niczego w odtwarzaczu.
+    private static func resume(_ app: AppDelegate) async {
+        guard let title = UserDefaults.standard.string(forKey: "ABSNotificationsTourLong") else { return }
+        if (try? await BookQuery().entities(matching: title).first) == nil,
+           let library = app.account.libraries.first(where: { $0.mediaType != "podcast" }) {
+            app.libraryTasks.scan(library, force: false)
+            await waitForScan(app, library.id)
+        }
+        guard let book = try? await BookQuery().entities(matching: title).first else { log("resume: no long book"); return }
+        await app.listening.play(itemID: book.id, at: 30)
+        await pause(5)
+        await app.listening.stopPlayback()
+        await pause(1)
+        log("resume: loaded=\(app.listening.player.book != nil)")
+        await run("PlayPause (nothing loaded)", PlayPauseIntent())
+        await pause(2)
+        log("resume: \(app.listening.player.book?.title ?? "-") playing=\(app.listening.player.isPlaying) at \(Int(app.listening.player.currentTime)) s")
+        await app.listening.stopPlayback()
+        await run("ContinueListening (nothing loaded)", ContinueListeningIntent())
+        await pause(2)
+        log("resume: \(app.listening.player.book?.title ?? "-") playing=\(app.listening.player.isPlaying) at \(Int(app.listening.player.currentTime)) s")
+        await app.listening.stopPlayback()
+    }
+
     // MARK: Strona ustawień
 
     private static func settingsPage(_ app: AppDelegate) async {
@@ -80,6 +121,14 @@ extension NotificationsTour {
         app.settingsNavigation.page = .notifications
         app.menuBar.open(.settings(nil))
         await pause(2.5)
+        // Odmowa w systemie: przełącznik zostaje wyłączony, strona prowadzi do Ustawień systemowych.
+        center.forced = .denied
+        await app.notifications.setEnabled(true)
+        await pause(1.5)
+        log("denied: enabled=\(app.notifications.preferences.isEnabled) authorization=\(app.notifications.authorization)")
+        if let window = window(SettingsWindow.windowID) { await shot("ustawienia-odmowa", window) }
+        center.forced = .authorized
+        await app.notifications.refreshAuthorization()
         log("monitor running (disabled): \(app.activityMonitor.isRunning)")
         if let window = window(SettingsWindow.windowID) { await shot("ustawienia-wylaczone", window) }
         await app.notifications.setEnabled(true)
@@ -366,6 +415,11 @@ extension NotificationsTour {
     // MARK: Serwer zatrzymany
 
     private static func serverStopped(_ app: AppDelegate) async {
+        if let title = UserDefaults.standard.string(forKey: "ABSNotificationsTourLong"),
+           let book = try? await BookQuery().entities(matching: title).first {
+            await app.listening.play(itemID: book.id, at: 60)
+            await pause(4)
+        }
         await app.listening.stopPlayback()
         await app.supervisor.stop()
         IntentBridge.launchDate = .distantPast
@@ -375,7 +429,7 @@ extension NotificationsTour {
         app.supervisor.start()
         let begin = Date.now
         await run("ContinueListening (server starting)", ContinueListeningIntent())
-        log("waited \(Int(Date.now.timeIntervalSince(begin))) s; monitor running: \(app.activityMonitor.isRunning)")
+        log("waited \(Int(Date.now.timeIntervalSince(begin))) s; monitor running: \(app.activityMonitor.isRunning); playing \(app.listening.player.book?.title ?? "-") at \(Int(app.listening.player.currentTime)) s")
         app.listening.player.pause()
     }
 

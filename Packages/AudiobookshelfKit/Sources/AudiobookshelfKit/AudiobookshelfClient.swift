@@ -82,6 +82,8 @@ public struct AudiobookshelfClient: Sendable {
             public let added: Int?
             public let updated: Int?
             public let missing: Int?
+            /// Skan obserwatora plików (`watcher-scan`) nazywa brakujące `removed`.
+            public var removed: Int? = nil
             /// Milisekundy.
             public let elapsed: Double?
         }

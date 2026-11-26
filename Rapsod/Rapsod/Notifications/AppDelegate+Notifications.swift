@@ -50,6 +50,7 @@ extension AppDelegate {
         switch event {
         case .task(let task, let finished):
             libraryTasks.observe(task, finished: finished)
+            if finished, task.action == "watcher-scan" { watcherScanFinished(task) }
             if finished, task.action == "encode-m4b", let itemID = task.data?.libraryItemId {
                 mergeFinished(task, itemID: itemID)
             }
@@ -61,6 +62,15 @@ extension AppDelegate {
         case .progress, .user, .itemsChanged, .reconnected, .connected, .taskProgress, .trackStarted:
             break
         }
+    }
+
+    /// Skan obserwatora plików (nowe pliki w folderze biblioteki, np. po wgraniu) — osobne zadanie
+    /// serwera, którego `LibraryTasks` nie śledzi. Powiadomienie tylko przy zmianach (zasada w pakiecie).
+    private func watcherScanFinished(_ task: AudiobookshelfClient.ServerTask) {
+        guard let libraryID = task.data?.libraryId, let library = account.libraries.first(where: { $0.id == libraryID }),
+              task.isFailed != true else { return }
+        let activity = LibraryTasks.Activity(kind: .scan(force: false), phase: .finished(task.data?.scanResults, canceled: false), since: .now)
+        notifications.scanFinished(library: library, activity: activity)
     }
 
     private func mergeFinished(_ task: AudiobookshelfClient.ServerTask, itemID: String) {
@@ -80,7 +90,11 @@ extension AppDelegate {
         switch route {
         case .item(let itemID, let libraryID):
             if action == .play {
-                Task { await listening.play(itemID: itemID) }
+                Task {
+                    // Kliknięcie mogło uruchomić aplikację: najpierw serwer i konto słuchacza.
+                    guard (try? await IntentBridge.ready(.listener)) != nil else { return }
+                    await listening.play(itemID: itemID)
+                }
             } else {
                 menuBar.openLibrary(.openItem(itemID: itemID, libraryID: libraryID))
             }
@@ -90,6 +104,7 @@ extension AppDelegate {
                 return
             }
             Task {
+                guard (try? await IntentBridge.ready(.listener)) != nil else { return }
                 if let id = await resolveEpisode(itemID: itemID, episodeID: episodeID, guid: guid, title: title) {
                     await listening.play(itemID: itemID, episodeID: id)
                 } else {

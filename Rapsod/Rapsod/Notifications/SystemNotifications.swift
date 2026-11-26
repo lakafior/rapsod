@@ -173,7 +173,8 @@ final class SystemNotifications {
         let outcome: ScanOutcome
         switch activity.phase {
         case .finished(let results, let canceled):
-            outcome = .finished(results.map { ScanCounts(added: $0.added, updated: $0.updated, missing: $0.missing) }, canceled: canceled)
+            outcome = .finished(results.map { ScanCounts(added: $0.added, updated: $0.updated, missing: $0.missing ?? $0.removed) },
+                                canceled: canceled)
         case .failed(let message):
             outcome = .failed(message)
         case .requested, .running:

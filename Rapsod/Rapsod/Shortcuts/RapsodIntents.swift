@@ -50,6 +50,8 @@ struct ContinueListeningIntent: AppIntent {
 @MainActor
 enum ResumeListening {
     static func resume(_ app: AppDelegate) async throws -> String {
+        // Świeży postęp z serwera (np. z telefonu albo po ponownym starcie) — kolejność jak w panelu.
+        await app.listening.refreshMe()
         let items = try await app.listening.api { try await $0.itemsInProgress(token: $1) }
         let entries = ContinueListening.recent(inProgress: items, progress: app.listening.progress)
         for entry in entries {

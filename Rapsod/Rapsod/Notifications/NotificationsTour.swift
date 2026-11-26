@@ -31,8 +31,13 @@ final class TourNotificationCenter: NotificationCenterClient, @unchecked Sendabl
     var recorded: [String] { lock.withLock { _recorded } }
     var forwarded: [String] { lock.withLock { _forwarded } }
 
-    /// Tryb udaje zgodę, żeby przejść całą drogę do `add()`.
-    func authorization() async -> SystemNotifications.Authorization { .authorized }
+    /// Tryb udaje zgodę, żeby przejść całą drogę do `add()`; na chwilę — odmowę (strona ustawień).
+    var forced: SystemNotifications.Authorization {
+        get { lock.withLock { _forced } }
+        set { lock.withLock { _forced = newValue } }
+    }
+    private var _forced: SystemNotifications.Authorization = .authorized
+    func authorization() async -> SystemNotifications.Authorization { forced }
     func requestAuthorization() async throws -> Bool { true }
 
     func add(_ request: sending UNNotificationRequest) async throws {
