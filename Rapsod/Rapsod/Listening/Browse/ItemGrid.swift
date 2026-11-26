@@ -88,6 +88,11 @@ struct ItemsSection: View {
             .batchSelection(browser: browser, scope: "items")
             .navigationTitle(browser.filter?.title ?? (podcast ? "Podcasty" : "Książki"))
             .sheet(isPresented: $addsPodcast) { AddPodcastSheet(browser: browser) }
+            .onChange(of: browser.addPodcastRequested, initial: true) {
+                guard browser.addPodcastRequested, browser.isPodcastLibrary else { return }
+                browser.addPodcastRequested = false
+                addsPodcast = true
+            }
             .toolbar {
                 ToolbarItem { ViewModePicker(browser: browser, context: podcast ? .podcasts : .books) }
                 ToolbarItemGroup {

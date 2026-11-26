@@ -200,6 +200,8 @@ final class LibraryBrowser {
     /// wysyłania, a postęp zostaje w pasku narzędzi okna.
     private(set) var upload: UploadModel?
     var showsUpload = false
+    /// „Dodaj podcast…” z menu na pasku menu — sekcja „Podcasty” otwiera wtedy swój arkusz.
+    var addPodcastRequested = false
 
     /// Pliki upuszczone na okno albo wybrane przyciskiem → arkusz wgrywania (konto root).
     /// W trakcie wysyłania dokłada je do bieżącej listy.

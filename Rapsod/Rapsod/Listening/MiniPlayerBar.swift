@@ -42,19 +42,3 @@ struct MiniPlayerBar: View {
         }
     }
 }
-
-/// Sterowanie w menu ikony na pasku menu. Czyta tylko tytuł i stan odtwarzania —
-/// nie czas, więc menu nie przebudowuje się w trakcie słuchania.
-struct MenuPlayerControls: View {
-    let player: AudiobookPlayer
-
-    var body: some View {
-        if let book = player.book {
-            Text(book.title)
-            Button(player.isPlaying ? "Pauza" : "Odtwarzaj") { player.togglePlayPause() }
-            Button("Cofnij 15 s") { player.skip(by: -AudiobookPlayer.skipBack) }
-            Button("Naprzód 30 s") { player.skip(by: AudiobookPlayer.skipForward) }
-            Divider()
-        }
-    }
-}

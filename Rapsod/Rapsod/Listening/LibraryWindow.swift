@@ -21,6 +21,7 @@ struct LibraryWindow: View {
     @State private var newPlaylistName = ""
     @State private var dropTargeted = false
     @Environment(\.openWindow) private var openWindow
+    @Environment(MenuBarModel.self) private var menuBar
     @Environment(\.appearsActive) private var appearsActive
     @FocusState private var searchFocused: Bool
 
@@ -124,6 +125,11 @@ struct LibraryWindow: View {
             await listening.windowActivated()
             browser.ensureLibrary()
         }
+        // Menu na pasku menu (etap 14d): stan wgrywania w panelu i prośby z panelu albo z ikony.
+        .onAppear { menuBar.browser = browser }
+        .onChange(of: menuBar.libraryRequest, initial: true) { handleMenuBarRequest() }
+        .onChange(of: browser.manager.isAvailable) { handleMenuBarRequest() }
+        .onChange(of: listening.libraries) { handleMenuBarRequest() }
         .onChange(of: appearsActive) {
             // Powrót do okna: świeży postęp, nawet gdyby zdarzenia serwera coś zgubiły.
             if appearsActive { Task { await listening.refreshMe() } }
@@ -151,6 +157,30 @@ struct LibraryWindow: View {
         .focusedSceneValue(\.libraryBrowser, browser)
         // Spacja przełącza odtwarzanie tylko wtedy, gdy nie pisze się w polu tekstowym okna.
         .environment(\.playPauseOnSpace, browser.focusedTextFields.isEmpty)
+    }
+
+    /// Prośba z menu na pasku menu. Czeka, aż konto zarządzania i listy bibliotek będą gotowe —
+    /// okno otwarte z menu dostaje ją, zanim się z serwerem połączy.
+    private func handleMenuBarRequest() {
+        guard let request = menuBar.libraryRequest, browser.manager.isAvailable, !listening.libraries.isEmpty else { return }
+        menuBar.libraryRequest = nil
+        switch request {
+        case .upload(let urls):
+            // Wgrywa się książki: z biblioteki podcastów przełączamy na pierwszą z książkami.
+            if browser.isPodcastLibrary, let books = listening.libraries.first(where: { $0.mediaType != "podcast" }) {
+                browser.libraryID = books.id
+            }
+            browser.upload(urls)
+        case .showUpload:
+            if browser.upload != nil { browser.showsUpload = true }
+        case .addPodcast:
+            guard let podcasts = listening.libraries.first(where: { $0.mediaType == "podcast" }) else { return }
+            if browser.libraryID != podcasts.id { browser.libraryID = podcasts.id }
+            browser.section = .items
+            browser.searchText = ""
+            browser.path = []
+            browser.addPodcastRequested = true
+        }
     }
 
     @ViewBuilder private var root: some View {

@@ -113,6 +113,31 @@ public enum ContinueListening {
     }
 }
 
+extension ContinueListening {
+    /// Kilka ostatnich pozycji do wznowienia jednym kliknięciem (menu na pasku menu, etap 14d):
+    /// odpowiedź `items-in-progress` (książki i odcinki razem) bez pozycji ukończonych albo
+    /// ukrytych w „Słuchaj dalej” według postępu z `/api/me` (klucz `ProgressJournal.key`).
+    /// Odcinki słuchane tylko ze strumienia (telefon) się tu nie pojawiają.
+    public static func recent(
+        inProgress: [Client.LibraryItem],
+        progress: [String: Client.MediaProgress],
+        limit: Int = 5
+    ) -> [Entry] {
+        let lastUpdate = progress.mapValues(\.lastUpdate)
+        let merged = merge(
+            books: inProgress.filter { !$0.isPodcast },
+            serverEpisodes: inProgress.filter(\.isPodcast),
+            local: [],
+            lastUpdate: lastUpdate,
+            limit: .max
+        )
+        return Array(merged.entries.filter { entry in
+            guard let known = progress[entry.id] else { return true }
+            return !known.isFinished && known.hideFromContinueListening != true
+        }.prefix(limit))
+    }
+}
+
 extension EpisodeHandover {
     /// Co zrobić z lokalnym wpisem, który tylko „słabo” pasuje do odcinka serwera (bez pewności,
     /// że to ten sam odcinek). Bez jawnego działania postęp nie przechodzi na serwer; wpis znika

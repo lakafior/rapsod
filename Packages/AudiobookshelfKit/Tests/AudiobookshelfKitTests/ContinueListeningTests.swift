@@ -99,4 +99,41 @@ import Testing
         #expect(EpisodeHandover.adoptedStart(local, serverLastUpdate: 1000, serverDuration: 600) == 300)
         #expect(EpisodeHandover.adoptedStart(local, serverLastUpdate: nil, serverDuration: 1200) == 600)
     }
+
+    // MARK: Menu na pasku menu (etap 14d)
+
+    private func progress(_ itemID: String, _ episodeID: String? = nil, lastUpdate: Double, finished: Bool = false, hidden: Bool = false) -> (String, Client.MediaProgress) {
+        (ProgressJournal.key(itemID, episodeID), Client.MediaProgress(libraryItemId: itemID, episodeId: episodeID, duration: 600, progress: 0.5,
+            currentTime: 300, isFinished: finished, hideFromContinueListening: hidden, lastUpdate: lastUpdate))
+    }
+
+    @Test func recentMixesBooksAndEpisodesNewestFirst() {
+        let entries = ContinueListening.recent(
+            inProgress: [
+                book("a", lastUpdate: 1000),
+                episode("pod", "e1", guid: "g1", url: "https://x/1.mp3", lastUpdate: 3000),
+                book("b", lastUpdate: 2000),
+            ],
+            progress: [:]
+        )
+        #expect(entries.map(\.id) == ["pod/e1", "b", "a"])
+    }
+
+    @Test func recentSkipsHiddenAndFinishedAndUsesNewerProgress() {
+        let entries = ContinueListening.recent(
+            inProgress: [book("a", lastUpdate: 1000), book("b", lastUpdate: 2000), book("c", lastUpdate: 3000), book("d", lastUpdate: 500)],
+            progress: Dictionary(uniqueKeysWithValues: [
+                progress("b", lastUpdate: 2000, hidden: true),
+                progress("c", lastUpdate: 3000, finished: true),
+                // Telefon słuchał „d” później, niż mówi odpowiedź `items-in-progress`.
+                progress("d", lastUpdate: 9000),
+            ])
+        )
+        #expect(entries.map(\.id) == ["d", "a"])
+    }
+
+    @Test func recentKeepsLimit() {
+        let items = (0..<8).map { book("k\($0)", lastUpdate: Double($0)) }
+        #expect(ContinueListening.recent(inProgress: items, progress: [:], limit: 3).map(\.id) == ["k7", "k6", "k5"])
+    }
 }

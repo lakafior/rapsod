@@ -1,3 +1,4 @@
+import AudiobookshelfPlayback
 import SwiftUI
 
 @main
@@ -6,10 +7,15 @@ struct RapsodApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, player: appDelegate.listening.player, updates: appDelegate.updates)
+            MenuBarPanel(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode,
+                         settings: appDelegate.settingsNavigation, listening: appDelegate.listening, updates: appDelegate.updates,
+                         libraryTasks: appDelegate.libraryTasks, menuBar: appDelegate.menuBar)
         } label: {
-            MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
+            MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation, updates: appDelegate.updates,
+                         player: appDelegate.listening.player, menuBar: appDelegate.menuBar, drop: appDelegate.statusItemDrop)
         }
+        // Panel jak moduły Centrum sterowania: okładka, suwak i postęp zadań (etap 14d, uzasadnienie w README).
+        .menuBarExtraStyle(.window)
         .commands {
             AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
             PlaybackCommands(player: appDelegate.listening.player)
@@ -22,6 +28,8 @@ struct RapsodApp: App {
                     // Adresy serwera dla kanału RSS i powrót do ustawień z arkuszy pozycji.
                     .environment(appDelegate.sharing)
                     .environment(appDelegate.settingsNavigation)
+                    // Prośby z menu na pasku menu (wgraj, dodaj podcast) i stan wgrywania dla panelu.
+                    .environment(appDelegate.menuBar)
             }
         }
         .defaultSize(width: 1100, height: 720)
@@ -80,6 +88,15 @@ struct RapsodApp: App {
         // Ekran powitalny otwiera się sam; w menu Okno byłby zbędny.
         .commandsRemoved()
 
+        // Pliki upuszczone na ikonę na pasku menu (etap 14d): wgrać czy dodać folder do biblioteki.
+        Window(DropWindow.title, id: DropWindow.windowID) {
+            DropWindow(account: appDelegate.account, menuBar: appDelegate.menuBar)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+
         // Aktualizacje aplikacji (etap 14b): wynik sprawdzenia i opis zmian nowej wersji.
         Window("Aktualizacja Rapsodu", id: UpdateWindow.windowID) {
             UpdateWindow(updates: appDelegate.updates)
@@ -102,12 +119,15 @@ struct RapsodApp: App {
 
 /// Ikona na pasku menu. Jest jedynym widokiem, który żyje przez cały czas działania
 /// aplikacji, więc to ona otwiera ekran powitalny, gdy serwer nie ma żadnej biblioteki,
-/// i ustawienia, gdy serwer nie wstanie.
+/// ustawienia, gdy serwer nie wstanie, i okno wyboru po upuszczeniu plików na ikonę.
 private struct MenuBarLabel: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
     let settings: SettingsNavigation
     let updates: UpdateController
+    let player: AudiobookPlayer
+    let menuBar: MenuBarModel
+    let drop: StatusItemDrop
     @Environment(\.openWindow) private var openWindow
     @State private var welcomeShown = false
 
@@ -116,18 +136,29 @@ private struct MenuBarLabel: View {
     }
 
     /// Ten sam znak co ikona aplikacji (książka ze słuchawkami): pełny, gdy serwer działa,
-    /// obrysowy, gdy nie działa; przy błędzie trójkąt ostrzegawczy.
+    /// obrysowy, gdy nie działa; przy błędzie trójkąt ostrzegawczy. Przy przeciąganiu plików nad
+    /// ikoną — strzałka „do środka” (podświetlenie celu, jak przy upuszczaniu na Dock).
+    /// Odtwarzanie nie zmienia znaku: HIG zaleca stały, rozpoznawalny obrazek, a o odtwarzaniu
+    /// mówi już Centrum sterowania („Teraz odtwarzane”).
     private var icon: Image {
+        if menuBar.isDropTargeted { return Image(systemName: "tray.and.arrow.down.fill") }
         switch supervisor.state {
-        case .running: Image("MenuBarIcon")
-        case .failed: Image(systemName: "exclamationmark.triangle")
-        case .stopped, .starting, .stopping: Image("MenuBarIconOutline")
+        case .running: return Image("MenuBarIcon")
+        case .failed: return Image(systemName: "exclamationmark.triangle")
+        case .stopped, .starting, .stopping: return Image("MenuBarIconOutline")
         }
+    }
+
+    /// VoiceOver czyta nazwę razem ze stanem serwera i odtwarzania.
+    private var accessibilityLabel: String {
+        var parts = ["Rapsod", supervisor.state.shortStatus.lowercased()]
+        if let book = player.book, player.isPlaying { parts.append("odtwarzanie: \(book.title)") }
+        return parts.joined(separator: ", ")
     }
 
     var body: some View {
         icon
-            .accessibilityLabel("Rapsod")
+            .accessibilityLabel(accessibilityLabel)
             .onChange(of: needsLibrary, initial: true) {
                 // Raz na uruchomienie aplikacji — zamknięte okno nie wraca samo.
                 guard needsLibrary, !welcomeShown else { return }
@@ -135,6 +166,8 @@ private struct MenuBarLabel: View {
                 openWindow.bringToFront(id: WelcomeWindow.windowID)
             }
             .task {
+                // Okno ikony istnieje dopiero po pierwszym narysowaniu.
+                drop.attachSoon()
                 // Tryb sprawdzający okno ustawień (tylko testowa kopia, argument `-ABSSettingsTour YES`).
                 if SettingsTour.isRequested { openWindow.openSettings(navigation: settings) }
                 // Tryb sprawdzający listę w Bibliotece (etap 14c, argument `-ABSLibraryTour <folder>`).
@@ -144,7 +177,11 @@ private struct MenuBarLabel: View {
                 // Automatyczne sprawdzenie znalazło nową wersję do pokazania.
                 openWindow.bringToFront(id: UpdateWindow.windowID)
             }
+            .onChange(of: menuBar.dropRequest) {
+                openWindow.bringToFront(id: DropWindow.windowID)
+            }
             .onChange(of: supervisor.state) {
+                drop.attachSoon()
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
                 if case .failed = supervisor.state {
                     openWindow.openSettings(.general, navigation: settings)
@@ -161,6 +198,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let webMode = WebUIMode()
     let settingsNavigation = SettingsNavigation()
     let updates = UpdateController()
+    private(set) lazy var menuBar = MenuBarModel(listening: listening)
+    private(set) lazy var statusItemDrop = StatusItemDrop(model: menuBar) { [unowned self] in
+        // Bez działającego serwera i bibliotek nie ma dokąd wgrać ani czego rozszerzyć.
+        account.state == .ready
+    }
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
     private(set) lazy var pairing = PhonePairing(account: account, sharing: sharing, supervisor: supervisor)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
