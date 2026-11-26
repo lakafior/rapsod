@@ -1,13 +1,15 @@
 import AudiobookshelfKit
 import SwiftUI
 
-/// Siatka okładek pozycji biblioteki, wczytywana stronami (`PagedList`). Komórki istnieją
-/// tylko na ekranie (`LazyVGrid`), a okładki czyta pamięć podręczna z limitem.
+/// Siatka okładek pozycji biblioteki albo lista (etap 14c), wczytywana stronami (`PagedList`).
+/// Komórki istnieją tylko na ekranie, a okładki czyta pamięć podręczna z limitem.
 struct ItemGrid: View {
     let browser: LibraryBrowser
     let libraryID: String
     let filter: LibraryBrowser.ItemFilter?
-    let sort: LibraryBrowser.Sort
+    @Binding var sort: LibraryBrowser.Sort
+    /// Widok z przełącznikiem siatka/lista; `nil` — zawsze siatka.
+    var context: LibraryBrowser.ViewContext?
     /// Seria, której numery tomów pokazują karty.
     var seriesID: String?
     var emptyTitle = "Brak pozycji"
@@ -28,6 +30,10 @@ struct ItemGrid: View {
             if let list, let total = list.total {
                 if total == 0 {
                     ContentUnavailableView(emptyTitle, systemImage: "books.vertical")
+                } else if let context, browser.viewMode(context) == .list {
+                    ItemTable(browser: browser, count: total, item: { list.element(at: $0) },
+                              indices: { ids in list.indices { ids.contains($0.id) } },
+                              ensureLoaded: { list.ensureLoaded($0) }, sort: $sort, seriesID: seriesID, selectionScope: selectionScope)
                 } else {
                     PagedGrid(count: total, cellWidth: ItemCard.width) { index in
                         let item = list.element(at: index)
@@ -76,12 +82,14 @@ struct ItemsSection: View {
 
     var body: some View {
         let podcast = browser.isPodcastLibrary
-        ItemGrid(browser: browser, libraryID: libraryID, filter: browser.filter, sort: podcast ? browser.podcastSort : browser.itemSort,
+        ItemGrid(browser: browser, libraryID: libraryID, filter: browser.filter, sort: podcast ? $browser.podcastSort : $browser.itemSort,
+                 context: podcast ? .podcasts : .books,
                  emptyTitle: browser.filter == nil ? "Pusta biblioteka" : "Nic nie pasuje do filtra", selectionScope: "items")
             .batchSelection(browser: browser, scope: "items")
             .navigationTitle(browser.filter?.title ?? (podcast ? "Podcasty" : "Książki"))
             .sheet(isPresented: $addsPodcast) { AddPodcastSheet(browser: browser) }
             .toolbar {
+                ToolbarItem { ViewModePicker(browser: browser, context: podcast ? .podcasts : .books) }
                 ToolbarItemGroup {
                     if podcast {
                         Button("Dodaj podcast", systemImage: "plus") { addsPodcast = true }

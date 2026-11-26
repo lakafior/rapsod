@@ -54,19 +54,33 @@ struct CollectionPage: View {
     @State private var editing = false
     @State private var confirmDelete = false
     @State private var failure: String?
+    /// Kolejność listy; pusty klucz — kolejność kolekcji.
+    @State private var sort = LibraryBrowser.Sort(key: "", descending: false)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if let description = HTMLText.plain(collection?.description) { ExpandableText(text: description, lines: 4) }
-                LazyVGrid(columns: ItemGrid.columns, alignment: .leading, spacing: 22) {
-                    ForEach(collection?.books.elements ?? []) { ItemCard(browser: browser, item: $0) }
+        Group {
+            if browser.viewMode(.collectionPage) == .list {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let description = HTMLText.plain(collection?.description) {
+                        ExpandableText(text: description, lines: 4).padding(20)
+                    }
+                    ItemTable(browser: browser, items: ItemTable.sorted(collection?.books.elements ?? [], by: sort), sort: $sort)
+                }
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let description = HTMLText.plain(collection?.description) { ExpandableText(text: description, lines: 4) }
+                        LazyVGrid(columns: ItemGrid.columns, alignment: .leading, spacing: 22) {
+                            ForEach(collection?.books.elements ?? []) { ItemCard(browser: browser, item: $0) }
+                        }
+                    }
+                    .padding(20)
                 }
             }
-            .padding(20)
         }
         .navigationTitle(collection?.name ?? "Kolekcja")
         .toolbar {
+            ToolbarItem { ViewModePicker(browser: browser, context: .collectionPage) }
             ToolbarItem {
                 Button("Odtwarzaj po kolei", systemImage: "play.fill") {
                     let entries = (collection?.books.elements ?? [])

@@ -13,6 +13,7 @@ struct RapsodApp: App {
         .commands {
             AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
             PlaybackCommands(player: appDelegate.listening.player)
+            LibraryViewCommands()
         }
 
         Window(LibraryWindow.title, id: LibraryWindow.windowID) {

@@ -146,6 +146,8 @@ struct LibraryWindow: View {
         } message: {
             Text($0)
         }
+        // Menu Widok: „Jako kafelki” / „Jako lista” dla widoku na wierzchu (etap 14c).
+        .focusedSceneValue(\.libraryBrowser, browser)
         // Spacja przełącza odtwarzanie tylko wtedy, gdy nie pisze się w polu tekstowym okna.
         .environment(\.playPauseOnSpace, browser.focusedTextFields.isEmpty)
     }
@@ -293,9 +295,10 @@ struct FilteredItems: View {
 
     var body: some View {
         if let libraryID = browser.libraryID {
-            ItemGrid(browser: browser, libraryID: libraryID, filter: filter, sort: browser.itemSort, emptyTitle: "Brak pozycji")
+            ItemGrid(browser: browser, libraryID: libraryID, filter: filter, sort: $browser.itemSort, context: .filtered, emptyTitle: "Brak pozycji")
                 .navigationTitle(filter.title)
                 .toolbar {
+                    ToolbarItem { ViewModePicker(browser: browser, context: .filtered) }
                     ToolbarItem { SortMenu(sort: $browser.itemSort, options: SortMenu.bookOptions) }
                 }
         }

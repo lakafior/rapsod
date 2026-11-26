@@ -91,7 +91,7 @@ private struct BatchSelection: ViewModifier {
 
     private var bar: some View {
         HStack(spacing: 10) {
-            Text(selection.isEmpty ? "Kliknij okładki, żeby zaznaczyć" : "Zaznaczono: \(selection.count)")
+            Text(selection.isEmpty ? "Kliknij pozycje, żeby zaznaczyć" : "Zaznaczono: \(selection.count)")
                 .monospacedDigit()
                 .foregroundStyle(selection.isEmpty ? .secondary : .primary)
             if let busy {
