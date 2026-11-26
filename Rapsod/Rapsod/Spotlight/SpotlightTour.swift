@@ -37,6 +37,8 @@ enum SpotlightTour {
         let index = CSSearchableIndex(name: "Rapsod")
         try? await index.deleteSearchableItems(withDomainIdentifiers: [SpotlightKey.domain(scope: scope)])
         log("start, wpisów w zakresie: \(await count())")
+        // Zimny start: wynik rozpoznany, zanim serwer wstanie (zakres z folderu danych, nie ze środowiska).
+        log("zimny start: serwer \(app.supervisor.state), wynik rozpoznany: \(spotlight.target(forIdentifier: "rapsod:\(scope):book:x") != nil)")
 
         // Konto słuchacza i biblioteki.
         guard await wait(seconds: 120, { app.listening.availability == .ready && !app.listening.libraries.isEmpty && app.account.state == .ready }) else {
@@ -67,6 +69,7 @@ enum SpotlightTour {
             do {
                 try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try FileManager.default.copyItem(at: URL(fileURLWithPath: source), to: target)
+                try coverJPEG().write(to: target.appending(path: "cover.jpg"))
                 app.libraryTasks.scan(library, force: false)
                 let added = await wait(seconds: 90) { spotlight.indexedCount == total + 1 && !isIndexing(spotlight) }
                 log("dodanie: \(added ? "OK" : "FAIL") (\(spotlight.indexedCount))")
@@ -74,6 +77,14 @@ enum SpotlightTour {
                 // Identyfikator pozycji z wyniku Spotlight (wyszukiwarka serwera nie zna jej od razu).
                 let hit = await query("domainIdentifier == \"\(SpotlightKey.domain(scope: scope))*\" && title == \"*\(name)*\"c").first
                 if let itemID = hit.flatMap({ SpotlightKey(uniqueIdentifier: $0.uniqueIdentifier) })?.itemID {
+                    // Zmiana tytułu przez API — zdarzenie `item_updated`, wpis z nowym tytułem.
+                    let renamed = name + " Zmieniona"
+                    let update = AudiobookshelfClient.MediaUpdate(metadata: .init(title: renamed))
+                    _ = try await app.account.withAdminToken { try await $0.updateMedia(itemID: itemID, update, token: $1) }
+                    let changed = await waitAsync(seconds: 60) { await count(title: renamed) == 1 }
+                    log("okładki w paczkach: \(app.spotlight.coverStats.withCover) z okładką, pobrane \(app.spotlight.coverStats.fetched)")
+                    log("zmiana tytułu: \(changed ? "OK" : "FAIL"), stary tytuł bez „Zmieniona”: \(await query("domainIdentifier == \"\(SpotlightKey.domain(scope: scope))*\" && title == \"\(name)\"").count)")
+                    await probe(renamed)
                     try await app.account.withAdminToken { try await $0.deleteItem(id: itemID, hard: true, token: $1) }
                     let removed = await wait(seconds: 60) { spotlight.indexedCount == total && !isIndexing(spotlight) }
                     log("usunięcie: \(removed ? "OK" : "FAIL") (\(spotlight.indexedCount)), zapytanie: \(await count(title: name))")
@@ -99,6 +110,9 @@ enum SpotlightTour {
             await shot("wynik-strona")
             await navigationCheck(app)
         }
+
+        await podcastCheck(app)
+        await menuCheck(app)
 
         // 5. Panel „O programie”.
         AboutPanel.show(serverVersion: app.supervisor.environment?.serverVersion)
@@ -126,6 +140,79 @@ enum SpotlightTour {
         try? await index.deleteSearchableItems(withDomainIdentifiers: [SpotlightKey.domain(scope: scope)])
         log("na koniec: \(await count()) wpisów")
         log("OK")
+    }
+
+    // MARK: Podcasty
+
+    /// Biblioteka podcastów z folderu (dwa pliki audio jako odcinki), indeks odcinków, potem
+    /// usunięcie biblioteki — jej domena znika z indeksu.
+    private static func podcastCheck(_ app: AppDelegate) async {
+        guard let source = UserDefaults.standard.string(forKey: "ABSSpotlightTourBook"),
+              let audio = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: source), includingPropertiesForKeys: nil)
+                .first(where: { ["m4a", "mp3"].contains($0.pathExtension) }) else { return }
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "rapsod-14f-podcasty")
+        let podcast = root.appending(path: "Podcast Próba 14f")
+        try? FileManager.default.removeItem(at: root)
+        do {
+            try FileManager.default.createDirectory(at: podcast, withIntermediateDirectories: true)
+            for n in 1...2 { try FileManager.default.copyItem(at: audio, to: podcast.appending(path: "Odcinek \(n).\(audio.pathExtension)")) }
+            try coverJPEG().write(to: podcast.appending(path: "cover.jpg"))
+        } catch { log("FAIL podcast: \(error.localizedDescription)"); return }
+        let before = Set(app.account.libraries.map(\.id))
+        await app.account.addLibrary(folder: root, kind: .podcasts)
+        guard await wait(seconds: 60, { app.account.libraries.contains { !before.contains($0.id) } }),
+              let library = app.account.libraries.first(where: { !before.contains($0.id) }) else { log("FAIL biblioteka podcastów"); return }
+        let domain = SpotlightKey.domain(scope: scope, libraryID: library.id)
+        let indexed = await waitAsync(seconds: 120) { await query("domainIdentifier == \"\(domain)\"").count >= 3 }
+        let items = await query("domainIdentifier == \"\(domain)\"", attributes: ["title", "album", "thumbnailData"])
+        log("okładki w paczkach: \(app.spotlight.coverStats.withCover) z okładką, pobrane \(app.spotlight.coverStats.fetched)")
+        log("podcasty: \(indexed ? "OK" : "FAIL") — \(items.map { "\($0.uniqueIdentifier.split(separator: ":")[2]) \($0.attributeSet.title ?? "-") (\($0.attributeSet.album ?? "-"), okładka \($0.attributeSet.thumbnailData?.count ?? 0) B)" }.joined(separator: "; "))")
+        if let episode = items.first(where: { $0.uniqueIdentifier.contains(":episode:") }) {
+            log("otwarcie odcinka: \(app.openSpotlightResult(episode.uniqueIdentifier))")
+            try? await Task.sleep(for: .seconds(3))
+            await shot("wynik-odcinek")
+        }
+        do {
+            try await app.account.removeLibrary(library)
+            let removed = await waitAsync(seconds: 60) { await query("domainIdentifier == \"\(domain)\"").count == 0 }
+            log("usunięcie biblioteki: \(removed ? "OK" : "FAIL")")
+        } catch { log("FAIL usunięcie biblioteki: \(error.localizedDescription)") }
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    // MARK: Menu
+
+    /// Pozycje menu zależne od okna na pierwszym planie (`@FocusedValue`): Wstecz, Dalej, odtwarzacz.
+    private static func menuCheck(_ app: AppDelegate) async {
+        guard let window = libraryWindow, let browser = app.menuBar.browser else { return }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(for: .seconds(1))
+        func item(_ title: String) -> (NSMenu, Int)? {
+            for top in NSApp.mainMenu?.items ?? [] {
+                guard let menu = top.submenu else { continue }
+                menu.update()
+                if let index = menu.items.firstIndex(where: { $0.title == title }) { return (menu, index) }
+            }
+            return nil
+        }
+        func press(_ title: String) async -> String {
+            guard let (menu, index) = item(title) else { return "brak" }
+            let enabled = menu.items[index].isEnabled
+            menu.performActionForItem(at: index)
+            try? await Task.sleep(for: .milliseconds(800))
+            return enabled ? "włączona" : "wyłączona"
+        }
+        let start = browser.path.count
+        log("menu Wstecz: \(await press("Wstecz")) → ścieżka \(start) → \(browser.path.count)")
+        log("menu Dalej: \(await press("Dalej")) → ścieżka \(browser.path.count)")
+        let shows = browser.showsPlayer
+        let label = shows ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz"
+        log("menu \(label): \(await press(label)) → odtwarzacz \(shows) → \(browser.showsPlayer)")
+        browser.showsPlayer = shows
+        let windowMenu = NSApp.mainMenu?.items.first { $0.submenu?.items.contains { $0.title == "Zamknij wszystkie okna" } == true }?.submenu
+        log("menu Okno: \(windowMenu?.items.map { $0.title }.filter { !$0.isEmpty }.joined(separator: ", ") ?? "-")")
+        log("menu Plik: \(NSApp.mainMenu?.items.first { $0.submenu?.items.contains { $0.title == "Wgraj książkę…" } == true }?.submenu?.items.map { "\($0.title)\($0.isEnabled ? "" : " (wył.)")" }.filter { $0.count > 6 }.joined(separator: ", ") ?? "-")")
     }
 
     // MARK: Okno Biblioteka
@@ -207,6 +294,27 @@ enum SpotlightTour {
         guard let item = items.first else { log("szukaj „\(title)”: brak"); return }
         let a = item.attributeSet
         log("szukaj „\(title)”: \(items.count) · \(item.uniqueIdentifier) · \(a.title ?? "-") · autorzy \(a.authorNames ?? []) · lektorzy \(a.performers ?? []) · seria \(a.album ?? "-") · okładka \(a.thumbnailData?.count ?? 0) B · opis \(a.contentDescription?.prefix(60) ?? "-")")
+    }
+
+    private static func waitAsync(seconds: Double, _ condition: () async -> Bool) async -> Bool {
+        let deadline = Date.now.addingTimeInterval(seconds)
+        while Date.now < deadline {
+            if await condition() { return true }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return await condition()
+    }
+
+    /// Okładka próbna (gradient z napisem), żeby sprawdzić miniatury w indeksie.
+    private static func coverJPEG() throws -> Data {
+        let image = NSImage(size: NSSize(width: 400, height: 400), flipped: false) { rect in
+            NSGradient(colors: [.systemOrange, .systemPurple])?.draw(in: rect, angle: 45)
+            ("14f" as NSString).draw(at: NSPoint(x: 120, y: 160), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 80), .foregroundColor: NSColor.white])
+            return true
+        }
+        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+              let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else { throw CocoaError(.fileWriteUnknown) }
+        return data
     }
 
     private static func wait(seconds: Double, _ condition: () -> Bool) async -> Bool {

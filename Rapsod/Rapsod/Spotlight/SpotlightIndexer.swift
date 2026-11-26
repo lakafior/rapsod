@@ -39,7 +39,7 @@ final class SpotlightIndexer {
     var isEnabled: Bool {
         didSet {
             guard isEnabled != oldValue else { return }
-            UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey)
+            if !Self.isTestCopy || scopeOverride != nil { UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey) }
             onEnabledChanged?(isEnabled)
             if isEnabled { scheduleSync(after: .zero) } else { Task { await removeAll() } }
         }
@@ -56,6 +56,10 @@ final class SpotlightIndexer {
     @ObservationIgnored private var pending: Task<Void, Never>?
     @ObservationIgnored private var running: Task<Void, Never>?
     @ObservationIgnored private var dirtyLibraries: Set<String>?
+    /// Zaplanowany pełny przegląd nie ustępuje późniejszemu przeglądowi jednej biblioteki.
+    @ObservationIgnored private var fullSyncPending = false
+    /// Pozycje ze zdarzeń serwera — indeksowane ponownie bez względu na `updatedAt`.
+    @ObservationIgnored private var forcedItems: Set<String> = []
     @ObservationIgnored private var watcher: Task<Void, Never>?
     /// Tryb sprawdzający: osobny zakres zamiast wyliczonego z folderu danych.
     @ObservationIgnored var scopeOverride: String?
@@ -68,16 +72,23 @@ final class SpotlightIndexer {
         self.index = index
         isEnabled = UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true
         if !isEnabled { status = .off }
+        if Self.isTestCopy { status = .failed("kopia testowa (-ABSDataRoot) nie dodaje pozycji do Spotlight.") }
     }
 
     /// Zakres wpisów tej kopii (folder danych); `nil`, dopóki serwer nie wystartował.
     var scope: String? {
         if let scopeOverride { return scopeOverride }
-        return supervisor.environment.map { SpotlightKey.scope(dataRoot: $0.dataRoot.path) }
+        // Kopia z `-ABSDataRoot` (testy, zrzuty) nie pisze do wspólnego indeksu — chyba że tryb
+        // sprawdzający ustawi własny zakres.
+        guard !Self.isTestCopy else { return nil }
+        return supervisor.dataRoot.map { SpotlightKey.scope(dataRoot: $0.path) }
     }
 
+    /// Kopia z innym folderem danych niż domyślny (`-ABSDataRoot`).
+    static var isTestCopy: Bool { !(UserDefaults.standard.string(forKey: "ABSDataRoot") ?? "").isEmpty }
+
     private var manifestURL: URL? {
-        supervisor.environment?.dataRoot.appending(path: scopeOverride.map { "spotlight-index-\($0).json" } ?? "spotlight-index.json")
+        supervisor.dataRoot?.appending(path: scopeOverride.map { "spotlight-index-\($0).json" } ?? "spotlight-index.json")
     }
 
     func activate() {
@@ -108,8 +119,9 @@ final class SpotlightIndexer {
     func handle(_ event: ListeningEvents.Event) {
         guard isEnabled else { return }
         switch event {
-        case .itemsChanged(let libraries, _):
+        case .itemsChanged(let libraries, let items):
             dirtyLibraries = (dirtyLibraries ?? []).union(libraries)
+            forcedItems.formUnion(items)
             scheduleSync(after: .seconds(5), libraries: dirtyLibraries)
         case .connected, .reconnected:
             // Zdarzenia z przerwy w połączeniu przepadły — pełny przegląd.
@@ -122,13 +134,15 @@ final class SpotlightIndexer {
     /// Kolejny przegląd po chwili ciszy (zdarzenia przychodzą seriami, np. przy skanie).
     func scheduleSync(after delay: Duration, libraries: Set<String>? = nil) {
         guard isEnabled else { return }
+        if libraries == nil { fullSyncPending = true }
         pending?.cancel()
         pending = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled, let self else { return }
             await self.running?.value
             guard !Task.isCancelled else { return }
-            let only = libraries == nil ? nil : self.dirtyLibraries
+            let only = self.fullSyncPending ? nil : self.dirtyLibraries
+            self.fullSyncPending = false
             self.dirtyLibraries = nil
             let task = Task { await self.sync(libraries: only) }
             self.running = task
@@ -168,7 +182,11 @@ final class SpotlightIndexer {
                     if elements.count < Self.pageSize || current.count >= (result.total ?? .max) { break }
                 }
             }
-            let changes = SpotlightPlan.changes(manifest: manifest, current: current, listed: Set(listed.map(\.id)), libraries: Set(all.map(\.id)))
+            // Pozycje ze zdarzeń: serwer nie zawsze podbija `updatedAt` (np. nowe odcinki).
+            var compared = manifest
+            for id in forcedItems { compared.items[id]?.updatedAt = -1 }
+            forcedItems = []
+            let changes = SpotlightPlan.changes(manifest: compared, current: current, listed: Set(listed.map(\.id)), libraries: Set(all.map(\.id)))
             if changes.isEmpty {
                 status = .ready(count: manifest.items.count, date: .now)
                 logger.info("Spotlight: bez zmian (\(current.count) pozycji)")
@@ -211,6 +229,8 @@ final class SpotlightIndexer {
 
     private func indexBatch(_ items: [AudiobookshelfClient.IndexItem], scope: String) async throws {
         let covers = await fetchCovers(items.filter { $0.media.coverPath != nil }.map(\.id))
+        coverStats.withCover += items.filter { $0.media.coverPath != nil }.count
+        coverStats.fetched += covers.count
         var searchable: [CSSearchableItem] = []
         var entries: [String: SpotlightManifest.Entry] = [:]
         for item in items {
@@ -218,7 +238,12 @@ final class SpotlightIndexer {
             let kind: SpotlightKind = item.isPodcast ? .podcast : .book
             searchable.append(Self.searchableItem(item, kind: kind, scope: scope, domain: domain, cover: covers[item.id]))
             var entry = SpotlightManifest.Entry(libraryID: item.libraryId, kind: kind, updatedAt: item.updatedAt ?? item.addedAt ?? 0)
-            if item.isPodcast, let detail = try? await listening.api({ try await $0.item(id: item.id, token: $1) }) {
+            if item.isPodcast {
+                // Bez szczegółów (odcinków) pozycja nie trafia do manifestu — następny przegląd ją powtórzy.
+                guard let detail = try? await listening.api({ try await $0.item(id: item.id, token: $1) }) else {
+                    searchable.removeLast()
+                    continue
+                }
                 let episodes = detail.media.episodes?.elements ?? []
                 for episode in episodes {
                     searchable.append(Self.episodeItem(episode, podcast: item, scope: scope, domain: domain, cover: covers[item.id]))
@@ -322,6 +347,8 @@ final class SpotlightIndexer {
     func removeAll(keepEnabled: Bool = false) async {
         pending?.cancel()
         running?.cancel()
+        // Paczka w locie trafiłaby do indeksu po usunięciu domeny i odtworzyła manifest.
+        await running?.value
         guard let scope else { return }
         await deleteDomain(SpotlightKey.domain(scope: scope))
         manifest = SpotlightManifest()
@@ -348,6 +375,9 @@ final class SpotlightIndexer {
         guard let manifestURL, let data = try? JSONEncoder().encode(manifest) else { return }
         try? data.write(to: manifestURL, options: .atomic)
     }
+
+    /// Okładki w ostatnich paczkach: pozycje z okładką na serwerze i pobrane miniatury (tryb sprawdzający).
+    @ObservationIgnored var coverStats = (withCover: 0, fetched: 0)
 
     /// Liczba pozycji w indeksie tej kopii (strona ustawień, tryb sprawdzający).
     var indexedCount: Int { manifest.items.count }

@@ -148,15 +148,9 @@ final class LibraryBrowser {
         didSet {
             guard path != oldValue else { return }
             isSelecting = false
-            // Wstecz/Dalej jak w Finderze: krok wstecz odkłada stronę do historii „Dalej”,
-            // każde inne przejście ją czyści.
-            if !navigatingHistory {
-                if path.count < oldValue.count, Array(oldValue.prefix(path.count)) == path {
-                    forwardStack = Array(oldValue.suffix(from: path.count)) + forwardStack
-                } else {
-                    forwardStack = []
-                }
-            }
+            // Wstecz/Dalej jak w Finderze: tylko „Wstecz” odkłada stronę do historii „Dalej”,
+            // każde inne przejście (pasek boczny, inna biblioteka, wyszukiwanie) ją czyści.
+            if !navigatingHistory { forwardStack = [] }
         }
     }
     /// Strony do ponownego otwarcia przez „Dalej” (⌘]); najbliższa pierwsza.
@@ -168,8 +162,11 @@ final class LibraryBrowser {
 
     /// Wstecz (⌘[): zdejmuje ostatnią stronę ze ścieżki.
     func goBack() {
-        guard !path.isEmpty else { return }
+        guard let last = path.last else { return }
+        navigatingHistory = true
         path.removeLast()
+        forwardStack.insert(last, at: 0)
+        navigatingHistory = false
     }
 
     /// Dalej (⌘]): wraca na stronę zdjętą przez „Wstecz”.
