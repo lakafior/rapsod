@@ -204,6 +204,7 @@ struct PodcastPage: View {
     /// Odcinek ze strumienia nie ruszył (ATS, brak zakresów bajtów, plik zniknął…).
     @State private var streamFailure: (row: PodcastEpisodeRow, message: String)?
     @State private var showsSkipSettings = false
+    @State private var showsPodcastSettings = false
 
     init(item: Client.ItemDetail, model: AppModel, session: ServerSession) {
         self.model = model
@@ -252,6 +253,9 @@ struct PodcastPage: View {
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(isPresented: $showsPodcastSettings) {
+            PodcastSettingsSheet(item: item, session: session)
+        }
         .sheet(isPresented: $showsSkipSettings) {
             PodcastSkipSettingsSheet(playback: model.playback, podcastID: item.id)
                 .presentationDetents([.medium, .large])
@@ -380,6 +384,13 @@ struct PodcastPage: View {
         ToolbarItem(placement: .topBarTrailing) {
             Button("Segmenty sponsorowane", systemImage: "forward.end.alt") { showsSkipSettings = true }
                 .accessibilityIdentifier("podcast.skip")
+        }
+        // Zmiana ustawień wymaga tych samych uprawnień co zlecanie pobrań (administrator z „Edycją pozycji”).
+        if podcasts.permission.canOrder {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Ustawienia podcastu", systemImage: "gearshape") { showsPodcastSettings = true }
+                    .accessibilityIdentifier("podcast.settings")
+            }
         }
         if page.rows.contains(where: { $0.server != nil }) {
             ToolbarItem(placement: .topBarTrailing) {

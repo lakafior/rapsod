@@ -218,7 +218,7 @@ struct PodcastDraft: Identifiable, Hashable {
     var language: String
     var explicit: Bool
     var serial: Bool
-    var autoDownload = false
+    var autoDownload = AutoDownloadSettings()
     var libraryID: String
     var folderID: String
     let libraries: [Client.Library]
@@ -274,7 +274,17 @@ struct PodcastDraft: Identifiable, Hashable {
                 releaseDate: releaseDate, genres: genreList, feedUrl: clean(feedURL), imageUrl: imageURL,
                 itunesPageUrl: itunesPageURL, itunesId: itunesID, itunesArtistId: itunesArtistID,
                 language: clean(language), explicit: explicit, type: serial ? "serial" : "episodic"),
-            autoDownloadEpisodes: autoDownload))
+            autoDownloadEpisodes: autoDownload.enabled))
+    }
+
+    /// Harmonogram i limity — serwer przy tworzeniu bierze tylko przełącznik, resztę zapisuje się
+    /// zaraz potem. Harmonogram idzie zawsze, gdy pobieranie jest włączone (domyślny serwera
+    /// mógł zostać zmieniony w jego ustawieniach).
+    var settingsUpdate: Client.PodcastUpdate {
+        var update = autoDownload.update(from: .serverDefaults)
+        update.autoDownloadEpisodes = nil
+        if autoDownload.enabled { update.autoDownloadSchedule = autoDownload.cron }
+        return update
     }
 
     /// Nazwa folderu z tytułu: bez znaków niedozwolonych w nazwach plików i bez kropek
@@ -323,6 +333,8 @@ private struct PodcastDraftForm: View {
     @State private var draft: PodcastDraft
     @State private var busy = false
     @State private var error: String?
+    /// Podcast już dodany, ale ustawień pobierania nie udało się zapisać.
+    @State private var created: String??
 
     init(session: ServerSession, draft: PodcastDraft, seesExplicit: Bool?, onDone: @escaping (String?) -> Void) {
         self.session = session
@@ -372,12 +384,9 @@ private struct PodcastDraftForm: View {
                         .font(.footnote)
                         .foregroundStyle(.orange)
                 }
-                Toggle("Automatycznie pobieraj nowe odcinki", isOn: $draft.autoDownload)
-            } footer: {
-                if draft.autoDownload {
-                    Text("Serwer sprawdza kanał co godzinę. Teraz nic się nie pobierze — wybierz odcinki na stronie podcastu po dodaniu.")
-                }
             }
+            AutoDownloadSections(settings: $draft.autoDownload,
+                                 note: draft.autoDownload.enabled ? "Teraz nic się nie pobierze — wybierz odcinki na stronie podcastu po dodaniu." : nil)
             Section {
                 if draft.libraries.count > 1 {
                     Picker("Biblioteka", selection: $draft.libraryID) {
@@ -416,6 +425,8 @@ private struct PodcastDraftForm: View {
             ToolbarItem(placement: .confirmationAction) {
                 if busy {
                     ProgressView()
+                } else if let created {
+                    Button("Gotowe") { onDone(created) }
                 } else {
                     Button("Dodaj", action: create)
                         .disabled(draft.payload == nil)
@@ -438,6 +449,16 @@ private struct PodcastDraftForm: View {
             defer { busy = false }
             do {
                 let id = try await session.auth.perform { try await $0.createPodcast(payload, token: $1) }
+                let update = draft.settingsUpdate
+                if !update.isEmpty {
+                    do {
+                        _ = try await session.auth.perform { try await $0.updatePodcast(itemID: id, update, token: $1) }
+                    } catch {
+                        created = .some(hidden ? nil : id)
+                        self.error = "Podcast dodany, ale bez ustawień pobierania. " + PodcastSettingsSheet.message(for: error)
+                        return
+                    }
+                }
                 onDone(hidden ? nil : id)
             } catch AudiobookshelfClient.APIError.http(400, let body) where body.contains("already exists") {
                 error = "Podcast w folderze „\(draft.folderName)” już jest w bibliotece."
