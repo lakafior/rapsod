@@ -39,6 +39,16 @@ final class LibraryBrowser {
         static func language(_ name: String) -> Self { .init(group: "languages", value: name, title: "Język: \(name)") }
     }
 
+    /// Siatka okładek albo lista jak w Finderze (etap 14c).
+    enum ViewMode: String {
+        case grid, list
+    }
+
+    /// Widoki z przełącznikiem siatka/lista; każdy pamięta swój tryb.
+    enum ViewContext: String, CaseIterable {
+        case books, podcasts, filtered, series, search, seriesPage, authorPage, collectionPage
+    }
+
     struct Sort: Hashable {
         var key: String
         var descending: Bool
@@ -98,6 +108,13 @@ final class LibraryBrowser {
 
     func clearSelection() { selection = [] }
 
+    /// Zmiana zaznaczenia z listy (etap 14c): zdejmuje i dokłada pozycje, nie ruszając
+    /// pozostałych — także tych spoza wczytanych stron, których lista nie widzi.
+    func changeSelection(removing removed: Set<String>, adding added: [AudiobookshelfClient.LibraryItem]) {
+        selection.removeAll { removed.contains($0.id) }
+        for item in added where !isSelected(item.id) { selection.append(item) }
+    }
+
     /// „Zaznacz wczytane” dla jednej siatki (`scope`: sekcja pozycji albo strona serii) — siatka
     /// pod spodem stosu nawigacji nie może dołożyć swoich kart.
     struct SelectAllRequest: Equatable {
@@ -146,6 +163,34 @@ final class LibraryBrowser {
     var authorSort = Sort(key: "name", descending: false) {
         didSet { save(authorSort, "authors") }
     }
+    /// Siatka albo lista, osobno dla każdego widoku (etap 14c).
+    private(set) var viewModes: [ViewContext: ViewMode] = [:]
+
+    func viewMode(_ context: ViewContext) -> ViewMode { viewModes[context] ?? .grid }
+
+    func setViewMode(_ mode: ViewMode, for context: ViewContext) {
+        viewModes[context] = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "libraryWindow.viewMode.\(context.rawValue)")
+    }
+
+    /// Widok na wierzchu okna, jeśli ma przełącznik siatka/lista (menu Widok, ⌘1/⌘2).
+    var currentViewContext: ViewContext? {
+        if let last = path.last {
+            switch last {
+            case .series: return .seriesPage
+            case .author: return .authorPage
+            case .filtered: return .filtered
+            case .collection: return .collectionPage
+            case .item, .playlist: return nil
+            }
+        }
+        if !searchText.trimmingCharacters(in: .whitespaces).isEmpty { return .search }
+        switch section {
+        case .items: return isPodcastLibrary ? .podcasts : .books
+        case .series: return .series
+        default: return nil
+        }
+    }
     private(set) var filterData: AudiobookshelfClient.FilterData?
     /// Własne playlisty użytkownika w bieżącej bibliotece (menu „Dodaj do playlisty”, sekcja „Playlisty”).
     private(set) var playlists: [AudiobookshelfClient.Playlist]?
@@ -176,6 +221,11 @@ final class LibraryBrowser {
         podcastSort = Self.load("podcasts") ?? podcastSort
         seriesSort = Self.load("series") ?? seriesSort
         authorSort = Self.load("authors") ?? authorSort
+        for context in ViewContext.allCases {
+            if let mode = UserDefaults.standard.string(forKey: "libraryWindow.viewMode.\(context.rawValue)").flatMap(ViewMode.init) {
+                viewModes[context] = mode
+            }
+        }
     }
 
     var library: AudiobookshelfClient.Library? {
@@ -280,6 +330,15 @@ final class PagedList<Element: Sendable> {
 
     /// Wczytane dotąd elementy (dla „Zaznacz wczytane”).
     var loadedElements: [Element] { pages.keys.sorted().flatMap { pages[$0] ?? [] } }
+
+    /// Miejsca wczytanych elementów spełniających warunek (zaznaczenie w liście, etap 14c).
+    func indices(where matches: (Element) -> Bool) -> Set<Int> {
+        var result = Set<Int>()
+        for (page, elements) in pages {
+            for (offset, element) in elements.enumerated() where matches(element) { result.insert(page * pageSize + offset) }
+        }
+        return result
+    }
 
     func element(at index: Int) -> Element? {
         let page = pages[index / pageSize]

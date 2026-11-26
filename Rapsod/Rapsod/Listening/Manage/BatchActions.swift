@@ -89,30 +89,49 @@ private struct BatchSelection: ViewModifier {
 
     // MARK: Pasek
 
+    /// Pełne napisy, a gdy kolumna jest za wąska (np. obok panelu odtwarzacza) — przyciski
+    /// z samymi ikonami i podpowiedziami zamiast obciętych napisów.
     private var bar: some View {
-        HStack(spacing: 10) {
-            Text(selection.isEmpty ? "Kliknij okładki, żeby zaznaczyć" : "Zaznaczono: \(selection.count)")
-                .monospacedDigit()
-                .foregroundStyle(selection.isEmpty ? .secondary : .primary)
-            if let busy {
-                ProgressView().controlSize(.small)
-                Text(busy).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Zaznacz wczytane") { browser.requestSelectAll(scope: scope) }
-                .disabled(busy != nil)
-                .help("Zaznacz wszystkie pozycje wczytane dotąd w siatce")
-            Button("Wyczyść") { browser.clearSelection() }.disabled(selection.isEmpty || busy != nil)
-            Divider().frame(height: 18)
-            actions.disabled(selection.isEmpty || busy != nil)
-            Button("Gotowe") { browser.isSelecting = false }
-                .keyboardShortcut(.cancelAction)
+        ViewThatFits(in: .horizontal) {
+            barContent(compact: false)
+            barContent(compact: true)
         }
         .controlSize(.regular)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private func barContent(compact: Bool) -> some View {
+        HStack(spacing: 10) {
+            Text(selection.isEmpty ? (compact ? "Kliknij pozycje" : "Kliknij pozycje, żeby zaznaczyć") : "Zaznaczono: \(selection.count)")
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(selection.isEmpty ? .secondary : .primary)
+            if let busy {
+                ProgressView().controlSize(.small)
+                if !compact { Text(busy).lineLimit(1).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 0)
+            Button("Zaznacz wczytane", systemImage: "checklist") { browser.requestSelectAll(scope: scope) }
+                .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleOnly))
+                .disabled(busy != nil)
+                .help("Zaznacz wszystkie pozycje wczytane dotąd w siatce")
+            Button("Wyczyść", systemImage: "xmark.circle") { browser.clearSelection() }
+                .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleOnly))
+                .disabled(selection.isEmpty || busy != nil)
+                .help("Odznacz wszystkie")
+            Divider().frame(height: 18)
+            actions
+                .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
+                .disabled(selection.isEmpty || busy != nil)
+            Button("Gotowe") { browser.isSelecting = false }
+                .keyboardShortcut(.cancelAction)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder private var actions: some View {
@@ -281,4 +300,15 @@ private struct BatchSelection: ViewModifier {
             return failures.isEmpty ? nil : ("Nie wszystko usunięto", failures.joined(separator: "\n"))
         }
     }
+}
+
+/// Styl etykiety wybierany w czasie działania (pełny albo zwarty pasek działań).
+struct AnyLabelStyle: LabelStyle {
+    private let make: (Configuration) -> AnyView
+
+    init<S: LabelStyle>(_ style: S) {
+        make = { AnyView(style.makeBody(configuration: $0)) }
+    }
+
+    func makeBody(configuration: Configuration) -> some View { make(configuration) }
 }

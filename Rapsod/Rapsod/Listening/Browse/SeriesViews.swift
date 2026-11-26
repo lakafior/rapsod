@@ -19,6 +19,8 @@ struct SeriesSection: View {
             if let list, let total = list.total {
                 if total == 0 {
                     ContentUnavailableView("Brak serii", systemImage: "square.stack")
+                } else if browser.viewMode(.series) == .list {
+                    SeriesTable(browser: browser, list: list, count: total, sort: $browser.seriesSort)
                 } else {
                     PagedGrid(count: total, cellWidth: 210) { index in
                         let series = list.element(at: index)
@@ -32,7 +34,10 @@ struct SeriesSection: View {
             }
         }
         .navigationTitle("Serie")
-        .toolbar { ToolbarItem { SortMenu(sort: $browser.seriesSort, options: SortMenu.seriesOptions) } }
+        .toolbar {
+            ToolbarItem { ViewModePicker(browser: browser, context: .series) }
+            ToolbarItem { SortMenu(sort: $browser.seriesSort, options: SortMenu.seriesOptions) }
+        }
         .task(id: Query(libraryID: libraryID, sort: browser.seriesSort)) {
             let listening = browser.listening
             let (libraryID, sort) = (libraryID, browser.seriesSort)
@@ -115,6 +120,8 @@ struct SeriesPage: View {
     let name: String
     @State private var series: AudiobookshelfClient.Series?
     @State private var feed: FeedTarget?
+    /// Kolejność tomów; w liście można ją zmienić nagłówkiem kolumny (na czas oglądania strony).
+    @State private var sort = LibraryBrowser.Sort(key: "sequence", descending: false)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -123,11 +130,12 @@ struct SeriesPage: View {
             }
             if let libraryID = browser.libraryID {
                 ItemGrid(browser: browser, libraryID: libraryID, filter: .init(group: "series", value: seriesID, title: name),
-                         sort: .init(key: "sequence", descending: false), seriesID: seriesID, selectionScope: "series-\(seriesID)")
+                         sort: $sort, context: .seriesPage, seriesID: seriesID, selectionScope: "series-\(seriesID)")
             }
         }
         .navigationTitle(name)
         .toolbar {
+            ToolbarItem { ViewModePicker(browser: browser, context: .seriesPage) }
             ToolbarItem {
                 Menu {
                     Button("Oznacz serię jako ukończoną") { Task { await mark(true) } }

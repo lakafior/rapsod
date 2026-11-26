@@ -102,10 +102,21 @@ struct AuthorPage: View {
     @State private var author: AudiobookshelfClient.AuthorDetail?
     @State private var error: String?
     @State private var editing = false
+    @State private var sort = LibraryBrowser.Sort(key: "media.metadata.title", descending: false)
 
     var body: some View {
         Group {
-            if let author {
+            if let author, browser.viewMode(.authorPage) == .list {
+                // Lista (etap 14c): wszystkie książki autora w jednej tabeli; serie widać w kolumnie.
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 14) {
+                        AuthorPhoto(listening: browser.listening, author: .init(id: author.id, name: author.name, description: nil, imagePath: author.imagePath, numBooks: nil, updatedAt: nil), size: 56)
+                        Text(author.name).font(.title.weight(.semibold))
+                    }
+                    .padding(16)
+                    ItemTable(browser: browser, items: ItemTable.sorted(author.libraryItems?.elements ?? [], by: sort), sort: $sort)
+                }
+            } else if let author {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         HStack(alignment: .top, spacing: 20) {
@@ -137,6 +148,7 @@ struct AuthorPage: View {
         }
         .navigationTitle(name)
         .toolbar {
+            ToolbarItem { ViewModePicker(browser: browser, context: .authorPage) }
             if browser.manager.isAvailable {
                 ToolbarItem {
                     Button("Edytuj autora…", systemImage: "pencil") { editing = true }

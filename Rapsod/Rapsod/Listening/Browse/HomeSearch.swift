@@ -91,12 +91,16 @@ struct SearchView: View {
     let text: String
     @State private var results: AudiobookshelfClient.SearchResults?
     @State private var error: String?
+    /// Kolejność listy wyników; pusty klucz — trafność z serwera.
+    @State private var sort = LibraryBrowser.Sort(key: "", descending: false)
 
     var body: some View {
         Group {
             if let results {
                 if results.isEmpty {
                     ContentUnavailableView.search(text: text)
+                } else if browser.viewMode(.search) == .list {
+                    list(results)
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 26) { sections(results) }.padding(20)
@@ -107,6 +111,7 @@ struct SearchView: View {
             }
         }
         .navigationTitle("Wyniki: \(text)")
+        .toolbar { ToolbarItem { ViewModePicker(browser: browser, context: .search) } }
         .task(id: text) {
             // Krótka pauza: zapytanie po skończeniu pisania, nie po każdej literze.
             try? await Task.sleep(for: .milliseconds(300))
@@ -115,14 +120,38 @@ struct SearchView: View {
         }
     }
 
-    @ViewBuilder private func sections(_ results: AudiobookshelfClient.SearchResults) -> some View {
-        let books = (results.book?.elements ?? []) + (results.podcast?.elements ?? [])
+    /// Lista (etap 14c): książki i odcinki w tabeli, pozostałe trafienia (serie, autorzy,
+    /// lektorzy, gatunki, tagi) nad nią jak w siatce, w przewijanym pasie.
+    @ViewBuilder private func list(_ results: AudiobookshelfClient.SearchResults) -> some View {
+        let items = ((results.book?.elements ?? []) + (results.podcast?.elements ?? [])).map(\.libraryItem)
+            + (results.episodes?.elements ?? []).map(\.libraryItem)
+        let hasOthers = [results.series?.elements.isEmpty, results.authors?.elements.isEmpty, results.narrators?.elements.isEmpty,
+                         results.genres?.elements.isEmpty, results.tags?.elements.isEmpty].contains(false)
+        VStack(spacing: 0) {
+            if hasOthers {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) { sections(results, items: false) }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: items.isEmpty ? .infinity : 260)
+                .fixedSize(horizontal: false, vertical: !items.isEmpty)
+                if !items.isEmpty { Divider() }
+            }
+            if !items.isEmpty {
+                ItemTable(browser: browser, items: ItemTable.sorted(items, by: sort), sort: $sort)
+            }
+        }
+    }
+
+    @ViewBuilder private func sections(_ results: AudiobookshelfClient.SearchResults, items: Bool = true) -> some View {
+        let books = items ? (results.book?.elements ?? []) + (results.podcast?.elements ?? []) : []
         if !books.isEmpty {
             ShelfRow(title: browser.isPodcastLibrary ? "Podcasty" : "Książki") {
                 ForEach(books, id: \.libraryItem.id) { ItemCard(browser: browser, item: $0.libraryItem) }
             }
         }
-        if let episodes = results.episodes?.elements, !episodes.isEmpty {
+        if items, let episodes = results.episodes?.elements, !episodes.isEmpty {
             ShelfRow(title: "Odcinki") {
                 ForEach(episodes, id: \.libraryItem.recentEpisode?.id) { ItemCard(browser: browser, item: $0.libraryItem) }
             }

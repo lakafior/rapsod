@@ -13,6 +13,7 @@ struct RapsodApp: App {
         .commands {
             AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
             PlaybackCommands(player: appDelegate.listening.player)
+            LibraryViewCommands()
         }
 
         Window(LibraryWindow.title, id: LibraryWindow.windowID) {
@@ -136,6 +137,8 @@ private struct MenuBarLabel: View {
             .task {
                 // Tryb sprawdzający okno ustawień (tylko testowa kopia, argument `-ABSSettingsTour YES`).
                 if SettingsTour.isRequested { openWindow.openSettings(navigation: settings) }
+                // Tryb sprawdzający listę w Bibliotece (etap 14c, argument `-ABSLibraryTour <folder>`).
+                if LibraryTour.isRequested { openWindow.bringToFront(id: LibraryWindow.windowID) }
             }
             .onChange(of: updates.windowRequest) {
                 // Automatyczne sprawdzenie znalazło nową wersję do pokazania.
