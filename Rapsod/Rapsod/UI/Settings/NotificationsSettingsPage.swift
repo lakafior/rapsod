@@ -15,6 +15,8 @@ struct NotificationsSettingsPage: View {
 
     var body: some View {
         SettingsForm {
+            // Powiadomienia tego Maca (etap 14e) — niezależne od konta root i serwera.
+            MacNotificationsSection(notifications: models.notifications)
             if account.state == .ready, let notificationsModel, let emailModel {
                 NotificationsContent(model: notificationsModel)
                 EreaderDevicesSection(model: emailModel)
@@ -29,7 +31,7 @@ struct NotificationsSettingsPage: View {
                     }
                 }
             } else {
-                Section("Powiadomienia") { AdminUnavailableRow(account: account) }
+                Section("Powiadomienia serwera") { AdminUnavailableRow(account: account) }
             }
         }
         .sheet(isPresented: $editingSmtp) {
@@ -65,7 +67,7 @@ private struct NotificationsContent: View {
                     .disabled(model.status.isBusy || !serverChanged)
             }
         } header: {
-            Text("Serwer Apprise")
+            Text("Powiadomienia serwera: Apprise")
         } footer: {
             Text("Audiobookshelf nie wysyła powiadomień sam: przekazuje je do serwera Apprise (osobny program, np. kontener „caronc/apprise”), który dostarcza je do Discorda, Telegrama, ntfy, poczty itd. Podaj adres jego punktu „/notify”.")
                 .foregroundStyle(.secondary)
@@ -87,7 +89,7 @@ private struct NotificationsContent: View {
                     .disabled(model.status.isBusy || model.events.isEmpty)
             }
         } header: {
-            Text("Powiadomienia")
+            Text("Zdarzenia wysyłane przez Apprise")
         } footer: {
             if model.settings?.appriseApiUrl == nil {
                 Text("Bez adresu serwera Apprise powiadomienia nie są wysyłane.").foregroundStyle(.orange)

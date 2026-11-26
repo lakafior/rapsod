@@ -59,6 +59,10 @@ final class SkipController {
     @ObservationIgnored var rescan: (@MainActor (_ itemID: String) async -> Void)?
     /// Znaczniki odcinka zmieniły się na dysku (np. gra właśnie ten odcinek).
     @ObservationIgnored var onChanged: (@MainActor (_ itemID: String, _ episodeID: String) -> Void)?
+    /// Znaczniki zapisane dla odcinka (powiadomienie, etap 14e). `automatic` — przegląd w tle
+    /// (nowy odcinek), a nie przycisk „Wykryj” przy odcinku.
+    @ObservationIgnored var onDetected: (@MainActor (_ item: AudiobookshelfClient.ItemDetail, _ episode: AudiobookshelfClient.PodcastEpisode,
+                                                     _ segments: Int, _ automatic: Bool) -> Void)?
 
     /// Kolejka modelu (13b) — zapisana w folderze danych, przeżywa ponowne uruchomienie.
     var modelJobs: [ModelJob] = []
@@ -298,6 +302,7 @@ final class SkipController {
                 phases[key] = .done(Self.summary(map))
                 logger.info("Znaczniki \(audio.lastPathComponent, privacy: .public): \(map.segments.count) segm.")
                 onChanged?(itemID, episode.id)
+                onDetected?(item, episode, map.segments.count, episodeID == nil && !force)
                 // Model: odcinek wskazany przyciskiem zawsze (od nowa), pozostałe — gdy model go jeszcze nie liczył.
                 if modelEnabled, episodeID != nil || map.modelRun == nil, episodeID != nil || !recentlyFailed(key) {
                     enqueueModel(ModelJob(itemID: itemID, episodeID: episode.id, requested: episodeID != nil))

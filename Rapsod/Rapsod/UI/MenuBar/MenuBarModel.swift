@@ -33,6 +33,31 @@ final class MenuBarModel {
         case addPodcast
         /// Arkusz trwającego wgrywania.
         case showUpload
+        /// Strona książki albo podcastu (powiadomienie, Skróty — etap 14e).
+        case openItem(itemID: String, libraryID: String?)
+        /// Ta biblioteka w oknie (powiadomienie o wgranych książkach).
+        case showLibrary(String?)
+
+        /// Arkusze wgrywania i dodawania podcastu potrzebują konta root; strony pozycji — tylko słuchacza.
+        var needsAdmin: Bool {
+            switch self {
+            case .upload, .addPodcast, .showUpload: true
+            case .openItem, .showLibrary: false
+            }
+        }
+    }
+
+    /// Okno do otwarcia z kodu bez widoku (powiadomienia, Skróty). Otwiera je `MenuBarLabel`,
+    /// jedyny widok z `openWindow`, który żyje stale.
+    enum WindowTarget: Equatable {
+        case library
+        case settings(SettingsDestination?)
+        case update
+    }
+
+    struct WindowRequest: Equatable {
+        let serial: Int
+        let target: WindowTarget
     }
 
     private(set) var recent: [ResumeEntry] = []
@@ -44,6 +69,7 @@ final class MenuBarModel {
     /// Rośnie przy każdym upuszczeniu — `MenuBarLabel` otwiera wtedy okno wyboru.
     private(set) var dropRequest = 0
     var libraryRequest: LibraryRequest?
+    private(set) var windowRequest: WindowRequest?
     /// Przeglądarka otwartego okna „Biblioteka” (stan wgrywania). Okno samo się tu wpisuje.
     weak var browser: LibraryBrowser?
 
@@ -52,6 +78,18 @@ final class MenuBarModel {
 
     init(listening: ListeningController) {
         self.listening = listening
+    }
+
+    // MARK: Okna z kodu
+
+    func open(_ target: WindowTarget) {
+        windowRequest = WindowRequest(serial: (windowRequest?.serial ?? 0) + 1, target: target)
+    }
+
+    /// Prośba do okna „Biblioteka” razem z jego otwarciem.
+    func openLibrary(_ request: LibraryRequest?) {
+        if let request { libraryRequest = request }
+        open(.library)
     }
 
     // MARK: Upuszczenie na ikonę

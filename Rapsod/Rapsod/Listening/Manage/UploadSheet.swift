@@ -216,6 +216,8 @@ final class UploadModel {
         summary = nil
         defer { isRunning = false }
         var uploaded = 0
+        var uploadedTitles: [String] = []
+        var failures = 0
         // Pętla po identyfikatorach, nie po zakresie indeksów z początku: pozycje dołożone
         // w trakcie wysyłania (`add`) też idą. W trakcie nie da się usuwać, więc indeksy się nie przesuwają.
         var attempted: Set<Entry.ID> = []
@@ -229,6 +231,7 @@ final class UploadModel {
             do {
                 let check = try await manager.run { try await $0.pathExists(directory: directory, folderPath: folder.fullPath, token: $1) }
                 if check.exists {
+                    failures += 1
                     entries[index].status = .failed(check.itemTitle.map { "Ta ścieżka należy już do pozycji „\($0)”." }
                         ?? "Folder \(directory) już istnieje w bibliotece — zmień tytuł, autora albo serię.")
                     continue
@@ -246,12 +249,16 @@ final class UploadModel {
                 }
                 if let current = entries.firstIndex(where: { $0.id == id }) { entries[current].status = .done }
                 uploaded += 1
+                uploadedTitles.append(title)
             } catch {
                 let canceled = Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled
                 entries[index].status = .failed(canceled ? "Anulowano — nic nie trafiło do biblioteki." : ItemManager.message(for: error, action: "Wysyłanie"))
+                if !canceled { failures += 1 }
             }
             if Task.isCancelled { break }
         }
+        // Powiadomienie systemowe (etap 14e) — nie, gdy okno „Biblioteka” jest na wierzchu.
+        SystemNotifications.current?.uploadFinished(library: library, uploadedTitles: uploadedTitles, failures: failures)
         guard uploaded > 0 else { return }
         summary = await afterUpload(library: library, count: uploaded)
     }

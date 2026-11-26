@@ -24,12 +24,18 @@ let package = Package(
         // wybór zasobu, sumy kontrolne, skrypt podmiany. Sam Foundation — część do testów;
         // pobieranie, podpisy i okno są w aplikacji.
         .library(name: "RapsodUpdates", targets: ["RapsodUpdates"]),
+        // Powiadomienia systemowe i Skróty aplikacji na Maca (etap 14e): rodzaje, treści po polsku,
+        // zasady (kiedy powiadamiać, grupowanie odcinków), kolejność wyników wyszukiwania. Sam
+        // Foundation — część do testów; `UserNotifications` i App Intents są w aplikacji.
+        .library(name: "RapsodIntegration", targets: ["RapsodIntegration"]),
     ],
     targets: [
         .target(name: "AudiobookshelfKit"),
         .target(name: "AudiobookshelfPlayback", dependencies: ["AudiobookshelfKit"]),
         .target(name: "RapsodUpdates"),
+        .target(name: "RapsodIntegration"),
         .testTarget(name: "AudiobookshelfKitTests", dependencies: ["AudiobookshelfKit", "AudiobookshelfPlayback"]),
         .testTarget(name: "RapsodUpdatesTests", dependencies: ["RapsodUpdates"]),
+        .testTarget(name: "RapsodIntegrationTests", dependencies: ["RapsodIntegration"]),
     ]
 )

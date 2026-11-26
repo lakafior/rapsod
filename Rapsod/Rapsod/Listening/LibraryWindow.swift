@@ -165,7 +165,8 @@ struct LibraryWindow: View {
     /// Prośba z menu na pasku menu. Czeka, aż konto zarządzania i listy bibliotek będą gotowe —
     /// okno otwarte z menu dostaje ją, zanim się z serwerem połączy.
     private func handleMenuBarRequest() {
-        guard let request = menuBar.libraryRequest, browser.manager.isAvailable, !listening.libraries.isEmpty else { return }
+        guard let request = menuBar.libraryRequest, browser.manager.isAvailable || !request.needsAdmin,
+              !listening.libraries.isEmpty else { return }
         menuBar.libraryRequest = nil
         switch request {
         case .upload(let urls):
@@ -183,6 +184,16 @@ struct LibraryWindow: View {
             browser.searchText = ""
             browser.path = []
             browser.addPodcastRequested = true
+        case .openItem(let itemID, let libraryID):
+            if let libraryID, libraryID != browser.libraryID, listening.libraries.contains(where: { $0.id == libraryID }) {
+                browser.libraryID = libraryID
+            }
+            browser.searchText = ""
+            browser.path = [.item(itemID)]
+        case .showLibrary(let libraryID):
+            if let libraryID, listening.libraries.contains(where: { $0.id == libraryID }) { browser.libraryID = libraryID }
+            browser.searchText = ""
+            browser.path = []
         }
     }
 

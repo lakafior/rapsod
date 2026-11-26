@@ -36,9 +36,11 @@ final class UpdateController {
     private(set) var lastCheck: Date?
     /// Rośnie, gdy okno aktualizacji ma się otworzyć samo (obserwuje to ikona w pasku menu).
     private(set) var windowRequest = 0
-    /// Punkt zaczepienia dla powiadomień systemowych (etap 14e): wywoływany raz na wersję,
-    /// gdy automatyczne sprawdzenie znajdzie nowszą wersję do pokazania.
-    var onUpdateFound: ((AppUpdate) -> Void)?
+    /// Powiadomienie systemowe (etap 14e): wywoływane raz na wersję, gdy automatyczne sprawdzenie
+    /// znajdzie nowszą wersję do pokazania. Zwraca `true`, gdy poszło powiadomienie — wtedy okno
+    /// aktualizacji nie otwiera się samo (ani przy tym, ani przy kolejnych sprawdzeniach tej wersji).
+    var onUpdateFound: ((AppUpdate) -> Bool)?
+    @ObservationIgnored private var announcedByNotification = false
 
     var automaticChecks: Bool {
         didSet { defaults.set(automaticChecks, forKey: Keys.automatic) }
@@ -147,11 +149,11 @@ final class UpdateController {
                 pending = update
                 phase = .available(update)
                 if !userInitiated {
-                    windowRequest += 1
                     if announcedVersion != update.version {
                         announcedVersion = update.version
-                        onUpdateFound?(update)
+                        announcedByNotification = onUpdateFound?(update) ?? false
                     }
+                    if !announcedByNotification { windowRequest += 1 }
                 }
             }
         } catch {

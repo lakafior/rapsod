@@ -34,6 +34,9 @@ final class LibraryTasks {
         var kind: Kind
         var phase: Phase
         let since: Date
+        /// Zlecone z tej aplikacji (Ustawienia, panel na pasku menu, Skróty) — powiadomienie o końcu
+        /// skanu bez zmian ma sens tylko wtedy (etap 14e).
+        var requestedHere = false
 
         var isRunning: Bool {
             switch phase {
@@ -46,6 +49,8 @@ final class LibraryTasks {
     private let account: ServerAccount
     /// Ostatnia czynność każdej biblioteki (po identyfikatorze biblioteki).
     private(set) var activities: [String: Activity] = [:]
+    /// Czynność biblioteki się skończyła (albo dotarł późniejszy wynik tej samej) — powiadomienia (14e).
+    @ObservationIgnored var onFinished: ((_ libraryID: String, _ activity: Activity) -> Void)?
 
     @ObservationIgnored private var viewers = 0
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -101,7 +106,7 @@ final class LibraryTasks {
         request: @escaping @Sendable (AudiobookshelfClient, String) async throws -> Void
     ) {
         guard account.state == .ready, !isRunning(library.id) else { return }
-        activities[library.id] = Activity(kind: kind, phase: .requested, since: .now)
+        activities[library.id] = Activity(kind: kind, phase: .requested, since: .now, requestedHere: true)
         misses[library.id] = 0
         startIfNeeded()
         Task {
@@ -110,7 +115,7 @@ final class LibraryTasks {
             } catch {
                 let action = kind == .matchAll ? "Nie udało się zlecić dopasowania" : "Nie udało się zlecić skanu"
                 logger.error("\(action, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                activities[library.id]?.phase = .failed(ItemManager.message(for: error, action: action))
+                setTerminal(library.id, .failed(ItemManager.message(for: error, action: action)))
             }
         }
     }
@@ -159,6 +164,12 @@ final class LibraryTasks {
         events.start()
     }
 
+    /// Zdarzenie zadania z innego gniazda (stały obserwator zdarzeń dla powiadomień, etap 14e).
+    /// To samo zdarzenie z dwóch gniazd niczego nie psuje: drugi raz faza się nie zmienia.
+    func observe(_ task: AudiobookshelfClient.ServerTask, finished: Bool) {
+        handle(task, finished: finished)
+    }
+
     private func handle(_ task: AudiobookshelfClient.ServerTask, finished: Bool) {
         guard Self.actions.contains(task.action), let libraryID = task.data?.libraryId else { return }
         let kind: Kind = task.action == "library-match-all" ? .matchAll : (activities[libraryID]?.kind ?? .scan(force: false))
@@ -178,13 +189,24 @@ final class LibraryTasks {
             .finished(task.data?.scanResults, canceled: task.description?.localizedCaseInsensitiveContains("cancel") == true)
         }
         if activities[libraryID] == nil {
-            activities[libraryID] = Activity(kind: kind, phase: phase, since: .now)
-        } else {
-            activities[libraryID]?.phase = phase
+            activities[libraryID] = Activity(kind: kind, phase: .running, since: .now)
         }
+        setTerminal(libraryID, phase)
         if case .finished(let results, _) = phase, (results?.added ?? 0) + (results?.missing ?? 0) > 0 {
             Task { try? await account.refreshLibraries() }
         }
+    }
+
+    /// Koniec czynności. Wynik bez liczb (zadanie zniknęło z listy) może później zastąpić wynik
+    /// z `task_finished`; ta sama faza drugi raz (zdarzenie z dwóch gniazd) nic nie zgłasza.
+    private func setTerminal(_ libraryID: String, _ phase: Phase) {
+        guard var activity = activities[libraryID] else { return }
+        let previous = activity.phase
+        guard previous != phase else { return }
+        if case .finished(let results, _) = previous, results != nil { return }
+        activity.phase = phase
+        activities[libraryID] = activity
+        onFinished?(libraryID, activity)
     }
 
     private static func failureText(_ task: AudiobookshelfClient.ServerTask, kind: Kind) -> String {
@@ -217,7 +239,7 @@ final class LibraryTasks {
             misses[libraryID] = count
             let grace = activity.phase == .requested ? 3 : 2
             if count >= grace {
-                activities[libraryID]?.phase = .finished(nil, canceled: false)
+                setTerminal(libraryID, .finished(nil, canceled: false))
             }
         }
     }

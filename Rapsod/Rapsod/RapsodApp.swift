@@ -180,6 +180,16 @@ private struct MenuBarLabel: View {
             .onChange(of: menuBar.dropRequest) {
                 openWindow.bringToFront(id: DropWindow.windowID)
             }
+            .onChange(of: menuBar.windowRequest) {
+                // Kliknięte powiadomienie albo Skrót (etap 14e).
+                switch menuBar.windowRequest?.target {
+                case .library: openWindow.bringToFront(id: LibraryWindow.windowID)
+                case .settings(let destination?): openWindow.openSettings(destination, navigation: settings)
+                case .settings(nil): openWindow.openSettings(navigation: settings)
+                case .update: openWindow.bringToFront(id: UpdateWindow.windowID)
+                case nil: break
+                }
+            }
             .onChange(of: supervisor.state) {
                 drop.attachSoon()
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
@@ -208,6 +218,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) lazy var users = UsersModel(account: account)
     let rootReset = RootPasswordReset()
     let avatars = AvatarStore()
+    /// Powiadomienia systemowe (etap 14e) i stałe zdarzenia serwera dla nich.
+    let notifications = SystemNotifications(center: AppDelegate.notificationCenter())
+    private(set) lazy var activityMonitor = ServerActivityMonitor(account: account)
     private(set) lazy var models = AppModels(
         supervisor: supervisor,
         account: account,
@@ -220,10 +233,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         avatars: avatars,
         rootReset: rootReset,
         webMode: webMode,
-        updates: updates
+        updates: updates,
+        notifications: notifications
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Najpierw: kliknięcie powiadomienia, które uruchomiło aplikację, przychodzi zaraz po starcie.
+        configureNotifications()
         supervisor.onStateChange = { [weak self] state in
             guard let self else { return }
             if state == .running, let environment = supervisor.environment {

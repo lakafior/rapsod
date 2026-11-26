@@ -236,7 +236,7 @@ final class ItemTasks {
         }
     }
 
-    private static func failureText(_ task: AudiobookshelfClient.ServerTask) -> String {
+    static func failureText(_ task: AudiobookshelfClient.ServerTask) -> String {
         let known: [String: String] = [
             "MessageTaskTargetDirectoryNotWritable": "Serwer nie może pisać w folderze książki.",
             "MessageTaskFailedToWriteMetadataFile": "Nie udało się zapisać pliku metadanych.",

@@ -16,6 +16,7 @@ struct AppModels {
     let rootReset: RootPasswordReset
     let webMode: WebUIMode
     let updates: UpdateController
+    let notifications: SystemNotifications
 }
 
 /// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,
