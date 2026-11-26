@@ -262,6 +262,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updates.activate()
         #if DEBUG
         // Tryb sprawdzający panel na pasku menu (etap 14d, argument `-ABSMenuBarTour YES`).
+        // Tryb sprawdzający powiadomienia i Skróty (etap 14e, argument `-ABSNotificationsTour YES`).
+        if NotificationsTour.isRequested {
+            Task { await NotificationsTour.run(self) }
+        }
         if MenuBarTour.isRequested {
             Task { await MenuBarTour.run(account: account, listening: listening, libraryTasks: libraryTasks, menuBar: menuBar) }
         }
