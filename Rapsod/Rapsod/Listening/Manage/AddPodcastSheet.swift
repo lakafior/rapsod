@@ -11,7 +11,7 @@ struct AddPodcastSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     enum Mode: String, CaseIterable {
-        case search = "Szukaj w iTunes", rss = "Adres RSS", opml = "Plik OPML"
+        case search = "Szukaj", rss = "Adres RSS", opml = "Plik OPML"
     }
 
     @State private var mode = Mode.search
@@ -29,6 +29,9 @@ struct AddPodcastSheet: View {
     @State private var opmlFeeds: [AudiobookshelfClient.OPMLFeed]?
     @State private var listenerSeesExplicit: Bool?
     @State private var choosingOPML = false
+    /// Katalogi, które nie odpowiedziały przy ostatnim wyszukiwaniu.
+    @State private var failures: [String] = []
+    @State private var hasIndexKey = PodcastIndexKey.load() != nil
 
     /// Lista sklepów z dopisanym bieżącym, gdy go na niej nie ma (np. ustawiony w web UI).
     static func countries(including code: String) -> [(String, String)] {
@@ -109,6 +112,11 @@ struct AddPodcastSheet: View {
                     .disabled(term.trimmingCharacters(in: .whitespaces).isEmpty || busy != nil)
                     .keyboardShortcut(.defaultAction)
             }
+            Text("Szukam w iTunes (sklep obok), fyyd" + (hasIndexKey ? " i Podcast Index." : ". Więcej wyników da klucz Podcast Index: Ustawienia → Biblioteki → Wyszukiwanie podcastów."))
+                .font(.callout).foregroundStyle(.secondary)
+            if !failures.isEmpty {
+                Text(failures.joined(separator: " ")).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+            }
             if results.isEmpty {
                 if searched { Text("Brak wyników z kanałem RSS.").foregroundStyle(.secondary) }
             } else {
@@ -137,6 +145,10 @@ struct AddPodcastSheet: View {
                     HStack {
                         Text(result.title ?? "").font(.headline).lineLimit(2)
                         if result.explicit == true { Text("dla dorosłych").font(.caption).foregroundStyle(.secondary) }
+                        if let source = result.source, source != .itunes {
+                            Text(source.title).font(.caption).foregroundStyle(.secondary)
+                                .padding(.horizontal, 5).background(.quaternary, in: .capsule)
+                        }
                     }
                     if let artist = result.artistName { Text(artist).foregroundStyle(.secondary).lineLimit(1) }
                     HStack(spacing: 8) {
@@ -173,9 +185,20 @@ struct AddPodcastSheet: View {
             loadFeed(term, from: nil)
             return
         }
-        let country = country
-        run("Szukanie w iTunes…", failure: "Nie udało się wyszukać") {
-            results = try await browser.manager.run { try await $0.searchPodcasts(term: term, country: country, token: $1) }.filter { $0.feedUrl != nil }
+        let country = country, manager = browser.manager
+        let credentials = PodcastIndexKey.load()
+        hasIndexKey = credentials != nil
+        failures = []
+        run("Szukanie w katalogach…", failure: "Nie udało się wyszukać") {
+            let outcome = await PodcastDirectories.searchAll(term: term, podcastIndex: credentials) {
+                try await manager.run { try await $0.searchPodcasts(term: term, country: country, token: $1) }
+            }
+            // Wszystkie zawiodły — błąd zamiast pustej listy.
+            if outcome.results.isEmpty, let first = outcome.failures.first, outcome.failures.count == (credentials == nil ? 2 : 3) {
+                throw Failure(text: "Nie udało się wyszukać: \(first.message)")
+            }
+            results = outcome.results
+            failures = outcome.failures.map { "\($0.directory.title): \($0.message)" }
             searched = true
         }
     }

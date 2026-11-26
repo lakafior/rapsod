@@ -72,6 +72,10 @@ struct SettingsView: View {
                         LabeledContent("Pobieranie odcinków na serwer", value: podcastPermission)
                         Toggle("Pobieraj na serwer odcinki słuchane ze strumienia", isOn: $orderWhenStreaming)
                             .disabled(!session.library.podcasts.permission.canOrder)
+                        // Dodawać podcasty może tylko administrator — słuchaczowi wyszukiwanie się nie przyda.
+                        if session.library.podcasts.permission != .listener {
+                            NavigationLink("Wyszukiwanie podcastów") { PodcastSearchSettingsView() }
+                        }
                     } header: {
                         Text("Podcasty")
                     } footer: {

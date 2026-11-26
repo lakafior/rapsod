@@ -24,6 +24,9 @@ struct AddPodcastSheet: View {
     @State private var error: String?
     @State private var draft: PodcastDraft?
     @State private var seesExplicit: Bool?
+    /// Katalogi, które nie odpowiedziały przy ostatnim wyszukiwaniu.
+    @State private var failures: [String] = []
+    @State private var hasIndexKey = PodcastIndexKey.load() != nil
 
     static let countries: [(String, String)] = [
         ("pl", "Polska"), ("us", "USA"), ("gb", "Wielka Brytania"), ("de", "Niemcy"), ("fr", "Francja"),
@@ -53,7 +56,9 @@ struct AddPodcastSheet: View {
                     Button(isURL ? "Wczytaj kanał" : "Szukaj", systemImage: isURL ? "dot.radiowaves.left.and.right" : "magnifyingglass", action: submit)
                         .disabled(trimmed.isEmpty || busy != nil)
                 } footer: {
-                    Text("Wpisz nazwę podcastu albo wklej adres kanału RSS. Przed dodaniem zobaczysz dane kanału.")
+                    Text("Wpisz nazwę podcastu albo wklej adres kanału RSS. Szukam w iTunes, fyyd"
+                         + (hasIndexKey ? " i Podcast Index." : " — więcej wyników da klucz Podcast Index (Ustawienia → Podcasty → Wyszukiwanie podcastów).")
+                         + " Przed dodaniem zobaczysz dane kanału.")
                 }
                 if let busy {
                     Section { Label { Text(busy) } icon: { ProgressView() }.foregroundStyle(.secondary) }
@@ -65,8 +70,12 @@ struct AddPodcastSheet: View {
                     }
                 }
                 if !results.isEmpty {
-                    Section("Wyniki") {
+                    Section {
                         ForEach(results, id: \.key) { resultRow($0) }
+                    } header: {
+                        Text("Wyniki")
+                    } footer: {
+                        if !failures.isEmpty { Text(failures.joined(separator: " ")) }
                     }
                 } else if searched, busy == nil, error == nil {
                     Section { Text("Brak wyników z kanałem RSS.").foregroundStyle(.secondary) }
@@ -124,6 +133,7 @@ struct AddPodcastSheet: View {
 
     private func details(_ result: Client.PodcastSearchResult) -> String {
         var parts: [String] = []
+        if let source = result.source, source != .itunes { parts.append(source.title) }
         if let count = result.trackCount { parts.append(PolishCount.episodes(count)) }
         if result.explicit == true { parts.append("dla dorosłych") }
         if let genres = result.genres, !genres.isEmpty { parts.append(genres.prefix(2).joined(separator: ", ")) }
@@ -157,10 +167,20 @@ struct AddPodcastSheet: View {
             loadFeed(trimmed, from: nil)
             return
         }
-        let term = trimmed, country = country
-        run("Szukanie w iTunes…", failure: "Nie udało się wyszukać") {
-            results = try await session.auth.perform { try await $0.searchPodcasts(term: term, country: country, token: $1) }
-                .filter { $0.feedUrl != nil }
+        let term = trimmed, country = country, auth = session.auth
+        let credentials = PodcastIndexKey.load()
+        hasIndexKey = credentials != nil
+        failures = []
+        run("Szukanie w katalogach…", failure: "Nie udało się wyszukać") {
+            let outcome = await PodcastDirectories.searchAll(term: term, podcastIndex: credentials) {
+                try await auth.perform { try await $0.searchPodcasts(term: term, country: country, token: $1) }
+            }
+            // Wszystkie zawiodły — błąd zamiast pustej listy.
+            if outcome.results.isEmpty, let first = outcome.failures.first, outcome.failures.count == (credentials == nil ? 2 : 3) {
+                throw Failure(text: "Nie udało się wyszukać: \(first.message)")
+            }
+            results = outcome.results
+            failures = outcome.failures.map { "\($0.directory.title): \($0.message)" }
             searched = true
         }
     }

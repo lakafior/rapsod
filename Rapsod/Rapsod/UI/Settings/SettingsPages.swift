@@ -25,6 +25,7 @@ struct LibrariesSettingsPage: View {
                 Text("Metadane")
             }
             CustomProvidersSection(account: models.account, refreshKey: models.metadataSources.registration.title)
+            PodcastSearchSettingsSection()
             AdvancedHeader(summary: "Skaner i okładki, zapis w folderach pozycji, sortowanie, pamięć podręczna — wspólne dla wszystkich bibliotek", isExpanded: $showsAdvanced)
             if showsAdvanced {
                 if models.account.state == .ready, let serverSettings {

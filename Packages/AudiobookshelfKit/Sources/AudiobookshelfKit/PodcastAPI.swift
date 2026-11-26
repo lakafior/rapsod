@@ -79,8 +79,28 @@ extension AudiobookshelfClient {
         public let feedUrl: String?
         public let pageUrl: String?
         public let explicit: Bool?
+        /// Katalog, z którego przyszedł wynik; `nil` — iTunes przez serwer.
+        public var source: PodcastDirectory? = nil
 
         public var key: String { feedUrl ?? title ?? "" }
+
+        public init(id: Int? = nil, artistId: Int? = nil, title: String?, artistName: String?, description: String?, releaseDate: String? = nil,
+                    genres: [String]?, cover: String?, trackCount: Int?, feedUrl: String?, pageUrl: String? = nil, explicit: Bool?,
+                    source: PodcastDirectory?) {
+            self.id = id
+            self.artistId = artistId
+            self.title = title
+            self.artistName = artistName
+            self.description = description
+            self.releaseDate = releaseDate
+            self.genres = genres
+            self.cover = cover
+            self.trackCount = trackCount
+            self.feedUrl = feedUrl
+            self.pageUrl = pageUrl
+            self.explicit = explicit
+            self.source = source
+        }
     }
 
     /// Kanał RSS po przetworzeniu przez serwer (`podcastUtils.cleanPodcastJson`).
