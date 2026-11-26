@@ -7,6 +7,7 @@ struct GeneralSettingsPage: View {
     let models: AppModels
 
     @AppStorage(MenuOptions.showsPairPhoneKey) private var showsPairPhone = false
+    @AppStorage(AppQuit.confirmKey) private var confirmsQuit = true
     @Environment(\.openWindow) private var openWindow
 
     private var supervisor: ServerSupervisor { models.supervisor }
@@ -136,6 +137,7 @@ struct GeneralSettingsPage: View {
             if let error = loginItem.lastError {
                 Text(error).foregroundStyle(.red)
             }
+            Toggle("Pytaj przed zakończeniem (⌘Q zatrzymuje serwer)", isOn: $confirmsQuit)
             Toggle(isOn: $showsPairPhone) {
                 Text("„Podłącz telefon…” w menu na pasku menu")
                 Text("Skrót do arkusza „Podłącz telefon” konta tego Maca.")

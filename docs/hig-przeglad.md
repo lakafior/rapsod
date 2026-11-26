@@ -20,10 +20,10 @@ Skala: **szacunek** mała (do ok. godziny pracy, jedna sesja z innymi drobiazgam
 
 ## 1. Struktura scen i okna
 
-**1.1. `⌘Q` nie kończy aplikacji, a ten sam skrót znaczy co innego w dwóch menu.** — `UI/AppCommands.swift:32-39`, `UI/ServerMenu.swift:98-100`, `RapsodApp.swift:195-201`.
-W menu aplikacji `⌘Q` to „Zamknij okna (serwer działa dalej)”, a „Zakończ Rapsod i wyłącz serwer” nie ma skrótu. W menu na pasku `⌘Q` to „Zakończ” z wyłączeniem serwera. Użytkownik, który naciśnie `⌘Q` w menu paska, kończy serwer, a w menu aplikacji go zostawia. HIG (Menu bar › App menu; Keyboard): `⌘Q` zawsze kończy aplikację; „Zamknij wszystkie okna” ma `⌥⌘W`. Dziś zamknięcie aplikacji jest też jedyną drogą, którą system używa przy wylogowaniu, więc `AppQuit` rozpoznaje zdarzenie z powodem.
-Propozycja: `⌘Q` = „Zakończ Rapsod” z jednym pytaniem przy pierwszym użyciu („Zatrzymać serwer, czy zostawić go w tle?” z „Nie pytaj ponownie” i ustawieniem w Ogólnych), a „Zamknij okna” zostaje pod `⌥⌘W` (standardowa pozycja menu Okno „Zamknij wszystko”). Wymaga decyzji produktowej (serwer w tle to cecha, nie błąd).
-Szacunek: średnia. Priorytet: **W**.
+**1.1. `⌘Q` nie kończyło aplikacji, a ten sam skrót znaczył co innego w dwóch menu. — ZROBIONE (2026-11-26, decyzja użytkownika).**
+Było: `⌘Q` w menu aplikacji zamykał tylko okna, a w menu na pasku kończył razem z serwerem (`UI/AppCommands.swift`, `UI/ServerMenu.swift`, `RapsodApp.swift`). HIG (Menu bar › App menu; Keyboard): `⌘Q` zawsze kończy aplikację.
+Teraz: `⌘Q`, „Zakończ Rapsod” w menu aplikacji, „Zakończ” w menu na pasku i „Zakończ” w Docku robią to samo: zatrzymują serwer i kończą aplikację. Przy działającym serwerze pada jedno pytanie („Zatrzymać serwer i zakończyć Rapsod?”) z polem „Nie pytaj ponownie”; pytanie można włączyć z powrotem w Ustawienia › Ogólne › Aplikacja. Wylogowanie, restart i wyłączenie Maca kończą bez pytania. „Zamknij wszystkie okna” przeszło na `⌥⌘W` (menu Okno); czerwony przycisk i `⌘W` dalej chowają okno, a serwer i ikona na pasku menu zostają. Implementacja: `AppQuit` w `App/DockIcon.swift`.
+Priorytet: zrobione.
 
 **1.2. Okno ustawień to własne `Window`, nie scena `Settings`.** — `RapsodApp.swift:57-64`, `UI/AppCommands.swift:18-30`.
 Scena `Settings` daje: standardową pozycję „Ustawienia…” z `⌘,` zarządzaną przez system, okno bez przycisku pełnego ekranu i zoom, tytuł spójny z menu, zapamiętane położenie. Własne `Window` robi to ręcznie (`openSettings`, `bringToFront`, `DockIcon`). HIG (Settings): ustawienia w osobnym oknie z `⌘,`, bez pełnego ekranu, zmiany stosowane od razu. Powód odstępstwa jest zapewne praktyczny: scena `Settings` nie otwiera się niezawodnie z `MenuBarExtra` w aplikacji `LSUIElement`.
@@ -41,9 +41,8 @@ Propozycja: `@SceneStorage` na bieżącą sekcję, bibliotekę i stan inspektora
 Szacunek: mała. Priorytet: N.
 
 **1.5. Aplikacja `LSUIElement` ze zmienną polityką aktywacji.** — `Info.plist:5-6`, `App/DockIcon.swift:35-82`.
-Ikona w Docku i menu główne pojawiają się dopiero po otwarciu okna i znikają po zamknięciu ostatniego. To znany, działający wzorzec aplikacji paskowych, ale Rapsod jest pełnym odtwarzaczem: przy otwartym oknie Biblioteki użytkownik zakłada, że aplikacja jest „zwykła”. Koszt: aplikacja znika z `⌘Tab` po zamknięciu okna, choć odtwarza dźwięk; `NSApp.hide(nil)` przy ostatnim oknie (`DockIcon.swift:77`) może przełączać fokus. HIG (Menu bar extras): aplikacja z oknami powinna mieć stałą obecność w Docku albo jawną opcję.
-Propozycja: opcja w Ogólnych „Pokazuj ikonę w Docku: tylko przy otwartych oknach / zawsze”. Domyślne zachowanie zostaje. Decyzja użytkownika.
-Szacunek: średnia. Priorytet: N.
+Decyzja użytkownika (2026-11-26): zostaje. Czerwony przycisk chowa okno do paska menu, a ikona w Docku znika po zamknięciu ostatniego okna (standard aplikacji paskowej); `⌘Q` kończy wszystko (1.1). Koszt: aplikacja znika z `⌘Tab`, choć gra. Opcjonalna „Pokazuj w Docku: tylko przy oknach / zawsze” zostaje w propozycjach na później.
+Priorytet: N.
 
 **1.6. „O programie” jest własnym oknem, nie standardowym panelem.** — `UI/AboutWindow.swift:5-70`, `RapsodApp.swift:76-82`.
 Brakuje ikony aplikacji, nazwy wersji w standardowym układzie i nota praw autorskich; okno ma 640 pt i pole przewijania na całą treść licencji. HIG (About window): standardowy panel z ikoną, nazwą, wersją, prawami autorskimi i opcjonalnymi „Credits”.
@@ -204,7 +203,7 @@ Szacunek: średnia (jeśli canvas bez dostępności). Priorytet: **W**, jeśli p
 Podział na trzy paczki, od najbardziej wartościowej:
 
 **14f-1. Menu i skróty (Ś–W, ok. jedna sesja).**
-1. Decyzja o `⌘Q` i pytanie przy zakończeniu (1.1), „Zamknij wszystkie okna” pod `⌥⌘W`.
+1. ~~`⌘Q` i pytanie przy zakończeniu (1.1), „Zamknij wszystkie okna” pod `⌥⌘W`~~ — zrobione.
 2. Menu Plik i Okno (2.1): „Wgraj książkę…”, „Dodaj bibliotekę…”, „Dodaj podcast…”, „Skanuj”, „Pokaż w Finderze”; „Biblioteka” w menu Okno z `⌘1`; wyrzucić `⌘O`.
 3. Menu Widok (2.2): `SidebarCommands`, `ToolbarCommands`, `InspectorCommands`, pozycja „Pokaż/Ukryj odtwarzacz”.
 4. Menu Pomoc (2.5).

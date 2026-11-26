@@ -97,24 +97,41 @@ final class DockIcon {
     }
 }
 
-/// Zakończenie aplikacji wyłącza serwer, więc pełne wyjście jest tylko świadome:
-/// z menu ikony na pasku menu, z pozycji w menu aplikacji albo przy wylogowaniu,
-/// restarcie i wyłączeniu Maca. ⌘Q i „Zakończ” w Docku tylko zamykają okna.
+/// Zakończenie aplikacji (⌘Q, „Zakończ” w Docku i w menu na pasku menu) wyłącza serwer.
+/// Zwykłe zakończenie pyta o to raz; „Nie pytaj ponownie” (albo przełącznik w Ogólnych)
+/// wyłącza pytanie. Wylogowanie, restart i wyłączenie Maca kończą bez pytania.
+/// Samo zamknięcie okien (czerwony przycisk, ⌘W, ⌥⌘W) zostawia serwer i ikonę na pasku menu.
 @MainActor
 enum AppQuit {
-    private static var isRequested = false
+    static let confirmKey = "quit.confirm"
 
     /// Pełne zakończenie aplikacji razem z serwerem.
     static func quit() {
-        isRequested = true
         NSApp.terminate(nil)
     }
 
-    /// Czy `applicationShouldTerminate` ma naprawdę kończyć aplikację.
-    static var shouldTerminate: Bool {
-        if isRequested { return true }
-        // Wylogowanie, restart i wyłączenie Maca przychodzą jako zdarzenie „quit”
-        // z podanym powodem (AERegistry.h, kAEQuitReason). „Zakończ” z Docka i ⌘Q go nie mają.
+    /// Czy `applicationShouldTerminate` ma kończyć aplikację. `serverIsUp` — czy jest co zatrzymywać.
+    static func shouldTerminate(serverIsUp: Bool) -> Bool {
+        if isSystemQuit || !serverIsUp { return true }
+        guard UserDefaults.standard.object(forKey: confirmKey) as? Bool ?? true else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Zatrzymać serwer i zakończyć Rapsod?"
+        alert.informativeText = "Serwer audiobookshelf zostanie zatrzymany, więc telefony stracą dostęp do biblioteki. Żeby tylko schować okna, zamknij je czerwonym przyciskiem — serwer zostanie w tle."
+        alert.addButton(withTitle: "Zatrzymaj i zakończ")
+        alert.addButton(withTitle: "Anuluj")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Nie pytaj ponownie"
+        NSApp.activate()
+        let confirmed = alert.runModal() == .alertFirstButtonReturn
+        if confirmed, alert.suppressionButton?.state == .on {
+            UserDefaults.standard.set(false, forKey: confirmKey)
+        }
+        return confirmed
+    }
+
+    /// Wylogowanie, restart i wyłączenie Maca przychodzą jako zdarzenie „quit”
+    /// z podanym powodem (AERegistry.h, kAEQuitReason). ⌘Q i „Zakończ” z Docka go nie mają.
+    private static var isSystemQuit: Bool {
         guard let event = NSAppleEventManager.shared().currentAppleEvent,
               event.eventClass == AEEventClass(kCoreEventClass),
               event.eventID == AEEventID(kAEQuitApplication) else { return false }

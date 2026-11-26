@@ -88,7 +88,7 @@ struct ServerMenu: View {
             openWindow.bringToFront(id: AboutWindow.windowID)
         }
 
-        // Jedyne miejsce (poza menu aplikacji) pełnego zakończenia razem z serwerem.
+        // Zakończenie razem z serwerem, tak jak ⌘Q w menu aplikacji.
         Button("Zakończ") {
             AppQuit.quit()
         }

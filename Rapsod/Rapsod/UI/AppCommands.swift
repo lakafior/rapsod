@@ -30,13 +30,19 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(replacing: .appTermination) {
-            Button("Zamknij okna (serwer działa dalej)") {
-                DockIcon.closeAllWindows()
-            }
-            .keyboardShortcut("q")
-            Button("Zakończ Rapsod i wyłącz serwer") {
+            Button("Zakończ Rapsod") {
                 AppQuit.quit()
             }
+            .keyboardShortcut("q")
+        }
+
+        // Czerwony przycisk i ⌘W chowają okno; to samo dla wszystkich okien naraz.
+        // Serwer i ikona na pasku menu zostają.
+        CommandGroup(after: .windowArrangement) {
+            Button("Zamknij wszystkie okna") {
+                DockIcon.closeAllWindows()
+            }
+            .keyboardShortcut("w", modifiers: [.option, .command])
         }
 
         CommandGroup(replacing: .newItem) {

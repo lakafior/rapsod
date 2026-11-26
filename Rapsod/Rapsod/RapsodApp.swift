@@ -198,12 +198,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // ⌘Q i „Zakończ” w Docku tylko zamykają okna — serwer działa dalej.
-        guard AppQuit.shouldTerminate else {
-            DockIcon.closeAllWindows()
-            return .terminateCancel
-        }
-        guard supervisor.hasProcess || sharing.hasRunningExternalAccess || metadataSources.hasProcess else { return .terminateNow }
+        // ⌘Q i „Zakończ” w Docku kończą aplikację razem z serwerem (po jednym pytaniu);
+        // samo zamknięcie okien zostawia serwer w tle.
+        let serverIsUp = supervisor.hasProcess || sharing.hasRunningExternalAccess || metadataSources.hasProcess
+        guard AppQuit.shouldTerminate(serverIsUp: serverIsUp) else { return .terminateCancel }
+        guard serverIsUp else { return .terminateNow }
         Task {
             // Najpierw pozycja słuchania — potrzebuje działającego serwera.
             await listening.shutdown()
