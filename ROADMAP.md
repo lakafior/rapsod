@@ -1,6 +1,6 @@
 # Roadmapa
 
-Stan na 2026-11-26. Wydana wersja: 1.0.0.
+Stan na 2026-11-26. Wydana wersja: 1.0.0; zbudowana 1.1.0 (etap 14), jeszcze nieopublikowana.
 
 ## Zrobione
 
