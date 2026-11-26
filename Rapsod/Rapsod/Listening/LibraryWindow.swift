@@ -10,6 +10,8 @@ import SwiftUI
 struct LibraryWindow: View {
     static let windowID = "library"
     static let title = "Biblioteka"
+    /// Szerokość okna, poniżej której panel odtwarzacza chowa się sam.
+    static let compactWidth: CGFloat = 900
 
     let listening: ListeningController
     let supervisor: ServerSupervisor
@@ -17,7 +19,8 @@ struct LibraryWindow: View {
     let settings: SettingsNavigation
 
     @State private var browser: LibraryBrowser
-    @State private var showsPlayer = true
+    /// Panel odtwarzacza schowany sam przy wąskim oknie — wraca, gdy okno się poszerzy.
+    @State private var playerAutoHidden = false
     @State private var newPlaylistName = ""
     @State private var dropTargeted = false
     @Environment(\.openWindow) private var openWindow
@@ -51,7 +54,18 @@ struct LibraryWindow: View {
                 unavailable
             }
         }
-        .frame(minWidth: 980, minHeight: 560)
+        // Połowa ekranu 13″ (ok. 735 pt) mieści okno; poniżej 900 pt panel odtwarzacza
+        // ustępuje paskowi odtwarzania na dole (HIG: Windows › Resizing, etap 14f).
+        .frame(minWidth: 640, minHeight: 480)
+        .onGeometryChange(for: Bool.self) { $0.size.width < Self.compactWidth } action: { compact in
+            if compact, browser.showsPlayer {
+                playerAutoHidden = true
+                browser.showsPlayer = false
+            } else if !compact, playerAutoHidden {
+                playerAutoHidden = false
+                browser.showsPlayer = true
+            }
+        }
         .navigationTitle(Self.title)
         .task { await LibraryTour.runIfRequested(browser: browser, account: account) }
         .onDisappear {
@@ -74,6 +88,9 @@ struct LibraryWindow: View {
                 withPlayerBar(root)
                     .navigationDestination(for: LibraryBrowser.Route.self) { route in
                         withPlayerBar(destination(route))
+                            // Wstecz/Dalej są w pasku jako jedna para (`BackForwardButtons`); systemowy
+                            // przycisk wstecz stosu byłby drugim, bez „Dalej”.
+                            .navigationBarBackButtonHidden()
                     }
             }
         }
@@ -89,7 +106,7 @@ struct LibraryWindow: View {
                     RoundedRectangle(cornerRadius: 12).fill(.tint.opacity(0.08))
                     RoundedRectangle(cornerRadius: 12).strokeBorder(.tint, style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
                     Label("Upuść, żeby wgrać do biblioteki", systemImage: "square.and.arrow.down")
-                        .font(.title2.weight(.medium)).padding(16).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        .font(.title2.weight(.medium)).padding(16).glassEffect(in: RoundedRectangle(cornerRadius: 10))
                 }
                 .padding(8)
                 .allowsHitTesting(false)
@@ -101,7 +118,7 @@ struct LibraryWindow: View {
         .searchable(text: $browser.searchText, placement: .toolbar, prompt: browser.isPodcastLibrary ? "Szukaj podcastów i odcinków" : "Szukaj książek, autorów, serii")
         .searchFocused($searchFocused)
         .onChange(of: searchFocused) { browser.textField("search", focused: searchFocused) }
-        .inspector(isPresented: $showsPlayer) {
+        .inspector(isPresented: $browser.showsPlayer) {
             PlayerPanel(listening: listening)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 440)
         }
@@ -120,8 +137,12 @@ struct LibraryWindow: View {
                     .accessibilityIdentifier("upload.toolbar")
                 }
             }
+            ToolbarItem(placement: .navigation) {
+                BackForwardButtons(browser: browser)
+            }
             ToolbarItem(placement: .primaryAction) {
-                Button(showsPlayer ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz", systemImage: "sidebar.trailing") { showsPlayer.toggle() }
+                Button(browser.showsPlayer ? "Schowaj odtwarzacz" : "Pokaż odtwarzacz", systemImage: "sidebar.trailing") { browser.showsPlayer.toggle() }
+                    .help(browser.showsPlayer ? "Schowaj odtwarzacz (⌥⌘I)" : "Pokaż odtwarzacz (⌥⌘I)")
             }
         }
         .task {
@@ -227,8 +248,8 @@ struct LibraryWindow: View {
     private func withPlayerBar(_ content: some View) -> some View {
         // Panel odtwarzacza pokazuje to samo, więc pasek jest tylko wtedy, gdy panel jest schowany.
         content.safeAreaInset(edge: .bottom, spacing: 0) {
-            if !showsPlayer {
-                MiniPlayerBar(listening: listening, showsPlayer: $showsPlayer)
+            if !browser.showsPlayer {
+                MiniPlayerBar(listening: listening, showsPlayer: $browser.showsPlayer)
             }
         }
     }
@@ -347,5 +368,23 @@ struct FilteredItems: View {
                     ToolbarItem { SortMenu(sort: $browser.itemSort, options: SortMenu.bookOptions) }
                 }
         }
+    }
+}
+
+/// Wstecz i Dalej w pasku narzędzi (⌘[ i ⌘] w menu Widok), jak w Finderze i Safari (etap 14f).
+private struct BackForwardButtons: View {
+    let browser: LibraryBrowser
+
+    var body: some View {
+        ControlGroup {
+            Button("Wstecz", systemImage: "chevron.backward") { browser.goBack() }
+                .disabled(!browser.canGoBack)
+                .help("Wstecz (⌘[)")
+            Button("Dalej", systemImage: "chevron.forward") { browser.goForward() }
+                .disabled(!browser.canGoForward)
+                .help("Dalej (⌘])")
+        }
+        .controlGroupStyle(.navigation)
+        .accessibilityIdentifier("library.backForward")
     }
 }

@@ -94,6 +94,17 @@ struct ItemCard: View {
         }
         .onHover { hovering = $0 }
         .contextMenu { if let item, !selecting { ItemMenu(browser: browser, item: item) } }
+        // Przycisk na okładce jest tylko pod myszą; VoiceOver i pełny dostęp z klawiatury
+        // dostają te same czynności jako akcje karty (HIG: Accessibility, etap 14f).
+        .accessibilityActions {
+            if let item, !selecting {
+                if item.isEbookOnly {
+                    Button("Czytaj") { openWindow(id: ReaderWindow.windowID, value: ReaderTarget(itemID: item.id, fileIno: nil, title: item.title)) }
+                } else if !item.isPodcast || item.recentEpisode != nil {
+                    Button(isCurrent(item) && listening.player.isPlaying ? "Pauza" : "Odtwarzaj") { play(item) }
+                }
+            }
+        }
         .accessibilityAddTraits(selecting && item.map { browser.isSelected($0.id) } == true ? .isSelected : [])
         .accessibilityIdentifier(item.map { "card.\($0.id)" } ?? "card.placeholder")
     }
@@ -165,7 +176,7 @@ struct ProgressOverlay: View {
                     .accessibilityLabel("Ukończone")
             } else if let value = progress.progress, value > 0 {
                 GeometryReader { proxy in
-                    Rectangle().fill(.orange).frame(width: proxy.size.width * min(1, value), height: 4)
+                    Rectangle().fill(.tint).frame(width: proxy.size.width * min(1, value), height: 4)
                 }
                 .frame(height: 4)
                 .accessibilityLabel("Postęp \(value.formatted(.percent.precision(.fractionLength(0))))")

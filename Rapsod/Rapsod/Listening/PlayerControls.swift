@@ -20,9 +20,9 @@ struct TransportControls: View {
                     .help("Poprzedni rozdział")
             }
             Button { player.skip(by: -AudiobookPlayer.skipBack) } label: { Image(systemName: "gobackward.15") }
-                .accessibilityLabel("Cofnij 15 sekund")
+                .accessibilityLabel(PlaybackLabels.backSpoken)
                 .accessibilityIdentifier("player.back")
-                .help("Cofnij 15 s")
+                .help(PlaybackLabels.back)
             Button { player.togglePlayPause() } label: {
                 ZStack {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -35,9 +35,9 @@ struct TransportControls: View {
             .accessibilityLabel(player.isPlaying ? "Pauza" : "Odtwarzaj")
             .accessibilityIdentifier("player.playPause")
             Button { player.skip(by: AudiobookPlayer.skipForward) } label: { Image(systemName: "goforward.30") }
-                .accessibilityLabel("Naprzód 30 sekund")
+                .accessibilityLabel(PlaybackLabels.forwardSpoken)
                 .accessibilityIdentifier("player.forward")
-                .help("Naprzód 30 s")
+                .help(PlaybackLabels.forward)
             if large {
                 Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
                     .accessibilityLabel("Następny rozdział")

@@ -183,7 +183,7 @@ private struct PanelTransport: View {
             Button { player.previousChapter() } label: { Image(systemName: "backward.end.fill") }
                 .help("Poprzedni rozdział").accessibilityLabel("Poprzedni rozdział")
             Button { player.skip(by: -AudiobookPlayer.skipBack) } label: { Image(systemName: "gobackward.15") }
-                .help("Przewiń do tyłu 15 s").accessibilityLabel("Przewiń do tyłu 15 sekund")
+                .help(PlaybackLabels.back).accessibilityLabel(PlaybackLabels.backSpoken)
             Button { player.togglePlayPause() } label: {
                 ZStack {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
@@ -195,7 +195,7 @@ private struct PanelTransport: View {
             }
             .accessibilityLabel(player.isPlaying ? "Pauza" : "Odtwarzaj")
             Button { player.skip(by: AudiobookPlayer.skipForward) } label: { Image(systemName: "goforward.30") }
-                .help("Przewiń do przodu 30 s").accessibilityLabel("Przewiń do przodu 30 sekund")
+                .help(PlaybackLabels.forward).accessibilityLabel(PlaybackLabels.forwardSpoken)
             Button { player.nextChapter() } label: { Image(systemName: "forward.end.fill") }
                 .help("Następny rozdział").accessibilityLabel("Następny rozdział")
         }
@@ -515,7 +515,7 @@ private struct MoreMenu: View {
                 Divider()
                 Button("O programie Rapsod") {
                     close()
-                    openWindow.bringToFront(id: AboutWindow.windowID)
+                    AboutPanel.show(serverVersion: supervisor.environment?.serverVersion)
                 }
                 UpdateMenuItem(updates: updates)
             } label: {

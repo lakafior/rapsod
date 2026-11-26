@@ -17,6 +17,7 @@ struct AppModels {
     let webMode: WebUIMode
     let updates: UpdateController
     let notifications: SystemNotifications
+    let spotlight: SpotlightIndexer
 }
 
 /// Strony okna „Ustawienia” — jedyna lista. Nowa strona to nowy przypadek z tytułem,
@@ -268,7 +269,9 @@ struct SettingsWindow: View {
             // Nowa strona to nowy stos: bez tego SwiftUI zostawia stan poprzedniej strony.
             .id(navigation.page)
         }
-        .frame(minWidth: 760, minHeight: 520)
+        .frame(minWidth: 640, minHeight: 480)
+        // Bez pełnego ekranu i powiększania, jak Ustawienia systemowe (HIG: Settings, etap 14f).
+        .background(SettingsWindowStyle())
         .environment(navigation)
         .onAppear { models.loginItem.refresh() }
         .task { await SettingsTour.runIfRequested(models: models, navigation: navigation) }
@@ -324,5 +327,22 @@ struct SettingsForm<Content: View>: View {
             content
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Okno ustawień: bez przycisku pełnego ekranu i bez zoomu. Scena `Settings` dałaby to sama, ale
+/// nie otwiera się pewnie z panelu na pasku menu w aplikacji `LSUIElement` (przegląd 14a, p. 1.2).
+private struct SettingsWindowStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.collectionBehavior.remove(.fullScreenPrimary)
+            window.collectionBehavior.insert(.fullScreenNone)
+            window.standardWindowButton(.zoomButton)?.isEnabled = false
+        }
     }
 }

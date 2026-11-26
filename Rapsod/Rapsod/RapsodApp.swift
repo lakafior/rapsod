@@ -1,4 +1,5 @@
 import AudiobookshelfPlayback
+import CoreSpotlight
 import SwiftUI
 
 @main
@@ -17,9 +18,13 @@ struct RapsodApp: App {
         // Panel jak moduły Centrum sterowania: okładka, suwak i postęp zadań (etap 14d, uzasadnienie w README).
         .menuBarExtraStyle(.window)
         .commands {
-            AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
+            AppCommands(supervisor: appDelegate.supervisor, account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
+            LibraryFileCommands(account: appDelegate.account, libraryTasks: appDelegate.libraryTasks, menuBar: appDelegate.menuBar, settings: appDelegate.settingsNavigation)
+            LibraryNavigationCommands()
             PlaybackCommands(player: appDelegate.listening.player)
             LibraryViewCommands()
+            LibraryWindowCommands(account: appDelegate.account, webMode: appDelegate.webMode)
+            HelpCommands()
         }
 
         Window(LibraryWindow.title, id: LibraryWindow.windowID) {
@@ -35,6 +40,8 @@ struct RapsodApp: App {
         .defaultSize(width: 1100, height: 720)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+        // W menu Okno jest własna pozycja „Biblioteka” ze skrótem (⌥⌘L, `LibraryWindowCommands`).
+        .commandsRemoved()
 
         // Czytnik e-booków (etap 9g) — osobne okno na każdy e-book; treść znika po zamknięciu.
         WindowGroup("Czytnik", id: ReaderWindow.windowID, for: ReaderTarget.self) { $target in
@@ -104,15 +111,6 @@ struct RapsodApp: App {
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
-        .commandsRemoved()
-
-        Window("O programie Rapsod", id: AboutWindow.windowID) {
-            AboutWindow(supervisor: appDelegate.supervisor)
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        // Otwierane z menu aplikacji („O programie”).
         .commandsRemoved()
     }
 }
@@ -222,6 +220,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Powiadomienia systemowe (etap 14e) i stałe zdarzenia serwera dla nich.
     let notifications = SystemNotifications(center: AppDelegate.notificationCenter())
     private(set) lazy var activityMonitor = ServerActivityMonitor(account: account)
+    /// Biblioteka w Spotlight (etap 14f).
+    private(set) lazy var spotlight = SpotlightIndexer(supervisor: supervisor, account: account, listening: listening)
     private(set) lazy var models = AppModels(
         supervisor: supervisor,
         account: account,
@@ -235,7 +235,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rootReset: rootReset,
         webMode: webMode,
         updates: updates,
-        notifications: notifications
+        notifications: notifications,
+        spotlight: spotlight
     )
 
     override init() {
@@ -261,11 +262,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         metadataSources.activate()
         listening.activate()
         updates.activate()
+        spotlight.activate()
         #if DEBUG
         // Tryb sprawdzający panel na pasku menu (etap 14d, argument `-ABSMenuBarTour YES`).
         // Tryb sprawdzający powiadomienia i Skróty (etap 14e, argument `-ABSNotificationsTour YES`).
         if NotificationsTour.isRequested {
             Task { await NotificationsTour.run(self) }
+        }
+        // Tryb sprawdzający etap 14f: Spotlight i okno Biblioteka (argument `-ABSSpotlightTour YES`).
+        if SpotlightTour.isRequested {
+            Task { await SpotlightTour.run(self) }
         }
         if MenuBarTour.isRequested {
             Task { await MenuBarTour.run(account: account, listening: listening, libraryTasks: libraryTasks, menuBar: menuBar) }
@@ -283,6 +289,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 supervisor.start()
             }
         }
+    }
+
+    /// Kliknięty wynik Spotlight (etap 14f): strona pozycji w oknie Biblioteka, jak po kliknięciu
+    /// powiadomienia. Wpisy innej kopii (inny folder danych, wspólny indeks) są pomijane.
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == CSSearchableItemActionType,
+              let identifier = userActivity.userInfo?[CSSearchableItemActivityIdentifier] as? String else { return false }
+        return openSpotlightResult(identifier)
+    }
+
+    @discardableResult
+    func openSpotlightResult(_ identifier: String) -> Bool {
+        guard let target = spotlight.target(forIdentifier: identifier) else { return false }
+        menuBar.openLibrary(.openItem(itemID: target.itemID, libraryID: target.libraryID))
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -143,6 +143,30 @@ struct GeneralSettingsPage: View {
                 Text("Skrót do arkusza „Podłącz telefon” konta tego Maca.")
             }
             UpdateSettingsRow(updates: models.updates)
+            SpotlightSettingsRow(spotlight: models.spotlight)
+        }
+    }
+}
+
+/// Przełącznik Spotlight (etap 14f) ze stanem indeksu tej kopii.
+private struct SpotlightSettingsRow: View {
+    @Bindable var spotlight: SpotlightIndexer
+
+    var body: some View {
+        Toggle(isOn: $spotlight.isEnabled) {
+            Text("Pokazuj bibliotekę w Spotlight")
+            Text(status)
+        }
+        .accessibilityIdentifier("settings.spotlight")
+    }
+
+    private var status: String {
+        switch spotlight.status {
+        case .off: "Książki, podcasty i odcinki z serwera nie są w wynikach Spotlight."
+        case .waiting: "Książki, podcasty i odcinki trafią do Spotlight po połączeniu z kontem tego Maca."
+        case .indexing(let done, let total): "Dodawanie do Spotlight: \(done) z \(total)…"
+        case .ready(let count, _): "W Spotlight: \(count) pozycji (książki i podcasty, z odcinkami). Wynik otwiera stronę w oknie Biblioteka."
+        case .failed(let message): "Spotlight: \(message)"
         }
     }
 }

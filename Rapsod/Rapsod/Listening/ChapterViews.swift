@@ -39,6 +39,17 @@ struct ChapterScrubber: View {
             .controlSize(.small)
             .disabled(player.book == nil)
             .accessibilityIdentifier("player.scrubber")
+            // VoiceOver: czas w rozdziale słowami zamiast liczby sekund; strzałki przewijają
+            // o te same odcinki co przyciski (etap 14f).
+            .accessibilityLabel("Pozycja w rozdziale")
+            .accessibilityValue("\(PlaybackFormat.spokenDuration(shown - start)) z \(PlaybackFormat.spokenDuration(end - start))")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: player.skip(by: AudiobookPlayer.skipForward)
+                case .decrement: player.skip(by: -AudiobookPlayer.skipBack)
+                @unknown default: break
+                }
+            }
             SkipMarkersBar(plan: player.skipPlan, range: start...end)
                 .padding(.horizontal, 6)
             HStack {

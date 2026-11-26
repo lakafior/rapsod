@@ -46,7 +46,8 @@ private struct ItemActionsModifier: ViewModifier {
                         Text(busy)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.regularMaterial, in: Capsule())
+                    // Pływająca kontrolka nad treścią: Liquid Glass (HIG: Materials, etap 14f).
+                    .glassEffect(in: Capsule())
                     .padding(.top, 8)
                     .accessibilityIdentifier("item.busy")
                 }

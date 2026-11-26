@@ -14,7 +14,7 @@ struct WelcomeWindow: View {
                 .foregroundStyle(.tint)
             Text("Witaj w Rapsodzie")
                 .font(.title)
-            Text("Wskaż folder z audiobookami — aplikacja utworzy z niego bibliotekę na serwerze audiobookshelf i ją zeskanuje. Kolejne foldery dodasz z menu na pasku menu.")
+            Text("Wskaż folder z audiobookami — aplikacja utworzy z niego bibliotekę na serwerze audiobookshelf i ją zeskanuje. Kolejne foldery dodasz w Ustawieniach › Biblioteki (menu Plik › „Dodaj bibliotekę…”).")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -1,74 +1,42 @@
-import SwiftUI
+import AppKit
 
-/// „O programie”: wersje, licencja aplikacji i lista dołączonych komponentów.
-struct AboutWindow: View {
-    static let windowID = "about"
-
-    let supervisor: ServerSupervisor
-    /// Treść THIRD-PARTY-NOTICES.txt, wczytana raz po otwarciu okna (nie przy każdym `body`).
-    @State private var notices = ""
-
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
-        let build = info?["CFBundleVersion"] as? String ?? "—"
-        return "\(version) (\(build))"
+/// „O programie” jako standardowy panel systemu (HIG: About window, etap 14f): ikona, nazwa,
+/// wersja z numerem kompilacji i prawa autorskie z Info.plist, a w części „Credits” wersja
+/// serwera audiobookshelf, odnośniki i noty dołączonych komponentów (THIRD-PARTY-NOTICES.txt).
+@MainActor
+enum AboutPanel {
+    static func show(serverVersion: String?) {
+        DockIcon.shared.windowWillOpen()
+        NSApp.activate()
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits(serverVersion: serverVersion)])
     }
 
-    /// Adres repozytorium ze źródłami (klucz `ABSSourceURL` w Info.plist); pusty, dopóki
-    /// repozytorium nie jest publiczne.
-    private var sourceURL: URL? {
-        guard let text = Bundle.main.object(forInfoDictionaryKey: "ABSSourceURL") as? String, !text.isEmpty else { return nil }
-        return URL(string: text)
-    }
+    static func credits(serverVersion: String?) -> NSAttributedString {
+        let body = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let attributes: [NSAttributedString.Key: Any] = [.font: body, .foregroundColor: NSColor.labelColor]
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let text = NSMutableAttributedString()
 
-    private static func loadNotices() -> String {
-        guard let url = Bundle.main.url(forResource: "THIRD-PARTY-NOTICES", withExtension: "txt"),
-              let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+        func line(_ string: String, link: URL? = nil) {
+            var lineAttributes = attributes
+            lineAttributes[.paragraphStyle] = paragraph
+            if let link { lineAttributes[.link] = link }
+            text.append(NSAttributedString(string: string + "\n", attributes: lineAttributes))
+        }
+
+        line("Serwer audiobookshelf \(serverVersion ?? "—")")
+        line("audiobookshelf.org", link: URL(string: "https://www.audiobookshelf.org"))
+        if let source = HelpLinks.source { line("Kod źródłowy", link: source) }
+        if let licenses = ServerEnvironment.licensesDirectory() { line("Teksty licencji", link: licenses) }
+
+        if let url = Bundle.main.url(forResource: "THIRD-PARTY-NOTICES", withExtension: "txt"),
+           let notices = try? String(contentsOf: url, encoding: .utf8) {
+            text.append(NSAttributedString(string: "\n" + notices, attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize - 1, weight: .regular),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
+        }
         return text
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Rapsod")
-                .font(.title2.bold())
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
-                GridRow {
-                    Text("Wersja aplikacji").foregroundStyle(.secondary)
-                    Text(appVersion)
-                }
-                GridRow {
-                    Text("Wersja audiobookshelf").foregroundStyle(.secondary)
-                    Text(supervisor.environment?.serverVersion ?? "—")
-                }
-            }
-            .textSelection(.enabled)
-
-            ScrollView {
-                Text(notices)
-                    .font(.callout.monospaced())
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-            }
-            .frame(height: 320)
-            .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 6))
-
-            HStack {
-                if let licenses = ServerEnvironment.licensesDirectory() {
-                    Button("Pokaż teksty licencji") { NSWorkspace.shared.open(licenses) }
-                }
-                if let sourceURL {
-                    Link("Kod źródłowy", destination: sourceURL)
-                }
-                Spacer()
-                Link("audiobookshelf.org", destination: URL(string: "https://www.audiobookshelf.org")!)
-            }
-        }
-        .padding(20)
-        .frame(width: 640)
-        .task {
-            notices = Self.loadNotices()
-        }
     }
 }

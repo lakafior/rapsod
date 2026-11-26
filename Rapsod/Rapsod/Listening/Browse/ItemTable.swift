@@ -339,7 +339,7 @@ private struct ProgressCell: View {
                     .foregroundStyle(.green)
             } else if let value = progress?.progress, value > 0 {
                 HStack(spacing: 6) {
-                    ProgressView(value: min(1, value)).progressViewStyle(.linear).frame(maxWidth: 50).tint(.orange)
+                    ProgressView(value: min(1, value)).progressViewStyle(.linear).frame(maxWidth: 50)
                     Text(value.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit().foregroundStyle(.secondary)
                 }
             } else {

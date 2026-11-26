@@ -2,8 +2,9 @@ import AudiobookshelfPlayback
 import SwiftUI
 
 /// Menu „Odtwarzanie” w menu głównym: te same polecenia co przyciski odtwarzacza.
-/// Skróty tylko z modyfikatorami — ⌘←/⌘→ ma czytnik (strony), a spację (odtwarzaj/pauza)
-/// obsługuje przycisk w oknie biblioteki, bo w menu przejmowałaby ją z pól tekstowych.
+/// Skróty tylko z modyfikatorami — ⌘←/⌘→ ma czytnik (strony), ⌘[ i ⌘] to Wstecz/Dalej (menu Widok),
+/// a spację (odtwarzaj/pauza) obsługuje przycisk w oknie biblioteki, bo w menu przejmowałaby ją
+/// z pól tekstowych. „Przewiń do tyłu”, nie „Cofnij” — to drugie to Undo z menu Edycja.
 struct PlaybackCommands: Commands {
     let player: AudiobookPlayer
 
@@ -33,10 +34,10 @@ private struct PlaybackMenuItems: View {
 
         Divider()
 
-        Button("Cofnij \(Int(AudiobookPlayer.skipBack)) s") { player.skip(by: -AudiobookPlayer.skipBack) }
+        Button(PlaybackLabels.back) { player.skip(by: -AudiobookPlayer.skipBack) }
             .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
             .disabled(!loaded)
-        Button("Naprzód \(Int(AudiobookPlayer.skipForward)) s") { player.skip(by: AudiobookPlayer.skipForward) }
+        Button(PlaybackLabels.forward) { player.skip(by: AudiobookPlayer.skipForward) }
             .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
             .disabled(!loaded)
 
@@ -52,13 +53,24 @@ private struct PlaybackMenuItems: View {
         Divider()
 
         Button("Szybciej") { if let faster { player.rate = faster } }
-            .keyboardShortcut("]", modifiers: .command)
+            .keyboardShortcut("]", modifiers: [.option, .command])
             .disabled(!loaded || faster == nil)
         Button("Wolniej") { if let slower { player.rate = slower } }
-            .keyboardShortcut("[", modifiers: .command)
+            .keyboardShortcut("[", modifiers: [.option, .command])
             .disabled(!loaded || slower == nil)
         Button("Normalna prędkość") { player.rate = 1 }
             .disabled(!loaded || player.rate == 1)
+
+        Menu("Timer snu") {
+            ForEach(SleepTimer.choices, id: \.self) { choice in
+                Button(choice.label) { player.setSleepTimer(choice) }
+            }
+            if player.sleepTimer != nil {
+                Divider()
+                Button("Wyłącz timer") { player.setSleepTimer(nil) }
+            }
+        }
+        .disabled(!loaded)
 
         Divider()
 
@@ -68,4 +80,13 @@ private struct PlaybackMenuItems: View {
         Button("Tekst w osobnym oknie") { openWindow(id: BookTextWindow.windowID) }
             .keyboardShortcut("t", modifiers: [.control, .shift, .command])
     }
+}
+
+/// Nazwy przeskoków z długości w `AudiobookPlayer` — menu, przyciski i VoiceOver mówią to samo.
+@MainActor
+enum PlaybackLabels {
+    static var back: String { "Przewiń do tyłu \(Int(AudiobookPlayer.skipBack)) s" }
+    static var forward: String { "Przewiń do przodu \(Int(AudiobookPlayer.skipForward)) s" }
+    static var backSpoken: String { "Przewiń do tyłu \(Int(AudiobookPlayer.skipBack)) sekund" }
+    static var forwardSpoken: String { "Przewiń do przodu \(Int(AudiobookPlayer.skipForward)) sekund" }
 }

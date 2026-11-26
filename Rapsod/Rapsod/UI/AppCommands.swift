@@ -1,8 +1,10 @@
 import SwiftUI
 
 /// Menu główne, widoczne wtedy, gdy aplikacja ma otwarte okno (i ikonę w Docku).
-/// Menu Edycja, Okno i skrót ⌘W dodaje SwiftUI.
+/// Menu Edycja, Okno i skrót ⌘W dodaje SwiftUI; Plik, Widok, Okno › Biblioteka i Pomoc są
+/// w `LibraryCommands.swift` (etap 14f).
 struct AppCommands: Commands {
+    let supervisor: ServerSupervisor
     let account: ServerAccount
     let webMode: WebUIMode
     let settings: SettingsNavigation
@@ -12,7 +14,7 @@ struct AppCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("O programie Rapsod") {
-                openWindow.bringToFront(id: AboutWindow.windowID)
+                AboutPanel.show(serverVersion: supervisor.environment?.serverVersion)
             }
             UpdateMenuItem(updates: updates)
         }
@@ -47,19 +49,5 @@ struct AppCommands: Commands {
             .keyboardShortcut("w", modifiers: [.option, .command])
         }
 
-        CommandGroup(replacing: .newItem) {
-            Button("Otwórz bibliotekę") {
-                openWindow.bringToFront(id: LibraryWindow.windowID)
-            }
-            .keyboardShortcut("o")
-            // Web UI tylko jako wyjście awaryjne pod Option (etap 9i).
-            .modifierKeyAlternate(.option) {
-                Button("\(WebUIWindow.title)…") {
-                    webMode.isManagement = false
-                    openWindow.bringToFront(id: WebUIWindow.windowID)
-                }
-                .disabled(account.state != .ready)
-            }
-        }
     }
 }

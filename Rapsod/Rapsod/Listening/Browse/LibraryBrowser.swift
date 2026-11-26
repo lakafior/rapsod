@@ -8,7 +8,7 @@ import Observation
 @MainActor
 @Observable
 final class LibraryBrowser {
-    enum Section: Hashable {
+    enum Section: String, Hashable, CaseIterable {
         case home, items, series, authors, narrators, collections, playlists, latestEpisodes, downloads, stats
         /// Etap 9i: statystyki biblioteki i tagi/gatunki całego serwera.
         case libraryStats, metadata
@@ -74,13 +74,26 @@ final class LibraryBrowser {
             }
         }
     }
-    var section: Section = .home {
+    /// Sekcja paska bocznego; zapamiętana jak biblioteka (etap 14f, HIG: przywracanie stanu okna).
+    var section: Section = LibraryBrowser.storedSection() {
         didSet {
             if section != oldValue {
                 path = []
                 isSelecting = false
+                UserDefaults.standard.set(section.rawValue, forKey: Self.sectionKey)
             }
         }
+    }
+    /// Panel odtwarzacza po prawej (inspektor); zapamiętany, przełączany też z menu Widok (⌥⌘I).
+    var showsPlayer = UserDefaults.standard.object(forKey: LibraryBrowser.showsPlayerKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showsPlayer, forKey: Self.showsPlayerKey) }
+    }
+    static let sectionKey = "libraryWindow.section"
+    static let showsPlayerKey = "libraryWindow.showsPlayer"
+
+    private static func storedSection() -> Section {
+        let stored = UserDefaults.standard.string(forKey: sectionKey)
+        return stored.flatMap(Section.init(rawValue:)) ?? .home
     }
 
     // MARK: Zaznaczanie wielu pozycji (etap 9h)
@@ -132,7 +145,40 @@ final class LibraryBrowser {
     /// Każda zmiana strony albo filtra kończy zaznaczanie — inaczej działanie (np. „Usuń…”)
     /// dotyczyłoby pozycji z poprzedniej, niewidocznej już listy.
     var path: [Route] = [] {
-        didSet { if path != oldValue { isSelecting = false } }
+        didSet {
+            guard path != oldValue else { return }
+            isSelecting = false
+            // Wstecz/Dalej jak w Finderze: krok wstecz odkłada stronę do historii „Dalej”,
+            // każde inne przejście ją czyści.
+            if !navigatingHistory {
+                if path.count < oldValue.count, Array(oldValue.prefix(path.count)) == path {
+                    forwardStack = Array(oldValue.suffix(from: path.count)) + forwardStack
+                } else {
+                    forwardStack = []
+                }
+            }
+        }
+    }
+    /// Strony do ponownego otwarcia przez „Dalej” (⌘]); najbliższa pierwsza.
+    private(set) var forwardStack: [Route] = []
+    @ObservationIgnored private var navigatingHistory = false
+
+    var canGoBack: Bool { !path.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
+
+    /// Wstecz (⌘[): zdejmuje ostatnią stronę ze ścieżki.
+    func goBack() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
+
+    /// Dalej (⌘]): wraca na stronę zdjętą przez „Wstecz”.
+    func goForward() {
+        guard let next = forwardStack.first else { return }
+        navigatingHistory = true
+        forwardStack.removeFirst()
+        path.append(next)
+        navigatingHistory = false
     }
     /// Wyniki wyszukiwania pokazuje korzeń okna, więc zapytanie wpisane na otwartej stronie wraca do niego.
     var searchText = "" {

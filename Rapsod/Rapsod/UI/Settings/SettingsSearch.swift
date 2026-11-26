@@ -32,6 +32,8 @@ struct SettingsSearchEntry: Identifiable {
               terms: ["pasek menu", "menu", "skrót"], target: .page(.general)),
         .init(title: "Sprawdzaj aktualizacje automatycznie", path: "Ogólne › Aplikacja",
               terms: ["aktualizacje", "aktualizacja", "nowa wersja", "github", "sprawdź teraz"], target: .page(.general)),
+        .init(title: "Pokazuj bibliotekę w Spotlight", path: "Ogólne › Aplikacja",
+              terms: ["spotlight", "wyszukiwanie", "szukaj w systemie", "indeks"], target: .page(.general)),
         .init(title: "Web UI audiobookshelf", path: "Ogólne › Web UI",
               terms: ["web ui", "przeglądarka", "zarządzanie serwerem", "root", "strona www"], target: .page(.general)),
         .init(title: "Fragmenty sponsorowane w podcastach", path: "Ogólne › Fragmenty sponsorowane",

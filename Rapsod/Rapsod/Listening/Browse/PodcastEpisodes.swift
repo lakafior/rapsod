@@ -55,6 +55,10 @@ struct EpisodeRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { Task { await listening.play(itemID: itemID, episodeID: episode.id) } }
+        // Dwuklik ma tylko mysz; VoiceOver i klawiatura dostają te same czynności jako akcje wiersza.
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Odtwarzaj") { Task { await listening.play(itemID: itemID, episodeID: episode.id) } }
+        .accessibilityAction(named: "Opis odcinka", showDetails)
         .contextMenu {
             Button("Odtwarzaj") { Task { await listening.play(itemID: itemID, episodeID: episode.id) } }
             Button("Opis odcinka…", action: showDetails)

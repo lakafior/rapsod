@@ -22,12 +22,14 @@ extension AppDelegate {
             .appUpdate: [UpdateWindow.windowID],
         ]
         notifications.onRoute = { [weak self] route, action in self?.follow(route, action: action) }
-        notifications.onNeedsServerEventsChanged = { [weak self] needed in self?.activityMonitor.setWanted(needed) }
+        // Stałe gniazdo zdarzeń: dla powiadomień albo dla Spotlight (etap 14f).
+        notifications.onNeedsServerEventsChanged = { [weak self] _ in self?.updateServerEventsWanted() }
+        spotlight.onEnabledChanged = { [weak self] _ in self?.updateServerEventsWanted() }
         notifications.activate()
 
         activityMonitor.onEvent = { [weak self] event in self?.serverEvent(event) }
         activityMonitor.activate()
-        activityMonitor.setWanted(notifications.needsServerEvents)
+        updateServerEventsWanted()
 
         libraryTasks.onFinished = { [weak self] libraryID, activity in
             guard let self, let library = account.libraries.first(where: { $0.id == libraryID }) else { return }
@@ -46,7 +48,12 @@ extension AppDelegate {
     // MARK: Zdarzenia serwera
 
     /// Zdarzenie ze stałego gniazda — do tych samych modeli, które czyta panel na pasku menu.
+    func updateServerEventsWanted() {
+        activityMonitor.setWanted(notifications.needsServerEvents || spotlight.isEnabled)
+    }
+
     private func serverEvent(_ event: ListeningEvents.Event) {
+        spotlight.handle(event)
         switch event {
         case .task(let task, let finished):
             libraryTasks.observe(task, finished: finished)

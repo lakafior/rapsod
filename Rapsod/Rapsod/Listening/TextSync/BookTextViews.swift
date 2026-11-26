@@ -122,8 +122,9 @@ private struct BookTextScroll: View {
                 }
                 .buttonStyle(.glass)
                 .controlSize(.large)
-                .keyboardShortcut(.return, modifiers: [.command])
-                .help("Wróć do bieżącego miejsca (⌘↩)")
+                // ⌘J jak „Idź do zaznaczenia” (Xcode, Podgląd); ⌘↩ to w systemie „Wyślij/Zatwierdź”.
+                .keyboardShortcut("j", modifiers: [.command])
+                .help("Wróć do bieżącego miejsca (⌘J)")
                 .padding(.bottom, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
