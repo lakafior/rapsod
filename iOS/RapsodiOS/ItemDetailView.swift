@@ -13,6 +13,8 @@ struct ItemDetailView: View {
     let itemID: String
     let model: AppModel
     let session: ServerSession
+    /// Podcast: odcinek, którego arkusz otworzyć od razu.
+    var episodeFocus: EpisodeFocus? = nil
 
     @State private var item: AudiobookshelfClient.ItemDetail?
     @State private var loadError: String?
@@ -28,7 +30,7 @@ struct ItemDetailView: View {
 
     var body: some View {
         if let item, item.isPodcast {
-            PodcastPage(item: item, model: model, session: session)
+            PodcastPage(item: item, model: model, session: session, focus: episodeFocus)
         } else {
             bookPage
         }

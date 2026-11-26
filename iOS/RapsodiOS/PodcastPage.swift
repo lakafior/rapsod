@@ -204,10 +204,14 @@ struct PodcastPage: View {
     /// Odcinek ze strumienia nie ruszył (ATS, brak zakresów bajtów, plik zniknął…).
     @State private var streamFailure: (row: PodcastEpisodeRow, message: String)?
     @State private var showsPodcastSettings = false
+    /// Odcinek do pokazania po wejściu — arkusz otwiera się raz, gdy odcinek jest już na liście
+    /// (odcinki z kanału dochodzą po chwili).
+    @State private var focus: EpisodeFocus?
 
-    init(item: Client.ItemDetail, model: AppModel, session: ServerSession) {
+    init(item: Client.ItemDetail, model: AppModel, session: ServerSession, focus: EpisodeFocus? = nil) {
         self.model = model
         self.session = session
+        _focus = State(initialValue: focus)
         _page = State(initialValue: PodcastPageModel(item: item))
     }
 
@@ -252,6 +256,11 @@ struct PodcastPage: View {
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .onChange(of: page.rows.count, initial: true) {
+            guard let focus, let row = page.rows.first(where: focus.matches) else { return }
+            self.focus = nil
+            detail = row
+        }
         .sheet(isPresented: $showsPodcastSettings) {
             PodcastSettingsSheet(item: item, session: session, playback: model.playback)
         }

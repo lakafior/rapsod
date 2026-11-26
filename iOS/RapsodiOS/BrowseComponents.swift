@@ -10,6 +10,8 @@ typealias Client = AudiobookshelfClient
 /// Cel nawigacji w każdej zakładce. Serie i autorzy to encje połączone z kilku bibliotek.
 enum Route: Hashable {
     case item(String)
+    /// Strona podcastu z od razu otwartym arkuszem odcinka (np. z „Słuchaj dalej”).
+    case episode(itemID: String, focus: EpisodeFocus)
     case series(MergedEntity<Client.Series>)
     case author(MergedEntity<Client.Author>)
     /// Seria albo autor ze strony pozycji (znani z jednej biblioteki) — pozostałe biblioteki
@@ -29,6 +31,21 @@ enum Route: Hashable {
     case downloads
 }
 
+/// Który odcinek pokazać po otwarciu strony podcastu.
+enum EpisodeFocus: Hashable {
+    /// Odcinek na serwerze (id odcinka).
+    case server(String)
+    /// Odcinek z kanału, słuchany ze strumienia (klucz z kanału).
+    case feed(String)
+
+    func matches(_ row: PodcastEpisodeRow) -> Bool {
+        switch self {
+        case .server(let id): row.server?.id == id
+        case .feed(let key): row.feedKey == key
+        }
+    }
+}
+
 extension View {
     /// Strony pozycji, serii, autora i lektora — te same w każdej zakładce.
     func browseDestinations(model: AppModel, session: ServerSession) -> some View {
@@ -36,6 +53,8 @@ extension View {
             switch route {
             case .item(let id):
                 ItemDetailView(itemID: id, model: model, session: session)
+            case .episode(let id, let focus):
+                ItemDetailView(itemID: id, model: model, session: session, episodeFocus: focus)
             case .series(let series):
                 SeriesPage(series: series, seed: nil, model: model, session: session)
             case .seriesSeed(let libraryID, let id, let name):

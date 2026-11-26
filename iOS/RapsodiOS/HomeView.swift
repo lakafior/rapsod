@@ -223,7 +223,7 @@ struct ContinueCard: View {
         let info = Info(entry)
         let large = typeSize.isAccessibilitySize
         VStack(alignment: .leading, spacing: 12) {
-            NavigationLink(value: Route.item(info.itemID)) {
+            NavigationLink(value: info.route) {
                 // Największy tekst: okładka nad tekstem, bez ucinania tytułu.
                 let layout = large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
                 layout {
@@ -286,6 +286,8 @@ struct ContinueCard: View {
         let kicker: String
         let isEpisode: Bool
         let download: DownloadTarget?
+        /// Książka — jej strona; odcinek — strona podcastu z otwartym arkuszem odcinka.
+        let route: Route
 
         init(_ entry: ContinueListening.Entry) {
             switch entry.kind {
@@ -296,6 +298,7 @@ struct ContinueCard: View {
                 kicker = "Audiobook"
                 isEpisode = false
                 download = .book(itemID: item.id)
+                route = .item(item.id)
             case .serverEpisode(let item, let episode, _):
                 itemID = item.id
                 title = episode.title ?? "Odcinek"
@@ -303,6 +306,7 @@ struct ContinueCard: View {
                 kicker = episode.published.map { "Odcinek · " + $0.formatted(.dateTime.day().month(.abbreviated)) } ?? "Odcinek"
                 isEpisode = true
                 download = .episode(episode, itemID: item.id, podcastTitle: item.title, libraryID: item.libraryId)
+                route = .episode(itemID: item.id, focus: .server(episode.id))
             case .localEpisode(let record):
                 itemID = record.itemID
                 title = record.title
@@ -310,6 +314,7 @@ struct ContinueCard: View {
                 kicker = "Ze strumienia · postęp na telefonie"
                 isEpisode = true
                 download = nil
+                route = .episode(itemID: record.itemID, focus: .feed(record.feedKey))
             }
         }
     }
