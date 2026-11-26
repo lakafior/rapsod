@@ -2,6 +2,8 @@
 
 Stan na 2026-11-26, gałąź `claude/cranky-curran-bc69f9`. Dokument jest raportem do decyzji. Kod aplikacji nie był zmieniany.
 
+**Etap 14f (2026-11-26)** wykonał część ustaleń; przy punktach jest dopisek „ZROBIONE (14f)”, „CZĘŚCIOWO” albo „NIE (14f)” z powodem, a podsumowanie jest w rozdziale 10.
+
 **Metoda i jej granice.** Przegląd statyczny kodu w `Rapsod/Rapsod/` (sceny, menu, Biblioteka, Ustawienia, czytnik, okno tekstu, powitanie, „O programie”, skróty, dostępność, materiały i kolory) oraz porównanie z HIG dla Maca. Aplikacji **nie uruchamiałem** i nie oglądałem okien: ustalenia o zachowaniu w czasie działania są oznaczone „do sprawdzenia w działającej aplikacji”. Odniesienia do HIG podaję z nazwy sekcji (Menu bar, Keyboard, Toolbars, Sidebars, Windows, Settings, Alerts, Sheets, Accessibility, Materials).
 
 Skala: **szacunek** mała (do ok. godziny pracy, jedna sesja z innymi drobiazgami), średnia (jedna sesja), duża (kilka sesji albo decyzja produktowa). **Priorytet** W (wysoki), Ś (średni), N (niski).
@@ -25,17 +27,17 @@ Było: `⌘Q` w menu aplikacji zamykał tylko okna, a w menu na pasku kończył 
 Teraz: `⌘Q`, „Zakończ Rapsod” w menu aplikacji, „Zakończ” w menu na pasku i „Zakończ” w Docku robią to samo: zatrzymują serwer i kończą aplikację. Przy działającym serwerze pada jedno pytanie („Zatrzymać serwer i zakończyć Rapsod?”) z polem „Nie pytaj ponownie”; pytanie można włączyć z powrotem w Ustawienia › Ogólne › Aplikacja. Wylogowanie, restart i wyłączenie Maca kończą bez pytania. „Zamknij wszystkie okna” przeszło na `⌥⌘W` (menu Okno); czerwony przycisk i `⌘W` dalej chowają okno, a serwer i ikona na pasku menu zostają. Implementacja: `AppQuit` w `App/DockIcon.swift`.
 Priorytet: zrobione.
 
-**1.2. Okno ustawień to własne `Window`, nie scena `Settings`.** — `RapsodApp.swift:57-64`, `UI/AppCommands.swift:18-30`.
+**1.2. Okno ustawień to własne `Window`, nie scena `Settings`. — ZROBIONE (14f), wariant „zostaje `Window`”:** okno bez zoomu i pełnego ekranu (`SettingsWindowStyle`), minimum 640×480. Scena `Settings` nie była próbowana — panel na pasku menu i powiadomienia otwierają ustawienia na konkretnej stronie, czego `SettingsLink` nie umie. — `RapsodApp.swift:57-64`, `UI/AppCommands.swift:18-30`.
 Scena `Settings` daje: standardową pozycję „Ustawienia…” z `⌘,` zarządzaną przez system, okno bez przycisku pełnego ekranu i zoom, tytuł spójny z menu, zapamiętane położenie. Własne `Window` robi to ręcznie (`openSettings`, `bringToFront`, `DockIcon`). HIG (Settings): ustawienia w osobnym oknie z `⌘,`, bez pełnego ekranu, zmiany stosowane od razu. Powód odstępstwa jest zapewne praktyczny: scena `Settings` nie otwiera się niezawodnie z `MenuBarExtra` w aplikacji `LSUIElement`.
 Propozycja: sprawdzić w działającej aplikacji, czy `Settings { SettingsWindow }` z `SettingsLink` i `@Environment(\.openSettings)` da się otworzyć z menu paska i z `MenuBarLabel`. Jeśli tak, przenieść; jeśli nie, zostawić `Window`, ale wyłączyć zoom i pełny ekran (`NSWindow.collectionBehavior`), żeby zachowywało się jak okno ustawień. Dla wszystkich pozostałych okien nie ma sensu zmieniać.
 Szacunek: mała (zablokowanie zoomu) do średniej (przeniesienie sceny). Priorytet: Ś.
 
-**1.3. Minimalne rozmiary okien uniemożliwiają kafelkowanie na 13″.** — `Listening/LibraryWindow.swift:53` (980×560), `UI/Settings/SettingsWindow.swift:269` (760×520).
+**1.3. Minimalne rozmiary okien uniemożliwiają kafelkowanie na 13″. — ZROBIONE (14f):** Biblioteka 640×480, poniżej 900 pt panel odtwarzacza chowa się sam (pasek odtwarzania na dole) i wraca po poszerzeniu; Ustawienia 640×480. Sprawdzone przy 735 pt (`docs/hig-14f/okno-735.png`). — `Listening/LibraryWindow.swift:53` (980×560), `UI/Settings/SettingsWindow.swift:269` (760×520).
 Pół ekranu MacBooka Air 13″ to ok. 735 pt. Biblioteki nie da się ułożyć w połowie ekranu (macOS Sequoia/Tahoe: kafelkowanie), a Ustawienia ledwo. Panel odtwarzacza (340 pt) i pasek boczny (210 pt) zostawiają treści ok. 430 pt przy minimum. HIG (Windows › Resizing): okno nie powinno wymuszać większego rozmiaru, niż potrzebuje treści; adaptacja zamiast stałego minimum.
 Propozycja: minimum Biblioteki ok. 640×480 i automatyczne chowanie panelu odtwarzacza (zastąpionego paskiem `MiniPlayerBar`) poniżej ok. 900 pt; minimum Ustawień ok. 640. Do sprawdzenia w działającej aplikacji przy 735 pt.
 Szacunek: mała. Priorytet: Ś.
 
-**1.4. Przywracanie okien wyłączone wszędzie.** — `RapsodApp.swift:28, 37, 46, 53, 62, 71, 78, 87`.
+**1.4. Przywracanie okien wyłączone wszędzie. — CZĘŚCIOWO (14f):** sekcja paska bocznego i panel odtwarzacza są zapamiętane (`libraryWindow.section`, `libraryWindow.showsPlayer`, obok zapamiętanej biblioteki); ścieżki nawigacji i rozmiaru okna nie przywracam. — `RapsodApp.swift:28, 37, 46, 53, 62, 71, 78, 87`.
 Każde okno ma `.restorationBehavior(.disabled)` i `.defaultLaunchBehavior(.suppressed)`. Ma to sens dla aplikacji z paskiem menu (nic nie wyskakuje po starcie), ale oznacza, że po ponownym uruchomieniu aplikacja zapomina otwartą sekcję Biblioteki, ścieżkę nawigacji i rozmiar okna (poza ostatnią stroną Ustawień, `SettingsNavigation.lastPageKey`). HIG (Windows › Restoring state): odtwarzać, co użytkownik zostawił.
 Propozycja: `@SceneStorage` na bieżącą sekcję, bibliotekę i stan inspektora w Bibliotece; sprawdzić, czy rozmiar i położenie `Window` zapisują się mimo `.disabled`. Okien nie przywracać automatycznie przy starcie (zgodne z paskiem menu).
 Szacunek: mała. Priorytet: N.
@@ -44,12 +46,12 @@ Szacunek: mała. Priorytet: N.
 Decyzja użytkownika (2026-11-26): zostaje. Czerwony przycisk chowa okno do paska menu, a ikona w Docku znika po zamknięciu ostatniego okna (standard aplikacji paskowej); `⌘Q` kończy wszystko (1.1). Koszt: aplikacja znika z `⌘Tab`, choć gra. Opcjonalna „Pokazuj w Docku: tylko przy oknach / zawsze” zostaje w propozycjach na później.
 Priorytet: N.
 
-**1.6. „O programie” jest własnym oknem, nie standardowym panelem.** — `UI/AboutWindow.swift:5-70`, `RapsodApp.swift:76-82`.
+**1.6. „O programie” jest własnym oknem, nie standardowym panelem. — ZROBIONE (14f):** `orderFrontStandardAboutPanel` z ikoną, wersją i prawami autorskimi z Info.plist, w „Credits” wersja serwera, odnośniki i noty (`AboutPanel`, `docs/hig-14f/o-programie.png`). — `UI/AboutWindow.swift:5-70`, `RapsodApp.swift:76-82`.
 Brakuje ikony aplikacji, nazwy wersji w standardowym układzie i nota praw autorskich; okno ma 640 pt i pole przewijania na całą treść licencji. HIG (About window): standardowy panel z ikoną, nazwą, wersją, prawami autorskimi i opcjonalnymi „Credits”.
 Propozycja: `NSApp.orderFrontStandardAboutPanel(options: [.credits: <noty>, .applicationVersion: …])`; wersję serwera dołożyć do credits; „Pokaż teksty licencji” jako link w credits. Okno własne usunąć.
 Szacunek: mała. Priorytet: N.
 
-**1.7. Okno powitalne.** — `UI/WelcomeWindow.swift`, `RapsodApp.swift:66-74`.
+**1.7. Okno powitalne. — ZROBIONE (14f):** tekst odsyła do Ustawień › Biblioteki i Pliku › „Dodaj bibliotekę…”. — `UI/WelcomeWindow.swift`, `RapsodApp.swift:66-74`.
 Zgodne z HIG (pierwsze uruchomienie, rozmiar od treści). Tekst odsyła do „menu na pasku menu” (`:20`), co przy `⌘,`/Pliku będzie nieaktualne po zmianach z punktu 2. Do poprawki przy okazji.
 Szacunek: mała. Priorytet: N.
 
@@ -57,17 +59,17 @@ Szacunek: mała. Priorytet: N.
 
 Stan: SwiftUI dodaje domyślne Edycja, Okno i Pomoc; aplikacja zastępuje pozycje „O programie”, „Ustawienia”, „Zakończ” i „Nowy” (`AppCommands.swift`) i dodaje „Odtwarzanie” (`PlaybackCommands.swift`). Poniżej braki i niezgodności.
 
-**2.1. Menu „Plik” zawiera tylko „Otwórz bibliotekę” (`⌘O`) i zamykanie okna.** — `UI/AppCommands.swift:42-53`.
+**2.1. Menu „Plik” zawiera tylko „Otwórz bibliotekę” (`⌘O`) i zamykanie okna. — ZROBIONE (14f):** Plik: „Wgraj książkę…” `⌘N`, „Dodaj podcast…” `⇧⌘N`, „Dodaj bibliotekę…” (Ustawienia › Biblioteki), „Skanuj „<biblioteka>””, „Pokaż w Finderze” `⌥⌘R` (foldery bieżącej biblioteki). `⌘O` usunięte. Okno › „Biblioteka” ze skrótem **`⌥⌘L`**, nie `⌘1`: `⌘1`/`⌘2` zostały przy kafelkach/liście z 14c (konwencja Findera), a `⌘0` to w oknie tekstu „rzeczywisty rozmiar”. Systemowa pozycja sceny usunięta (`commandsRemoved`), żeby „Biblioteka” nie była w menu dwa razy; web UI pod Option. — `UI/AppCommands.swift:42-53`.
 `⌘O` w HIG to „Otwórz…” plik, a nie okno. Rzeczy, które użytkownik robi najczęściej w Bibliotece (wgrać książkę, dodać podcast, dodać bibliotekę, utworzyć playlistę, skanować, pokazać w Finderze), są tylko w pasku narzędzi i arkuszach.
 Propozycja: Plik: „Wgraj książkę…” (w bibliotece podcastów „Dodaj podcast…”, oba na `⌘N`, jako „nowa pozycja” bieżącej sekcji), „Dodaj bibliotekę…”, „Skanuj bibliotekę”, „Pokaż w Finderze”, „Zamknij okno” (`⌘W`, już dodaje SwiftUI). Pozycje sterowane przez `focusedSceneValue` z `LibraryBrowser`, wyszarzone, gdy okno Biblioteki nie jest aktywne. „Otwórz bibliotekę” przenieść do menu „Okno” z `⌘1` (tak jak Muzyka).
 Szacunek: średnia. Priorytet: **W**.
 
-**2.2. Brak menu „Widok”.** — nie ma `CommandGroup(.sidebar)`, `SidebarCommands()`, `ToolbarCommands()`, `InspectorCommands()`.
+**2.2. Brak menu „Widok”. — CZĘŚCIOWO (14f):** `SidebarCommands` (`⌃⌘S`), „Pokaż/Schowaj odtwarzacz” `⌥⌘I` (własna pozycja zamiast `InspectorCommands`, którego nazwa byłaby „inspektor”), Wstecz/Dalej. Bez `ToolbarCommands`: „Dostosuj pasek narzędzi…” nie ma sensu bez `.toolbar(id:)` (4.1). Bez „Sortuj według” i „Rozmiaru okładek” w menu. — nie ma `CommandGroup(.sidebar)`, `SidebarCommands()`, `ToolbarCommands()`, `InspectorCommands()`.
 Konsekwencje: nie ma „Pokaż/Ukryj pasek boczny” (`⌃⌘S`), „Dostosuj pasek narzędzi…”, a przełącznik panelu odtwarzacza jest tylko przyciskiem w pasku (`LibraryWindow.swift:111`) bez skrótu i bez pozycji w menu. Brakuje też wyboru sortowania/rozmiaru okładek jako pozycji menu (dziś tylko `SortMenu` w pasku).
 Propozycja: `SidebarCommands()`, `ToolbarCommands()`, `InspectorCommands()` (po przejściu na `.inspector` z `isPresented`, `⌥⌘I`), pozycje „Sortuj według” i „Rozmiar okładek” (po 14c); pełny ekran dodaje system, o ile okno ma zoom.
 Szacunek: mała. Priorytet: **W**.
 
-**2.3. Menu „Edycja” i „Znajdź”.** — `.searchable` daje `⌘F` fokusu w polu, ale brak pozycji „Znajdź” w menu Edycja i `⌘G`; w czytniku i oknie tekstu nie ma wyszukiwania w treści (`ReaderWindow.swift:336-351`, `BookTextViews.swift`).
+**2.3. Menu „Edycja” i „Znajdź”. — NIE (14f):** wyszukiwanie w treści czytnika to osobna praca (średnia). — `.searchable` daje `⌘F` fokusu w polu, ale brak pozycji „Znajdź” w menu Edycja i `⌘G`; w czytniku i oknie tekstu nie ma wyszukiwania w treści (`ReaderWindow.swift:336-351`, `BookTextViews.swift`).
 Propozycja: `TextEditingCommands()`/`CommandGroup(after: .textEditing)` z „Znajdź w bibliotece” (`⌘F`) i „Znajdź w książce” (`⌘F` w czytniku, `WKWebView`/EPUB: `performTextFinderAction`).
 Szacunek: średnia. Priorytet: Ś.
 
@@ -76,12 +78,12 @@ Pola tekstowe mają systemowe Cofnij. Operacje na danych biblioteki (oznacz jako
 Propozycja: `UndoManager` z odwrotnymi wywołaniami API dla czterech najczęstszych operacji (ukończone/nieukończone, playlisty, postęp), a dla reszty zostawić potwierdzenia. Duży koszt względem korzyści.
 Szacunek: duża (cały zestaw), mała dla „ukończone/nieukończone”. Priorytet: N.
 
-**2.5. Menu „Pomoc” jest puste.** — brak `CommandGroup(replacing: .help)`.
+**2.5. Menu „Pomoc” jest puste. — ZROBIONE (14f):** „Pomoc Rapsodu” (README) i „Zgłoś problem…” z `ABSSourceURL` (gdy ustawiony), „Strona Rapsodu”, „Dokumentacja audiobookshelf”. Bez arkusza skrótów. — brak `CommandGroup(replacing: .help)`.
 SwiftUI pokaże szukajkę menu i nieaktywną pozycję „Rapsod Pomoc”. HIG (Help menu): odnośniki do dokumentacji i zgłaszania problemów.
 Propozycja: „README Rapsoda”, „Zgłoś problem…” (adres repozytorium z `ABSSourceURL`, gdy ustawiony), „Dokumentacja audiobookshelf”, „Skróty klawiszowe” (arkusz z listą).
 Szacunek: mała. Priorytet: Ś.
 
-**2.6. Menu „Odtwarzanie”: kolizje i niejednoznaczne nazwy.** — `Listening/PlaybackCommands.swift:34-70`, `UI/ServerMenu.swift` (`MenuPlayerControls`), `Listening/PlayerControls.swift:42-52`.
+**2.6. Menu „Odtwarzanie”: kolizje i niejednoznaczne nazwy. — ZROBIONE (14f):** `⌘[`/`⌘]` to Wstecz/Dalej w Bibliotece (menu Widok i przyciski w pasku), prędkość na `⌥⌘[`/`⌥⌘]`; „Przewiń do tyłu 15 s”/„Przewiń do przodu 30 s” z jednego źródła (`PlaybackLabels`) w menu, odtwarzaczu i panelu; „Timer snu” w menu. Bez „Idź do rozdziału…”. — `Listening/PlaybackCommands.swift:34-70`, `UI/ServerMenu.swift` (`MenuPlayerControls`), `Listening/PlayerControls.swift:42-52`.
 - `⌘[` i `⌘]` (Wolniej/Szybciej) to w całym systemie **Wstecz i Dalej** (Safari, Finder, Muzyka, Książki). Biblioteka ma nawigację `NavigationStack` bez skrótu Wstecz (`LibraryWindow.swift:60-66`), więc użytkownik nie ma tego skrótu wcale. HIG (Keyboard): nie zajmować standardowych skrótów innymi akcjami. Propozycja: `⌘[`/`⌘]` dla Wstecz/Dalej w Bibliotece (pozycje w menu „Idź” albo Widok), prędkość na `⌥⌘[`/`⌥⌘]` albo `⌃⌘↑/↓`.
 - „Cofnij 15 s” w menu Odtwarzanie i na pasku menu (`PlaybackCommands.swift:36`, `MiniPlayerBar.swift:56`) brzmi jak „Cofnij” z menu Edycja (Undo); VoiceOver i wyszukiwarka menu mylą oba. Propozycja: „Przewiń do tyłu 15 s” / „Przewiń do przodu 30 s”.
 - Etykiety `"Cofnij 15 sekund"` i `"Naprzód 30 sekund"` są wpisane na stałe (`PlayerControls.swift:42, 47`), a menu bierze wartości z `AudiobookPlayer.skipBack/skipForward`; zmiana stałych rozjedzie opisy. Użyć stałych.
@@ -89,7 +91,7 @@ Szacunek: mała. Priorytet: Ś.
 - Spacja jako skrót przycisku (`PlayerControls.swift:34`) jest przemyślana (nie przechwytuje pól tekstowych), ale w menu Odtwarzanie pozycja „Odtwórz/Wstrzymaj” nie pokazuje skrótu; dopisać `Spacja` jako tekst pomocniczy w tytule nie jest możliwe, więc zostaje.
 Szacunek: mała. Priorytet: Ś (kolizja `⌘[`), N (reszta).
 
-**2.7. Menu „Okno”.** — `commandsRemoved()` na czytniku, powitaniu i „O programie” (`RapsodApp.swift:38, 80, 89`).
+**2.7. Menu „Okno”. — SPRAWDZONE (14f):** menu Okno ma pozycje scen (Biblioteka, Tekst książki, Web UI, Ustawienia, Źródła metadanych); okna czytnika (`WindowGroup` z `commandsRemoved`) nie sprawdzałem otwartego. — `commandsRemoved()` na czytniku, powitaniu i „O programie” (`RapsodApp.swift:38, 80, 89`).
 Zgodne z intencją: te okna nie muszą mieć pozycji „Nowe okno”. Do sprawdzenia w działającej aplikacji, czy `commandsRemoved` nie usuwa ich z listy w menu „Okno” (czytnik, który użytkownik chce przywołać, powinien tam być).
 Szacunek: mała. Priorytet: N.
 
@@ -105,22 +107,22 @@ Inwentarz własnych skrótów (poza `⌘W`, `⌘,`, `⌘H`, `⌘M` z systemu): `
 
 ## 4. Biblioteka (okno)
 
-**4.1. Pasek narzędzi bez dostosowywania.** — `Listening/LibraryWindow.swift:103-119`, `Browse/ItemGrid.swift:84-103`.
+**4.1. Pasek narzędzi bez dostosowywania. — NIE (14f):** sekcje i strony dokładają własne elementy do paska; `.toolbar(id:)` wymagałby przepisania wszystkich na `CustomizableToolbarContent` — osobny etap. — `Listening/LibraryWindow.swift:103-119`, `Browse/ItemGrid.swift:84-103`.
 Pasek składa się z elementów wstawianych przez sekcje (`.toolbar { ToolbarItemGroup … }`) bez `.toolbar(id:)` i `ToolbarItem(id:)`, więc „Dostosuj pasek narzędzi…” nie istnieje. HIG (Toolbars): dla aplikacji z wieloma sekcjami zapewnić dostosowanie, ważne akcje nigdy nie tylko w menu. Przy 14c (widok listy) dojdą kolejne elementy (przełącznik widoku, grupowanie), więc to właściwy moment.
 Propozycja: `.toolbar(id: "library")` z `ToolbarItem(id:)` dla: wstecz/dalej, sortowanie, filtr, widok siatka/lista (14c), wgraj/dodaj, zaznaczanie, odtwarzacz; elementy domyślne i dostępne do dodania.
 Szacunek: średnia. Priorytet: Ś.
 
-**4.2. Pasek narzędzi nie ma Wstecz/Dalej, a historia nawigacji nie jest widoczna.** — `Listening/LibraryWindow.swift:60-66`.
+**4.2. Pasek narzędzi nie ma Wstecz/Dalej, a historia nawigacji nie jest widoczna. — ZROBIONE (14f):** na macOS 27 `NavigationStack` dodaje własny przycisk wstecz (`com.apple.SwiftUI.navigationStack.back`), bez „Dalej”; zastąpiony parą Wstecz/Dalej (`BackForwardButtons`, historia „Dalej” w `LibraryBrowser`), systemowy ukryty. Bez menu historii po przytrzymaniu. — `Listening/LibraryWindow.swift:60-66`.
 `NavigationStack` w kolumnie szczegółów; powrót ze strony książki zależy od automatycznego przycisku wstecz (do sprawdzenia w działającej aplikacji na macOS 27) i od kliknięcia w pasek boczny (`LibraryWindow.swift:292`, wiersz sekcji wraca do korzenia). Brak menu historii (przytrzymanie przycisku) i skrótu (p. 2.6).
 Propozycja: jawne przyciski Wstecz/Dalej w `ToolbarItem(placement: .navigation)` z `browser.path`, `⌘[`/`⌘]`.
 Szacunek: średnia. Priorytet: Ś.
 
-**4.3. Przycisk odtwarzania na okładce istnieje tylko po najechaniu myszą.** — `Listening/Browse/ItemCard.swift:101-123`.
+**4.3. Przycisk odtwarzania na okładce istnieje tylko po najechaniu myszą. — ZROBIONE (14f):** akcje dostępności karty „Odtwarzaj”/„Pauza” albo „Czytaj”. — `Listening/Browse/ItemCard.swift:101-123`.
 `hoverAction` pojawia się wyłącznie przy `hovering`. Klawiatura (Full Keyboard Access) i VoiceOver nigdy go nie zobaczą; jedyna droga do „Odtwarzaj” z siatki to menu kontekstowe (`ItemCard.swift:96`). HIG (Accessibility): każda funkcja dostępna bez myszy.
 Propozycja: `.accessibilityAction(named: "Odtwarzaj")` i „Czytaj” na karcie; `Return` otwiera, `⌘Return` odtwarza (po 14c w liście: standardowa akcja podwójnego kliknięcia/Return). Przycisk na hover zostawić jako skrót dla myszy.
 Szacunek: mała. Priorytet: **W** (dostępność).
 
-**4.4. Dwukliknięcia przez `onTapGesture` bez odpowiednika klawiaturowego.** — `Browse/PodcastEpisodes.swift:57`, `UI/Users/ListeningHistoryPage.swift:45`, `UI/Users/PhoneSheets.swift:196`, `Reader/PageReaders.swift:329-330`.
+**4.4. Dwukliknięcia przez `onTapGesture` bez odpowiednika klawiaturowego. — CZĘŚCIOWO (14f):** wiersz odcinka ma akcje dostępności „Odtwarzaj” i „Opis odcinka” (historia słuchania miała je już); przejścia na `List(selection:)` z `primaryAction` nie robiłem. — `Browse/PodcastEpisodes.swift:57`, `UI/Users/ListeningHistoryPage.swift:45`, `UI/Users/PhoneSheets.swift:196`, `Reader/PageReaders.swift:329-330`.
 Odcinki i historia słuchania reagują tylko na dwuklik myszą; VoiceOver i klawiatura mają menu kontekstowe, ale brak `primaryAction`. W `PlaylistViews.swift:33-37, 66-76` zrobiono to poprawnie (`contextMenu(forSelectionType:primaryAction:)`).
 Propozycja: ten sam wzorzec (`List(selection:)` + `contextMenu(forSelectionType:primaryAction:)`) w odcinkach i historii; strefy kliknięcia w czytniku komiksów dostają `accessibilityAction` „Poprzednia/Następna strona” (lub zostają, bo strzałki działają).
 Szacunek: mała. Priorytet: Ś.
@@ -138,12 +140,12 @@ Nie można przeciągnąć książki na playlistę lub kolekcję, ani plik audio/
 Propozycja: `.draggable` karty/wiersza (`Transferable` z identyfikatorem pozycji) i `dropDestination` na wierszach playlist/kolekcji w pasku bocznym; sortowanie playlisty `onMove`. Razem z 14c.
 Szacunek: średnia. Priorytet: Ś.
 
-**4.8. Materiały zamiast Liquid Glass nad treścią.** — `LibraryWindow.swift:87` (nakładka upuszczania), `Manage/ItemActions.swift:49` (pływający wskaźnik zajętości), `Browse/ItemCard.swift:63` (znacznik #n), `Listening/MiniPlayerBar.swift:46-47` (`.background(.bar)` + `Divider`).
+**4.8. Materiały zamiast Liquid Glass nad treścią. — CZĘŚCIOWO (14f):** wskaźnik zajętości i nakładka upuszczania na `glassEffect`; `MiniPlayerBar` bez zmian. — `LibraryWindow.swift:87` (nakładka upuszczania), `Manage/ItemActions.swift:49` (pływający wskaźnik zajętości), `Browse/ItemCard.swift:63` (znacznik #n), `Listening/MiniPlayerBar.swift:46-47` (`.background(.bar)` + `Divider`).
 Aplikacja używa Liquid Glass tylko w oknie tekstu (`BookTextViews.swift:123, 148`). HIG (Materials, macOS 26+): pływające kontrolki nad treścią to `glassEffect`, a pasek pod treścią to `safeAreaBar`/efekt krawędzi przewijania; ręczny `Divider` i `.bar` wyglądają jak poprzednia generacja. Materiały systemowe same respektują „Zmniejsz przezroczystość”, więc to kwestia spójności, nie błędu.
 Propozycja: `glassEffect(in: Capsule())` dla wskaźnika zajętości i nakładki; `safeAreaBar(edge: .bottom)` dla `MiniPlayerBar`; znacznik #n zostaje na materiale (jest na okładce).
 Szacunek: mała. Priorytet: N.
 
-**4.9. Stałe kolory.** — `Reader/PageReaders.swift:22-23, 321` (motywy sepia/ciemny/czarny tło — celowo), `Browse/ItemCard.swift:107, 116` (biało-czarna paleta na okładce — dekoracyjna), pasek postępu `.orange` (`ItemCard.swift`, `ProgressOverlay`), `.orange` ostrzeżenia (`SettingsWindow.swift:314`).
+**4.9. Stałe kolory. — ZROBIONE (14f) dla paska postępu:** kolor akcentu zamiast pomarańczowego na karcie i w liście. — `Reader/PageReaders.swift:22-23, 321` (motywy sepia/ciemny/czarny tło — celowo), `Browse/ItemCard.swift:107, 116` (biało-czarna paleta na okładce — dekoracyjna), pasek postępu `.orange` (`ItemCard.swift`, `ProgressOverlay`), `.orange` ostrzeżenia (`SettingsWindow.swift:314`).
 Brak wad dla ciemnego trybu (system). Pomarańczowy pasek postępu ignoruje kolor akcentu użytkownika; `.tint` byłby spójniejszy. Zwiększony kontrast: tylko okno tekstu go uwzględnia, reszta polega na kolorach systemowych, co jest akceptowalne; znaczniki na okładce (`.white.opacity(0.9)` nad dowolną okładką) mogą mieć słaby kontrast (do sprawdzenia).
 Szacunek: mała. Priorytet: N.
 
@@ -159,7 +161,7 @@ Szacunek: średnia. Priorytet: N.
 Ścieżka podstron w `NavigationStack` ze strzałką wstecz jest zgodna ze stylem Ustawień systemowych. `.toolbar(removing: .sidebarToggle)` (`:254`) blokuje chowanie paska; akceptowalne (jak Ustawienia systemowe).
 Szacunek: —. Priorytet: —.
 
-**5.4. Pole szukania w pasku bocznym.** — `SettingsWindow.swift:250`.
+**5.4. Pole szukania w pasku bocznym. — NIE SPRAWDZONE (14f).** — `SettingsWindow.swift:250`.
 Pasek ma `.searchable(placement: .sidebar)`, ale nie `⌘F` w oknie ustawień (do sprawdzenia w działającej aplikacji, czy skrót fokusuje pole).
 Szacunek: mała. Priorytet: N.
 
@@ -168,15 +170,17 @@ Szacunek: mała. Priorytet: N.
 **6.1. Czytnik.** — `Listening/Reader/ReaderWindow.swift:176-211, 336-351`. Pasek narzędzi ma Wstecz/Dalej i „Wygląd” (popover) — zgodnie z HIG; brak: wyszukiwania w treści (2.3), skrótów rozmiaru tekstu (3), udostępniania/„Pokaż w Finderze”, zapamiętanego rozmiaru okna per książka. Okno z `.restorationBehavior(.disabled)` jest tymczasowe z założenia.
 Szacunek: średnia. Priorytet: N.
 
-**6.2. Okno tekstu książki.** — `Listening/TextSync/*`. Dobrze: motion/contrast, glass, rozmiar tekstu z `⌘+/−/0`. Do poprawy: `⌘↩` (3); `BookTextCanvas` jest własnym widokiem rysującym — dostępność tekstu dla VoiceOver do sprawdzenia w działającej aplikacji (czy zdania są elementami dostępności, czy cały canvas to jeden obraz).
+**6.2. Okno tekstu książki. — `⌘↩` → `⌘J` ZROBIONE (14f); dostępność: w kodzie zdania są elementami VoiceOver (`SentenceElement`, przycisk z tekstem zdania, nagłówki), czyli canvas nie jest jednym obrazem — w działającej aplikacji nie sprawdzone (biblioteka testowa nie ma EPUB).** — `Listening/TextSync/*`. Dobrze: motion/contrast, glass, rozmiar tekstu z `⌘+/−/0`. Do poprawy: `⌘↩` (3); `BookTextCanvas` jest własnym widokiem rysującym — dostępność tekstu dla VoiceOver do sprawdzenia w działającej aplikacji (czy zdania są elementami dostępności, czy cały canvas to jeden obraz).
 Szacunek: średnia (jeśli canvas bez dostępności). Priorytet: **W**, jeśli potwierdzi się brak.
 
 **6.3. Web UI** — `UI/WebUIWindow.swift`, `UI/WebUIView.swift`. Wyjście awaryjne, linki zewnętrzne otwierają przeglądarkę (`WebUIView.swift:125`). Bez uwag.
 
 ## 7. Dostępność (VoiceOver, klawiatura, tekst)
 
+- **ZROBIONE (14f):** suwak ma etykietę „Pozycja w rozdziale”, wartość słowami („<czas> z <długość rozdziału>”, `PlaybackFormat.spokenDuration`) i akcję regulacji ±15/30 s.
 - **Suwak postępu** w rozdziale (`Listening/ChapterViews.swift:22-40`) nie ma `accessibilityValue` z czasem; VoiceOver przeczyta wartość liczbową (sekundy) lub procent. Dodać `accessibilityValue` „12 minut 30 sekund z 45 minut” i `accessibilityAdjustableAction` z krokiem 15/30 s. Mała, **W**.
 - **Ikona na pasku menu**: `accessibilityLabel("Rapsod")` bez stanu (`RapsodApp.swift:107`). Dodać stan („Rapsod, serwer działa”) — do 14d.
+- **SPRAWDZONE (14f):** każdy przycisk z etykietą `Image(systemName:)` ma `accessibilityLabel`.
 - **Przyciski tylko z ikoną** mają `.help` (92 użycia) i w większości `accessibilityLabel`. Przeglądem: `ItemActions`, `PodcastTabs`, `CoverTab` (do sprawdzenia, czy każdy `Image(systemName:)`-przycisk ma etykietę; `grep` pokazuje 88 miejsc z `accessibility*` na 57 użyć symboli, co sugeruje pojedyncze braki). Mała, Ś.
 - **Cel kliknięcia i fokus:** wiersze w `List` z `Button(.plain)` i `contentShape` (np. `PlaylistViews.swift:23-33`) są dostępne; karty siatki także (`ItemCard.swift:95-98`), ale bez widocznego pierścienia fokusu klawiatury w trybie własnej siatki (`PagedGrid`) — do sprawdzenia w działającej aplikacji ze Full Keyboard Access.
 - **Rozmiar tekstu:** macOS nie ma Dynamic Type; używane są style tekstu (`.callout`, `.caption`, `.title2`). Stałe rozmiary `.font(.system(size:))` są tylko dla ikon i awatarów (13 miejsc, np. `PlayerControls.swift:29`, `AvatarStore.swift:157-170`), co jest w porządku. Priorytet: —.
@@ -225,5 +229,7 @@ Podział na trzy paczki, od najbardziej wartościowej:
 5. `@SceneStorage` dla sekcji i inspektora (1.4).
 
 **Poza zakresem 14f (albo tylko na życzenie):** pełne Cofnij/Ponów dla operacji na serwerze (2.4, duży koszt), opcja stałej ikony w Docku (1.5), zmiana strategii zapisywania w Ustawieniach (5.2), menu kontekstowe dla serii/autorów (4.5, razem z 14c).
+
+**Wynik 14f.** Zrobione: 14f-1 p. 2–6 (bez arkusza skrótów i „Idź do rozdziału”), 14f-2 p. 1, 3, 5 i część 2, 14f-3 p. 1, 2, 5 (sekcja i panel) i część 4. Nie zrobione: 4.1 (pasek do dostosowania), 2.3 (szukanie w treści), `primaryAction` w listach, `MiniPlayerBar` na `safeAreaBar`. Sprawdzone w działającej kopii testowej (`-ABSSpotlightTour`, drzewo dostępności menu): przycisk wstecz stosu istnieje na macOS 27 (zastąpiony), okno 735 pt działa, okno ustawień bez zoomu i pełnego ekranu. Nie sprawdzone: zapamiętywanie rozmiaru okien, `⌘F` w Ustawieniach, pierścień fokusu siatki, VoiceOver w oknie tekstu.
 
 **Zalecane do sprawdzenia w działającej aplikacji przed 14f** (nie robiłem tego w tym przeglądzie): przycisk wstecz w `NavigationStack` na macOS 27, kafelkowanie przy 735 pt, zapamiętywanie rozmiaru okien mimo `.restorationBehavior(.disabled)`, `⌘F` w oknie Ustawień, pierścień fokusu siatki, dostępność `BookTextCanvas`, pozycje czytnika w menu Okno.
