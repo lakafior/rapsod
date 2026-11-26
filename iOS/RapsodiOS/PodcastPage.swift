@@ -203,7 +203,6 @@ struct PodcastPage: View {
     @AppStorage("orderDownloadWhenStreaming") private var orderWhenStreaming = true
     /// Odcinek ze strumienia nie ruszył (ATS, brak zakresów bajtów, plik zniknął…).
     @State private var streamFailure: (row: PodcastEpisodeRow, message: String)?
-    @State private var showsSkipSettings = false
     @State private var showsPodcastSettings = false
 
     init(item: Client.ItemDetail, model: AppModel, session: ServerSession) {
@@ -254,11 +253,7 @@ struct PodcastPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .sheet(isPresented: $showsPodcastSettings) {
-            PodcastSettingsSheet(item: item, session: session)
-        }
-        .sheet(isPresented: $showsSkipSettings) {
-            PodcastSkipSettingsSheet(playback: model.playback, podcastID: item.id)
-                .presentationDetents([.medium, .large])
+            PodcastSettingsSheet(item: item, session: session, playback: model.playback)
         }
         .refreshable { await refresh(force: true) }
         .task(id: session.id) { await refresh(force: false) }
@@ -381,16 +376,10 @@ struct PodcastPage: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        // Segmenty sponsorowane (ten telefon) i — dla administratora — pobieranie na serwer.
         ToolbarItem(placement: .topBarTrailing) {
-            Button("Segmenty sponsorowane", systemImage: "forward.end.alt") { showsSkipSettings = true }
-                .accessibilityIdentifier("podcast.skip")
-        }
-        // Zmiana ustawień wymaga tych samych uprawnień co zlecanie pobrań (administrator z „Edycją pozycji”).
-        if podcasts.permission.canOrder {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Ustawienia podcastu", systemImage: "gearshape") { showsPodcastSettings = true }
-                    .accessibilityIdentifier("podcast.settings")
-            }
+            Button("Ustawienia podcastu", systemImage: "gearshape") { showsPodcastSettings = true }
+                .accessibilityIdentifier("podcast.settings")
         }
         if page.rows.contains(where: { $0.server != nil }) {
             ToolbarItem(placement: .topBarTrailing) {

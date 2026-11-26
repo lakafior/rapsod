@@ -4,6 +4,7 @@
 
 import SwiftUI
 import AudiobookshelfKit
+import AudiobookshelfPlayback
 
 /// Automatyczne pobieranie odcinków na serwer: czy, jak często (wyrażenie cron serwera, 5 pól),
 /// ile nowych odcinków na raz i ile zachować.
@@ -130,19 +131,22 @@ struct AutoDownloadSections: View {
     }
 }
 
-/// Arkusz „Ustawienia podcastu” na stronie istniejącego podcastu.
+/// Arkusz „Ustawienia podcastu” (zębatka na stronie podcastu): segmenty sponsorowane na tym
+/// telefonie i — dla administratora z „Edycją pozycji” — automatyczne pobieranie na serwer.
 struct PodcastSettingsSheet: View {
     let item: Client.ItemDetail
     let session: ServerSession
+    let playback: PlaybackCoordinator
     @Environment(\.dismiss) private var dismiss
     @State private var base: AutoDownloadSettings
     @State private var settings: AutoDownloadSettings
     @State private var busy = false
     @State private var error: String?
 
-    init(item: Client.ItemDetail, session: ServerSession) {
+    init(item: Client.ItemDetail, session: ServerSession, playback: PlaybackCoordinator) {
         self.item = item
         self.session = session
+        self.playback = playback
         let current = AutoDownloadSettings(item.media)
         _base = State(initialValue: current)
         _settings = State(initialValue: current)
@@ -152,11 +156,18 @@ struct PodcastSettingsSheet: View {
         session.library.combined?.libraryName(item.libraryId)
     }
 
+    /// Te same uprawnienia co zlecanie pobrań — inaczej serwer odrzuci zmianę.
+    private var canEditServer: Bool { session.library.podcasts.permission.canOrder }
+    private var dirty: Bool { settings != base }
+
     var body: some View {
         NavigationStack {
             Form {
-                AutoDownloadSections(settings: $settings, note: "Serwer pobiera nowe odcinki z kanału według harmonogramu.")
-                if let libraryName, (session.library.combined?.podcastLibraries.count ?? 0) > 1 {
+                PodcastSkipSection(playback: playback, podcastID: item.id)
+                if canEditServer {
+                    AutoDownloadSections(settings: $settings, note: "Serwer pobiera nowe odcinki z kanału według harmonogramu.")
+                }
+                if canEditServer, let libraryName, (session.library.combined?.podcastLibraries.count ?? 0) > 1 {
                     Section {
                         LabeledContent("Biblioteka", value: libraryName)
                     } footer: {
@@ -172,18 +183,21 @@ struct PodcastSettingsSheet: View {
             .navigationTitle("Ustawienia podcastu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Anuluj") { dismiss() } }
+                if dirty {
+                    ToolbarItem(placement: .cancellationAction) { Button("Anuluj") { dismiss() } }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     if busy {
                         ProgressView()
-                    } else {
+                    } else if dirty {
                         Button("Zapisz", action: save)
-                            .disabled(settings == base)
                             .accessibilityIdentifier("podcastSettings.save")
+                    } else {
+                        Button("Gotowe") { dismiss() }
                     }
                 }
             }
-            .interactiveDismissDisabled(busy || settings != base)
+            .interactiveDismissDisabled(busy || dirty)
         }
     }
 

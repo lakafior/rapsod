@@ -323,27 +323,23 @@ struct EpisodeSkipSheet: View {
 
 // MARK: - Strona podcastu
 
-/// Ustawienie pomijania dla podcastu (na tym telefonie).
-struct PodcastSkipSettingsSheet: View {
+/// Ustawienie pomijania dla podcastu (na tym telefonie) — sekcja arkusza „Ustawienia podcastu”.
+/// Zapisuje się od razu, bez „Zapisz”.
+struct PodcastSkipSection: View {
     let playback: PlaybackCoordinator
     let podcastID: String
     @State private var settings = SkipSettings.standard
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Toggle("Oznaczaj i pomijaj", isOn: $settings.enabled)
-                    Picker("Reklamy i sponsorzy", selection: $settings.sponsor) { actions }.disabled(!settings.enabled)
-                    Picker("Autopromocja", selection: $settings.selfPromo) { actions }.disabled(!settings.enabled)
-                } footer: {
-                    Text("Ustawienie dotyczy tego telefonu. Znaczniki liczy Mac po pobraniu odcinka na serwer (opis odcinka, rozdziały, reklamy wstawiane przez wydawcę); dla odcinków prosto z kanału — telefon, z opisu. Przy każdym pominięciu jest „Cofnij”.")
-                }
-            }
-            .navigationTitle("Segmenty sponsorowane")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Gotowe") { dismiss() } } }
+        Section {
+            Toggle("Oznaczaj i pomijaj", isOn: $settings.enabled)
+                .accessibilityIdentifier("podcastSettings.skip")
+            Picker("Reklamy i sponsorzy", selection: $settings.sponsor) { actions }.disabled(!settings.enabled)
+            Picker("Autopromocja", selection: $settings.selfPromo) { actions }.disabled(!settings.enabled)
+        } header: {
+            Text("Segmenty sponsorowane")
+        } footer: {
+            Text("Ustawienie dotyczy tego telefonu i zapisuje się od razu. Znaczniki liczy Mac po pobraniu odcinka na serwer (opis odcinka, rozdziały, reklamy wstawiane przez wydawcę); dla odcinków prosto z kanału — telefon, z opisu. Przy każdym pominięciu jest „Cofnij”.")
         }
         .onAppear { settings = SkipSupport.settings.settings(podcastID: podcastID) }
         .onChange(of: settings) { SkipSupport.setSettings(settings, podcastID: podcastID, playback: playback) }
