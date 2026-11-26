@@ -47,6 +47,12 @@ final class LibraryStore {
         podcasts.onProgressSent = { [weak self] in await self?.refreshProgress() }
     }
 
+    /// Pozycja doszła z telefonu (np. nowy podcast): listy wczytają się od nowa. Zdarzenia
+    /// serwera odświeżają tylko biblioteki książek, więc tu trzeba to zrobić jawnie.
+    func noteItemAdded() {
+        itemsRevision += 1
+    }
+
     var combined: CombinedLibraries? {
         if case .ready(let combined) = state { return combined }
         return nil

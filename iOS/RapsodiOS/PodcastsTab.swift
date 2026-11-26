@@ -11,9 +11,10 @@ import AudiobookshelfPlayback
 struct PodcastsTab: View {
     let model: AppModel
     let session: ServerSession
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 switch session.library.state {
                 case .loading where model.isOffline:
@@ -24,7 +25,7 @@ struct PodcastsTab: View {
                 case .failed(let message):
                     OfflineFallback(model: model, session: session, message: message) { Task { await session.library.load() } }
                 case .ready(let combined):
-                    PodcastsContent(combined: combined, model: model, session: session)
+                    PodcastsContent(combined: combined, model: model, session: session) { path.append(Route.item($0)) }
                 }
             }
             .navigationTitle("Podcasty")
@@ -37,8 +38,10 @@ private struct PodcastsContent: View {
     let combined: CombinedLibraries
     let model: AppModel
     let session: ServerSession
+    let open: (String) -> Void
 
     @State private var podcasts: [Client.LibraryItem]?
+    @State private var adding = false
     @State private var recent: [Client.PodcastEpisode] = []
     @State private var inProgress: [Client.LibraryItem] = []
     @State private var failures: [LibraryFailure] = []
@@ -109,7 +112,7 @@ private struct PodcastsContent: View {
         .overlay {
             if let podcasts, podcasts.isEmpty {
                 ContentUnavailableView("Brak podcastów", systemImage: "dot.radiowaves.left.and.right",
-                                       description: Text("W bibliotekach podcastów nie ma jeszcze żadnego podcastu. Dodasz go na Macu."))
+                                       description: Text(canAdd ? "W bibliotekach podcastów nie ma jeszcze żadnego podcastu. Dodasz go przyciskiem +." : "W bibliotekach podcastów nie ma jeszcze żadnego podcastu. Dodasz go na Macu."))
             } else if podcasts == nil {
                 if let error {
                     LoadFailureView(message: error) { Task { await load() } }
@@ -120,6 +123,19 @@ private struct PodcastsContent: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { sortMenu }
+            if canAdd {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Dodaj podcast", systemImage: "plus") { adding = true }
+                        .disabled(model.isOffline)
+                        .accessibilityIdentifier("podcasts.add")
+                }
+            }
+        }
+        .sheet(isPresented: $adding) {
+            AddPodcastSheet(session: session, libraries: combined.podcastLibraries) { id in
+                session.library.noteItemAdded()
+                if let id { open(id) }
+            }
         }
         .alert("Nie udało się odtworzyć", isPresented: Binding(get: { playError != nil }, set: { if !$0 { playError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -135,6 +151,12 @@ private struct PodcastsContent: View {
             await load()
         }
         .onChange(of: SortKey(sort: sort, descending: descending)) { resort() }
+    }
+
+    /// Serwer pozwala dodawać podcasty tylko administratorom; przed `/api/me` przycisk też jest
+    /// (odmowę serwera arkusz wyjaśni).
+    private var canAdd: Bool {
+        !combined.podcastLibraries.isEmpty && session.library.podcasts.permission != .listener
     }
 
     private struct Trigger: Hashable {
