@@ -255,9 +255,11 @@ final class EpubController: NSObject, WKScriptMessageHandler, WKNavigationDelega
     // MARK: - Zdarzenia strony
 
     nonisolated func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-        let payload = SendableBody(body)
-        MainActor.assumeIsolated { handle(type, payload.value) }
+        // WebKit woła ten delegat na głównym wątku; `body` jest dostępne tylko z głównego aktora.
+        MainActor.assumeIsolated {
+            guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+            handle(type, body)
+        }
     }
 
     private func handle(_ type: String, _ body: [String: Any]) {
@@ -343,11 +345,6 @@ final class EpubController: NSObject, WKScriptMessageHandler, WKNavigationDelega
             Task { @MainActor in done(list.value) }
         }
     }
-}
-
-private struct SendableBody: @unchecked Sendable {
-    let value: [String: Any]
-    init(_ value: [String: Any]) { self.value = value }
 }
 
 private struct SendableBox<T>: @unchecked Sendable {

@@ -243,8 +243,13 @@ struct SkipSegmentEditor: View {
 
     private func bound(_ label: String, value: Double, set: @escaping (Double) -> Void) -> some View {
         HStack {
-            Stepper(value: Binding(get: { value }, set: set), in: 0...max(duration, 1), step: 1) {
+            // Krok ±1 s w granicach odcinka (bez `Binding`, którego domknięcia muszą być `@Sendable`).
+            Stepper {
                 LabeledContent(label, value: PlaybackFormat.clock(value)).monospacedDigit()
+            } onIncrement: {
+                set(min(value + 1, max(duration, 1)))
+            } onDecrement: {
+                set(max(value - 1, 0))
             }
             .accessibilityValue(Text(PlaybackFormat.spokenDuration(value)))
             if let current {
