@@ -22,6 +22,14 @@ enum LibraryTour {
         let out = URL(filePath: UserDefaults.standard.string(forKey: "ABSLibraryTourOut") ?? NSTemporaryDirectory())
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let listening = browser.listening
+        // Kopia testowa ma te same UserDefaults co prawdziwa aplikacja: stan okna („libraryWindow.*”:
+        // biblioteka, sortowanie, tryby widoku, kolumny) wraca na koniec do tego sprzed sprawdzenia.
+        let defaults = UserDefaults.standard
+        let stored = defaults.dictionaryRepresentation().filter { $0.key.hasPrefix("libraryWindow.") }
+        defer {
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("libraryWindow.") { defaults.removeObject(forKey: key) }
+            for (key, value) in stored { defaults.set(value, forKey: key) }
+        }
 
         for _ in 0..<240 where account.state != .ready { await pause(0.5) }
         // Czysta kopia testowa: konto słuchacza (losowe hasło w pęku kluczy pod folderem danych).
@@ -51,10 +59,10 @@ enum LibraryTour {
 
             browser.setViewMode(.grid, for: .books)
             await pause(3)
-            snapshot("ksiazki-siatka" + suffix, out)
+            await snapshot("ksiazki-siatka" + suffix, out)
             browser.setViewMode(.list, for: .books)
             await pause(3)
-            snapshot("ksiazki-lista" + suffix, out)
+            await snapshot("ksiazki-lista" + suffix, out)
 
             if !dark, !quick {
                 await scrollTest("list")
@@ -68,7 +76,7 @@ enum LibraryTour {
 
             browser.itemSort = .init(key: "media.metadata.authorName", descending: true)
             await pause(3)
-            snapshot("ksiazki-lista-autor-malejaco" + suffix, out)
+            await snapshot("ksiazki-lista-autor-malejaco" + suffix, out)
             browser.itemSort = .init(key: "media.metadata.title", descending: false)
             await pause(2)
 
@@ -76,7 +84,7 @@ enum LibraryTour {
                 table.selectRowIndexes(IndexSet(integersIn: 0..<min(5, table.numberOfRows)), byExtendingSelection: false)
                 await pause(1)
                 log("select5 isSelecting=\(browser.isSelecting) selection=\(browser.selection.count)")
-                snapshot("ksiazki-lista-zaznaczanie" + suffix, out)
+                await snapshot("ksiazki-lista-zaznaczanie" + suffix, out)
                 browser.isSelecting = false
                 await pause(1)
             }
@@ -84,7 +92,7 @@ enum LibraryTour {
             browser.section = .series
             browser.setViewMode(.list, for: .series)
             await pause(3)
-            snapshot("serie-lista" + suffix, out)
+            await snapshot("serie-lista" + suffix, out)
             if let table = largestTable(), table.numberOfRows > 0 {
                 table.selectRowIndexes([0], byExtendingSelection: false)
             }
@@ -94,7 +102,7 @@ enum LibraryTour {
                 browser.open(.series(id: first.id, name: first.name))
                 browser.setViewMode(.list, for: .seriesPage)
                 await pause(3)
-                snapshot("seria-lista" + suffix, out)
+                await snapshot("seria-lista" + suffix, out)
                 browser.path = []
             }
 
@@ -102,7 +110,7 @@ enum LibraryTour {
             browser.setViewMode(.list, for: .search)
             browser.searchText = "Cichy"
             await pause(4)
-            snapshot("wyszukiwanie-lista" + suffix, out)
+            await snapshot("wyszukiwanie-lista" + suffix, out)
             browser.searchText = ""
             // Strona autora jako lista (pozycje bez stronicowania).
             let authors = try? await listening.api { try await $0.authorsPage(libraryID: browser.libraryID ?? "", page: 0, limit: 1, sort: "name", descending: false, token: $1) }
@@ -110,7 +118,7 @@ enum LibraryTour {
                 browser.setViewMode(.list, for: .authorPage)
                 browser.open(.author(id: author.id, name: author.name))
                 await pause(4)
-                snapshot("autor-lista" + suffix, out)
+                await snapshot("autor-lista" + suffix, out)
                 browser.path = []
             }
         }
@@ -190,13 +198,20 @@ enum LibraryTour {
         return tables(root).filter { $0.window != nil && !$0.isHiddenOrHasHiddenAncestor }.max { $0.numberOfRows < $1.numberOfRows }
     }
 
-    private static func snapshot(_ name: String, _ out: URL) {
+    /// Zrzut przez `cacheDisplay` (bez paska bocznego — jego materiał rysuje serwer okien) i ogłoszenie
+    /// `LTOUR shot <nazwa> <numer okna>` z chwilą postoju: zewnętrzne `screencapture -l` robi wtedy
+    /// pełny zrzut okna (np. `scripts`-owa pętla czytająca wyjście).
+    private static func snapshot(_ name: String, _ out: URL) async {
         guard let view = window?.contentView?.superview ?? window?.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return log("snapshot \(name) failed") }
         view.cacheDisplay(in: view.bounds, to: rep)
         let url = out.appending(path: name + ".png")
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
         log("snapshot \(name)")
+        if let number = window?.windowNumber {
+            log("shot \(name) \(number)")
+            await pause(1.5)
+        }
     }
 
     private static func pause(_ seconds: Double) async {

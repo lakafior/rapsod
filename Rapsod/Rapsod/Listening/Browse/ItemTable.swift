@@ -7,6 +7,10 @@ import SwiftUI
 /// Stały identyfikator sprawia też, że wczytanie strony nie przebudowuje całej tabeli.
 struct ListRow: Identifiable, Hashable {
     let id: Int
+
+    /// Jeden styl wszystkich list biblioteki: `.automatic` wychodził różnie zależnie od miejsca
+    /// w oknie (pełna szerokość albo zaokrąglone paski).
+    static var style: InsetTableStyle { InsetTableStyle(alternatesRowBackgrounds: true) }
 }
 
 /// Sortowanie kolumny po kluczu serwera. Tabela tylko pokazuje kierunek i zgłasza kliknięcie
@@ -77,6 +81,7 @@ struct ItemTable: View {
         Group {
             if browser.isPodcastLibrary { podcastTable } else { bookTable }
         }
+        .tableStyle(ListRow.style)
         .contextMenu(forSelectionType: ListRow.ID.self) { selected in
             menu(for: selected)
         } primaryAction: { selected in
@@ -96,16 +101,16 @@ struct ItemTable: View {
     private var bookTable: some View {
         Table(rows, selection: selection, sortOrder: sortOrder, columnCustomization: $bookColumns) {
             TableColumn("Tytuł", sortUsing: ColumnSort("media.metadata.title")) { row in titleCell(row.id) }
-                .width(min: 180, ideal: 300)
+                .width(min: 120, ideal: 170)
                 .customizationID("title")
                 .disabledCustomizationBehavior(.visibility)
             TableColumn("Autor", sortUsing: ColumnSort("media.metadata.authorName")) { row in
                 text(item(row.id)?.media.metadata.authorName)
             }
-            .width(min: 90, ideal: 160)
+            .width(min: 60, ideal: 110)
             .customizationID("author")
             TableColumn("Lektor") { row in text(item(row.id)?.media.metadata.narratorName) }
-                .width(min: 80, ideal: 140)
+                .width(min: 60, ideal: 100)
                 .customizationID("narrator")
             if let seriesID {
                 TableColumn("Tom", sortUsing: ColumnSort("sequence")) { row in
@@ -116,8 +121,9 @@ struct ItemTable: View {
             }
             if seriesID == nil {
                 TableColumn("Seria") { row in text(seriesText(item(row.id))) }
-                    .width(min: 80, ideal: 170)
+                    .width(min: 60, ideal: 140)
                     .customizationID("series")
+                    .defaultVisibility(.hidden)
             }
             TableColumn("Rok", sortUsing: ColumnSort("media.metadata.publishedYear")) { row in
                 text(item(row.id)?.media.metadata.publishedYear).monospacedDigit()
@@ -128,20 +134,21 @@ struct ItemTable: View {
             TableColumn("Czas", sortUsing: ColumnSort("media.duration")) { row in
                 text(item(row.id).map { Formats.duration($0.media.duration) }).monospacedDigit()
             }
-            .width(min: 70, ideal: 100)
+            .width(min: 50, ideal: 70)
             .customizationID("duration")
             TableColumn("Postęp") { row in progressCell(row.id) }
-                .width(min: 70, ideal: 110)
+                .width(min: 50, ideal: 80)
                 .customizationID("progress")
             TableColumn("Dodano", sortUsing: ColumnSort("addedAt")) { row in
                 text(Formats.date(ms: item(row.id)?.addedAt)).monospacedDigit()
             }
-            .width(min: 80, ideal: 100)
+            .width(min: 60, ideal: 90)
             .customizationID("added")
+            .defaultVisibility(.hidden)
             TableColumn("Rozmiar", sortUsing: ColumnSort("size")) { row in
                 text(item(row.id).map { Formats.size($0.media.size) }).monospacedDigit()
             }
-            .width(min: 60, ideal: 80)
+            .width(min: 50, ideal: 80)
             .customizationID("size")
             .defaultVisibility(.hidden)
         }
@@ -150,7 +157,7 @@ struct ItemTable: View {
     private var podcastTable: some View {
         Table(rows, selection: selection, sortOrder: sortOrder, columnCustomization: $podcastColumns) {
             TableColumn("Tytuł", sortUsing: ColumnSort("media.metadata.title")) { row in titleCell(row.id) }
-                .width(min: 180, ideal: 320)
+                .width(min: 120, ideal: 200)
                 .customizationID("title")
                 .disabledCustomizationBehavior(.visibility)
             TableColumn("Autor", sortUsing: ColumnSort("media.metadata.author")) { row in
@@ -158,22 +165,22 @@ struct ItemTable: View {
                 let item = item(row.id)
                 text(item?.recentEpisode != nil ? item?.title : item?.author)
             }
-            .width(min: 90, ideal: 180)
+            .width(min: 60, ideal: 130)
             .customizationID("author")
             TableColumn("Odcinki", sortUsing: ColumnSort("media.numTracks")) { row in
                 text(item(row.id)?.media.numEpisodes.map(String.init)).monospacedDigit()
             }
-            .width(min: 50, ideal: 70)
+            .width(min: 40, ideal: 70)
             .customizationID("episodes")
             TableColumn("Dodano", sortUsing: ColumnSort("addedAt")) { row in
                 text(Formats.date(ms: item(row.id)?.addedAt)).monospacedDigit()
             }
-            .width(min: 80, ideal: 100)
+            .width(min: 60, ideal: 100)
             .customizationID("added")
             TableColumn("Rozmiar", sortUsing: ColumnSort("size")) { row in
                 text(item(row.id).map { Formats.size($0.media.size) }).monospacedDigit()
             }
-            .width(min: 60, ideal: 80)
+            .width(min: 50, ideal: 80)
             .customizationID("size")
         }
     }
@@ -363,22 +370,22 @@ struct SeriesTable: View {
     var body: some View {
         Table((0..<count).map(ListRow.init), selection: $selection, sortOrder: $sort.columnOrder, columnCustomization: $columns) {
             TableColumn("Nazwa", sortUsing: ColumnSort("name")) { row in nameCell(row.id) }
-                .width(min: 180, ideal: 320)
+                .width(min: 120, ideal: 220)
                 .customizationID("name")
                 .disabledCustomizationBehavior(.visibility)
             TableColumn("Książki", sortUsing: ColumnSort("numBooks")) { row in
                 Text(list.element(at: row.id).map { "\($0.items.count)" } ?? "").monospacedDigit().foregroundStyle(.secondary)
             }
-            .width(min: 50, ideal: 70)
+            .width(min: 40, ideal: 70)
             .customizationID("books")
             TableColumn("Ukończone") { row in SeriesFinished(listening: browser.listening, series: list.element(at: row.id)) }
-                .width(min: 60, ideal: 90)
+                .width(min: 50, ideal: 90)
                 .customizationID("finished")
             TableColumn("Łączny czas", sortUsing: ColumnSort("totalDuration")) { row in
                 Text(list.element(at: row.id).map { Formats.duration($0.items.compactMap(\.media.duration).reduce(0, +)) } ?? "")
                     .monospacedDigit().foregroundStyle(.secondary)
             }
-            .width(min: 80, ideal: 110)
+            .width(min: 60, ideal: 110)
             .customizationID("duration")
         }
         .contextMenu(forSelectionType: ListRow.ID.self) { selected in
@@ -388,6 +395,7 @@ struct SeriesTable: View {
         } primaryAction: { selected in
             if let series = selected.min().flatMap(list.element) { browser.open(.series(id: series.id, name: series.name)) }
         }
+        .tableStyle(ListRow.style)
         .onChange(of: columns) { ColumnStore.save(columns, "series") }
         .accessibilityIdentifier("seriesTable")
     }
