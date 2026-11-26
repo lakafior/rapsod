@@ -13,12 +13,11 @@ import AppKit
 @MainActor
 final class StatusItemDrop: NSObject, NSWindowDelegate, NSDraggingDestination {
     private let model: MenuBarModel
-    private let canAccept: () -> Bool
     private var observer: NSObjectProtocol?
 
-    init(model: MenuBarModel, canAccept: @escaping () -> Bool) {
+    /// Upuszczenie przyjmowane jest zawsze — gdy serwer nie działa, okno wyboru mówi to wprost.
+    init(model: MenuBarModel) {
         self.model = model
-        self.canAccept = canAccept
         super.init()
         observer = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.attachSoon() }
@@ -46,7 +45,10 @@ final class StatusItemDrop: NSObject, NSWindowDelegate, NSDraggingDestination {
     // MARK: NSDraggingDestination
 
     func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        guard canAccept(), !Self.urls(sender).isEmpty else { return [] }
+        guard !Self.urls(sender).isEmpty else { return [] }
+        #if DEBUG
+        NSLog("MENUBAR drag entered")
+        #endif
         model.isDropTargeted = true
         return .copy
     }
@@ -56,6 +58,9 @@ final class StatusItemDrop: NSObject, NSWindowDelegate, NSDraggingDestination {
     }
 
     func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        #if DEBUG
+        NSLog("MENUBAR drag exited")
+        #endif
         model.isDropTargeted = false
     }
 
@@ -66,7 +71,7 @@ final class StatusItemDrop: NSObject, NSWindowDelegate, NSDraggingDestination {
     func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         model.isDropTargeted = false
         let urls = Self.urls(sender)
-        guard canAccept(), !urls.isEmpty else { return false }
+        guard !urls.isEmpty else { return false }
         // Okno wyboru otwiera się po zakończeniu przeciągania, nie w jego trakcie.
         DispatchQueue.main.async { [model] in
             MainActor.assumeIsolated { model.drop(urls) }

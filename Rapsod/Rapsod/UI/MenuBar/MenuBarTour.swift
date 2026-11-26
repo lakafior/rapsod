@@ -17,6 +17,14 @@ enum MenuBarTour {
     static func run(account: ServerAccount, listening: ListeningController, libraryTasks: LibraryTasks, menuBar: MenuBarModel) async {
         guard isRequested, !started else { return }
         started = true
+        // Kopia testowa dzieli `UserDefaults` z prawdziwą aplikacją: okno Biblioteka zapamiętuje
+        // wybraną bibliotekę („libraryWindow.*”) — na koniec wraca stan sprzed sprawdzenia.
+        let defaults = UserDefaults.standard
+        let stored = defaults.dictionaryRepresentation().filter { $0.key.hasPrefix("libraryWindow.") }
+        defer {
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("libraryWindow.") { defaults.removeObject(forKey: key) }
+            for (key, value) in stored { defaults.set(value, forKey: key) }
+        }
         for _ in 0..<240 where !(account.state == .ready && listening.availability == .ready && !listening.libraries.isEmpty) { await pause(0.5) }
         log("ready libraries=\(listening.libraries.count)")
         guard let library = listening.libraries.first(where: { $0.mediaType != "podcast" }),

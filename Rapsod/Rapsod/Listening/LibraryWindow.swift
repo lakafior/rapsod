@@ -55,6 +55,9 @@ struct LibraryWindow: View {
         .navigationTitle(Self.title)
         .task { await LibraryTour.runIfRequested(browser: browser, account: account) }
         .onDisappear {
+            // Prośba z menu na pasku menu, której okno nie zdążyło wykonać, nie wraca po czasie.
+            menuBar.libraryRequest = nil
+            if menuBar.browser === browser { menuBar.browser = nil }
             listening.windowClosed()
             browser.manager.tasks.shutdown()
         }

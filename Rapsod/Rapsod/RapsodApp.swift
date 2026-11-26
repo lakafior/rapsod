@@ -199,10 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsNavigation = SettingsNavigation()
     let updates = UpdateController()
     private(set) lazy var menuBar = MenuBarModel(listening: listening)
-    private(set) lazy var statusItemDrop = StatusItemDrop(model: menuBar) { [unowned self] in
-        // Bez działającego serwera i bibliotek nie ma dokąd wgrać ani czego rozszerzyć.
-        account.state == .ready
-    }
+    private(set) lazy var statusItemDrop = StatusItemDrop(model: menuBar)
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
     private(set) lazy var pairing = PhonePairing(account: account, sharing: sharing, supervisor: supervisor)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
