@@ -237,6 +237,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notifications: notifications
     )
 
+    override init() {
+        super.init()
+        // Akcje Skrótów (etap 14e) działają w tym procesie i potrzebują modeli aplikacji.
+        IntentBridge.app = self
+        IntentBridge.launchDate = .now
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Najpierw: kliknięcie powiadomienia, które uruchomiło aplikację, przychodzi zaraz po starcie.
         configureNotifications()

@@ -102,7 +102,9 @@ public enum ReadinessWait {
     }
 
     /// Czeka, aż `state()` zwróci coś innego niż `.starting` albo minie `limit` sekund.
-    public static func wait(limit: Double = 30, step: Double = 0.25, state: () async -> State) async -> State {
+    /// Działa na aktorze wywołującego (`#isolation`), więc `state` może czytać modele głównego aktora.
+    public static func wait(limit: Double = 30, step: Double = 0.25, isolation: isolated (any Actor)? = #isolation,
+                            state: () async -> State) async -> State {
         var waited = 0.0
         while true {
             let current = await state()
