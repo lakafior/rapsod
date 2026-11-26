@@ -6,6 +6,7 @@ struct AppCommands: Commands {
     let account: ServerAccount
     let webMode: WebUIMode
     let settings: SettingsNavigation
+    let updates: UpdateController
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -13,6 +14,7 @@ struct AppCommands: Commands {
             Button("O programie Rapsod") {
                 openWindow.bringToFront(id: AboutWindow.windowID)
             }
+            UpdateMenuItem(updates: updates)
         }
 
         CommandGroup(replacing: .appSettings) {

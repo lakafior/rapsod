@@ -140,6 +140,7 @@ struct GeneralSettingsPage: View {
                 Text("„Podłącz telefon…” w menu na pasku menu")
                 Text("Skrót do arkusza „Podłącz telefon” konta tego Maca.")
             }
+            UpdateSettingsRow(updates: models.updates)
         }
     }
 }
