@@ -52,6 +52,7 @@ struct LibraryWindow: View {
         }
         .frame(minWidth: 980, minHeight: 560)
         .navigationTitle(Self.title)
+        .task { await LibraryTour.runIfRequested(browser: browser, account: account) }
         .onDisappear {
             listening.windowClosed()
             browser.manager.tasks.shutdown()

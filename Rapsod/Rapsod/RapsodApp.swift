@@ -127,6 +127,8 @@ private struct MenuBarLabel: View {
             .task {
                 // Tryb sprawdzający okno ustawień (tylko testowa kopia, argument `-ABSSettingsTour YES`).
                 if SettingsTour.isRequested { openWindow.openSettings(navigation: settings) }
+                // Tryb sprawdzający listę w Bibliotece (etap 14c, argument `-ABSLibraryTour <folder>`).
+                if LibraryTour.isRequested { openWindow.bringToFront(id: LibraryWindow.windowID) }
             }
             .onChange(of: supervisor.state) {
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
