@@ -6,12 +6,12 @@ struct RapsodApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, player: appDelegate.listening.player)
+            ServerMenu(supervisor: appDelegate.supervisor, account: appDelegate.account, loginItem: appDelegate.loginItem, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, player: appDelegate.listening.player, updates: appDelegate.updates)
         } label: {
-            MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation)
+            MenuBarLabel(supervisor: appDelegate.supervisor, account: appDelegate.account, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
         }
         .commands {
-            AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation)
+            AppCommands(account: appDelegate.account, webMode: appDelegate.webMode, settings: appDelegate.settingsNavigation, updates: appDelegate.updates)
             PlaybackCommands(player: appDelegate.listening.player)
         }
 
@@ -79,6 +79,15 @@ struct RapsodApp: App {
         // Ekran powitalny otwiera się sam; w menu Okno byłby zbędny.
         .commandsRemoved()
 
+        // Aktualizacje aplikacji (etap 14b): wynik sprawdzenia i opis zmian nowej wersji.
+        Window("Aktualizacja Rapsodu", id: UpdateWindow.windowID) {
+            UpdateWindow(updates: appDelegate.updates)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+
         Window("O programie Rapsod", id: AboutWindow.windowID) {
             AboutWindow(supervisor: appDelegate.supervisor)
         }
@@ -97,6 +106,7 @@ private struct MenuBarLabel: View {
     let supervisor: ServerSupervisor
     let account: ServerAccount
     let settings: SettingsNavigation
+    let updates: UpdateController
     @Environment(\.openWindow) private var openWindow
     @State private var welcomeShown = false
 
@@ -127,6 +137,10 @@ private struct MenuBarLabel: View {
                 // Tryb sprawdzający okno ustawień (tylko testowa kopia, argument `-ABSSettingsTour YES`).
                 if SettingsTour.isRequested { openWindow.openSettings(navigation: settings) }
             }
+            .onChange(of: updates.windowRequest) {
+                // Automatyczne sprawdzenie znalazło nową wersję do pokazania.
+                openWindow.bringToFront(id: UpdateWindow.windowID)
+            }
             .onChange(of: supervisor.state) {
                 // Błąd startu ma być widoczny, a nie tylko zmienić ikonę na pasku menu.
                 if case .failed = supervisor.state {
@@ -143,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let loginItem = LoginItem()
     let webMode = WebUIMode()
     let settingsNavigation = SettingsNavigation()
+    let updates = UpdateController()
     private(set) lazy var sharing = SharingController(supervisor: supervisor, account: account)
     private(set) lazy var pairing = PhonePairing(account: account, sharing: sharing, supervisor: supervisor)
     private(set) lazy var metadataSources = MetadataSourcesController(account: account)
@@ -162,7 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         users: users,
         avatars: avatars,
         rootReset: rootReset,
-        webMode: webMode
+        webMode: webMode,
+        updates: updates
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -178,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sharing.activate()
         metadataSources.activate()
         listening.activate()
+        updates.activate()
         Task.detached(priority: .utility) {
             let removed = KeychainOrphans.prune()
             if removed > 0 { NSLog("Pęk kluczy: usunięto %d wpisów po nieistniejących folderach danych", removed) }
@@ -190,6 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 supervisor.start()
             }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Po zatrzymaniu serwera i reszty: podmiana pakietu, jeśli czeka zweryfikowana nowa wersja.
+        updates.launchSwapIfPending()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {

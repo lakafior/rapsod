@@ -20,10 +20,16 @@ let package = Package(
         // postępu, „Teraz odtwarzane”. AVFoundation i MediaPlayer — osobny cel, żeby sam klient
         // API został bez nich. Od etapu 12 używają go obie aplikacje (Mac i iOS).
         .library(name: "AudiobookshelfPlayback", targets: ["AudiobookshelfPlayback"]),
+        // Aktualizacje aplikacji na Maca z GitHub Releases (etap 14b): wersje, odpowiedź API,
+        // wybór zasobu, sumy kontrolne, skrypt podmiany. Sam Foundation — część do testów;
+        // pobieranie, podpisy i okno są w aplikacji.
+        .library(name: "RapsodUpdates", targets: ["RapsodUpdates"]),
     ],
     targets: [
         .target(name: "AudiobookshelfKit"),
         .target(name: "AudiobookshelfPlayback", dependencies: ["AudiobookshelfKit"]),
+        .target(name: "RapsodUpdates"),
         .testTarget(name: "AudiobookshelfKitTests", dependencies: ["AudiobookshelfKit", "AudiobookshelfPlayback"]),
+        .testTarget(name: "RapsodUpdatesTests", dependencies: ["RapsodUpdates"]),
     ]
 )

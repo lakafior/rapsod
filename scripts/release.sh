@@ -5,14 +5,21 @@
 # Kroki: serwer, źródła metadanych, Node i ffmpeg (skrypty obok) → zawartość `Contents/Resources/Server`
 # → podpis każdej binarki → archiwum i eksport z Xcode → wstawienie serwera
 # i licencji do paczki → podpis aplikacji → notaryzacja i bilet dla aplikacji
-# → DMG → podpis, notaryzacja i bilet dla DMG → weryfikacja.
+# → DMG → podpis, notaryzacja i bilet dla DMG → weryfikacja → suma SHA-256
+# → (opcjonalnie) wydanie na GitHubie.
 #
-# Użycie: scripts/release.sh [--skip-notarize]
+# Użycie: scripts/release.sh [--skip-notarize] [--publish]
 #   --skip-notarize   wszystko poza notaryzacją (do testów lokalnych; plik
 #                     dostaje dopisek „-nienotaryzowany” i nie nadaje się do publikacji)
+#   --publish         na końcu `gh release create v<wersja>` z DMG i plikiem sumy — z tego
+#                     wydania aplikacja pobiera aktualizacje (etap 14b). Wymaga notaryzacji,
+#                     czystego drzewa, wypchniętego commita i nieistniejącego znacznika.
 # Zmienne:
-#   ABS_NOTARY_PROFILE  nazwa profilu notarytool w pęku kluczy (domyślnie rapsod-notary)
-#   ABS_BUILD_NUMBER    numer builda (domyślnie liczba commitów)
+#   ABS_NOTARY_PROFILE     nazwa profilu notarytool w pęku kluczy (domyślnie rapsod-notary)
+#   ABS_BUILD_NUMBER       numer builda (domyślnie liczba commitów)
+#   ABS_MARKETING_VERSION  wersja zamiast MARKETING_VERSION z projektu (np. wydanie testowe)
+#   ABS_RELEASE_REPO       repozytorium wydań (domyślnie lakafior/rapsod)
+#   ABS_RELEASE_NOTES      plik Markdown z opisem zmian (bez niego: notatki z commitów od GitHuba)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,8 +31,17 @@ APP_NAME="Rapsod"
 NOTARY_PROFILE="${ABS_NOTARY_PROFILE:-rapsod-notary}"
 BUILD_NUMBER="${ABS_BUILD_NUMBER:-$(git -C "$ROOT" rev-list --count HEAD)}"
 
+RELEASE_REPO="${ABS_RELEASE_REPO:-lakafior/rapsod}"
+
 NOTARIZE=1
-if [[ "${1-}" == "--skip-notarize" ]]; then NOTARIZE=0; fi
+PUBLISH=0
+for arg in "$@"; do
+  case "$arg" in
+    --skip-notarize) NOTARIZE=0 ;;
+    --publish) PUBLISH=1 ;;
+    *) echo "Nieznany argument: $arg" >&2; exit 2 ;;
+  esac
+done
 
 step() { echo; echo "==> $*"; }
 die() { echo "BŁĄD: $*" >&2; exit 1; }
@@ -43,7 +59,21 @@ if (( NOTARIZE )); then
 fi
 
 if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+  (( ! PUBLISH )) || die "Publikacja tylko z czystego drzewa (są niezacommitowane zmiany)."
   echo "UWAGA: w repozytorium są niezacommitowane zmiany — wydanie nie odpowiada żadnemu commitowi."
+fi
+
+# Warunki publikacji sprawdzane przed godzinnym buildem, nie po nim.
+if (( PUBLISH )); then
+  (( NOTARIZE )) || die "--publish nie łączy się z --skip-notarize: aplikacja odrzuca wydania bez notaryzacji."
+  command -v gh > /dev/null || die "Brak gh (GitHub CLI): brew install gh."
+  gh auth status > /dev/null 2>&1 || die "gh nie jest zalogowany: gh auth login."
+  [[ -n "$(git -C "$ROOT" branch -r --contains HEAD 2> /dev/null)" ]] \
+    || die "Commit $(git -C "$ROOT" rev-parse --short HEAD) nie jest wypchnięty — wydanie wskazuje commit na GitHubie."
+  if [[ "$(gh repo view "$RELEASE_REPO" --json visibility -q .visibility 2> /dev/null)" != "PUBLIC" ]]; then
+    echo "UWAGA: $RELEASE_REPO nie jest publiczne — aplikacje nie zobaczą wydania przez anonimowe API GitHuba."
+  fi
+  if [[ -n "${ABS_RELEASE_NOTES:-}" ]]; then [[ -f "$ABS_RELEASE_NOTES" ]] || die "Brak pliku z opisem zmian: $ABS_RELEASE_NOTES"; fi
 fi
 
 # --- Serwer i ffmpeg ------------------------------------------------------
@@ -200,7 +230,8 @@ xcodebuild archive \
   -project "$ROOT/Rapsod/Rapsod.xcodeproj" -scheme "$SCHEME" -configuration Release \
   -destination 'generic/platform=macOS' -archivePath "$ARCHIVE" \
   -derivedDataPath "$REL/DerivedData" -allowProvisioningUpdates \
-  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" > "$REL/xcodebuild-archive.log" 2>&1 \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" ${ABS_MARKETING_VERSION:+MARKETING_VERSION="$ABS_MARKETING_VERSION"} \
+  > "$REL/xcodebuild-archive.log" 2>&1 \
   || { tail -40 "$REL/xcodebuild-archive.log" >&2; die "xcodebuild archive nie powiódł się (log: $REL/xcodebuild-archive.log)"; }
 
 step "Eksport z podpisem Developer ID"
@@ -212,6 +243,10 @@ xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$REL/export" \
 APP="$REL/export/$APP_NAME.app"
 [[ -d "$APP" ]] || die "Brak $APP po eksporcie."
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+TAG="v$VERSION"
+if (( PUBLISH )); then
+  ! gh release view "$TAG" --repo "$RELEASE_REPO" > /dev/null 2>&1 || die "Wydanie $TAG już istnieje w $RELEASE_REPO — podbij MARKETING_VERSION."
+fi
 [[ -z "$(/usr/libexec/PlistBuddy -c 'Print :ABSDevelopmentRoot' "$APP/Contents/Info.plist")" ]] || die "Wydanie zawiera ścieżkę deweloperską (ABSDevelopmentRoot)."
 if [[ -z "$(/usr/libexec/PlistBuddy -c 'Print :ABSSourceURL' "$APP/Contents/Info.plist")" ]]; then
   echo "UWAGA: ABSSourceURL w Info.plist jest pusty — przed publikacją wpisz adres repozytorium ze źródłami (GPL)."
@@ -299,8 +334,20 @@ if (( NOTARIZE )); then
 fi
 codesign --verify --deep --strict "$APP"
 
+# Plik sumy obok DMG, w formacie `shasum -a 256` — aplikacja sprawdza nim pobrany obraz.
+CHECKSUM="$DMG.sha256"
+(cd "$REL" && shasum -a 256 "$(basename "$DMG")" > "$CHECKSUM")
+
+if (( PUBLISH )); then
+  step "Wydanie $TAG w $RELEASE_REPO"
+  notes=(--generate-notes)
+  if [[ -n "${ABS_RELEASE_NOTES:-}" ]]; then notes=(--notes-file "$ABS_RELEASE_NOTES"); fi
+  gh release create "$TAG" "$DMG" "$CHECKSUM" --repo "$RELEASE_REPO" \
+    --target "$(git -C "$ROOT" rev-parse HEAD)" --title "$APP_NAME $VERSION" "${notes[@]}"
+fi
+
 step "Gotowe"
 echo "  plik:    $DMG"
 echo "  rozmiar: $(du -h "$DMG" | awk '{print $1}') (aplikacja po rozpakowaniu: $(du -sh "$APP" | awk '{print $1}'))"
-echo "  SHA-256: $(shasum -a 256 "$DMG" | awk '{print $1}')"
+echo "  SHA-256: $(awk '{print $1}' "$CHECKSUM") (plik $(basename "$CHECKSUM"))"
 if (( ! NOTARIZE )); then echo "  UWAGA: bez notaryzacji — nie publikować."; fi

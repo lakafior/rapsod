@@ -8,6 +8,7 @@ struct ServerMenu: View {
     let webMode: WebUIMode
     let settings: SettingsNavigation
     let player: AudiobookPlayer
+    let updates: UpdateController
     @Environment(\.openWindow) private var openWindow
     @AppStorage(MenuOptions.showsPairPhoneKey) private var showsPairPhone = false
 
@@ -87,6 +88,7 @@ struct ServerMenu: View {
         Button("O programie Rapsod") {
             openWindow.bringToFront(id: AboutWindow.windowID)
         }
+        UpdateMenuItem(updates: updates)
 
         // Zakończenie razem z serwerem, tak jak ⌘Q w menu aplikacji.
         Button("Zakończ") {

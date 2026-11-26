@@ -774,16 +774,40 @@ Czas: za pierwszym razem na danym Macu ok. 45 minut, z czego ok. 30 minut to kom
 4. archiwizuje aplikację w konfiguracji Release i eksportuje ją z podpisem Developer ID;
 5. wstawia serwer i folder `Licenses` do paczki, podpisuje aplikację od nowa z uprawnieniami z eksportu;
 6. notaryzuje aplikację i zszywa bilet, tworzy DMG (aplikacja + skrót do `/Applications`), podpisuje, notaryzuje i zszywa bilet z DMG;
-7. sprawdza wynik: `codesign --verify --deep --strict`, `stapler validate`, `spctl --assess` dla aplikacji i DMG.
+7. sprawdza wynik: `codesign --verify --deep --strict`, `stapler validate`, `spctl --assess` dla aplikacji i DMG;
+8. zapisuje sumę SHA-256 obok DMG (`Rapsod-<wersja>.dmg.sha256`, format `shasum -a 256`);
+9. z `--publish`: tworzy wydanie `v<wersja>` w `lakafior/rapsod` (`gh release create`) z DMG i plikiem sumy — z niego aplikacje pobierają aktualizację (zob. „Aktualizacje aplikacji”).
 
-Wynik: `build/release/Rapsod-<wersja>.dmg` (pliku nie commitujemy). `scripts/release.sh --skip-notarize` robi wszystko poza notaryzacją — do testów lokalnych, nie do publikacji.
+Wynik: `build/release/Rapsod-<wersja>.dmg` i `.dmg.sha256` (plików nie commitujemy). `scripts/release.sh --skip-notarize` robi wszystko poza notaryzacją — do testów lokalnych, nie do publikacji. `ABS_MARKETING_VERSION=1.0.1 scripts/release.sh` buduje inną wersję bez zmiany projektu (np. wydanie testowe aktualizacji).
+
+Publikacja (wymaga `gh` zalogowanego do GitHuba, czystego drzewa, wypchniętego commita i nowej wersji w `MARKETING_VERSION`):
+
+```bash
+ABS_RELEASE_NOTES=zmiany.md scripts/release.sh --publish
+```
+
+Opis zmian w Markdown z `ABS_RELEASE_NOTES` trafia do okna aktualizacji w aplikacji; bez niego GitHub składa notatki z commitów. Skrypt sprawdza warunki publikacji przed buildem, odmawia z `--skip-notarize` i przy istniejącym znaczniku. Inne repozytorium wydań: `ABS_RELEASE_REPO`.
 
 ### Wersje
 
 - Wersja aplikacji to `MARKETING_VERSION` w projekcie (własna numeracja, niezależna od audiobookshelf). Numer builda to liczba commitów (`ABS_BUILD_NUMBER` go nadpisuje).
 - Wersję audiobookshelf pokazują ustawienia (podstrona „Ogólne”) i „O programie”; dokładne wersje wszystkich składników są w `Contents/Resources/Licenses/VERSIONS.txt`.
-- Nowa wersja audiobookshelf u użytkowników = nowe wydanie aplikacji po „Podbiciu wersji audiobookshelf” (wyżej). Aktualizacji automatycznych nie ma: użytkownik pobiera nowy DMG i podmienia aplikację; dane w `~/Library/Application Support/Rapsod/` i pęk kluczy zostają.
+- Nowa wersja audiobookshelf u użytkowników = nowe wydanie aplikacji po „Podbiciu wersji audiobookshelf” (wyżej), które aplikacja zainstaluje sama (zob. niżej); dane w `~/Library/Application Support/Rapsod/` i pęk kluczy zostają.
+- Aplikacja porównuje tylko wersję (`CFBundleShortVersionString` ze znacznikiem `v<wersja>`), więc każde publikowane wydanie potrzebuje nowej `MARKETING_VERSION`; sam numer builda nie wystarczy.
 - Migracje bazy uruchamia sam upstream przy starcie (`server/managers/MigrationManager.js`): przed migracją kopiuje bazę do `absdatabase.backup.sqlite`, a przy błędzie przywraca kopię, zostawia nieudaną jako `absdatabase.failed.sqlite` i kończy proces. Starsza wersja serwera na nowszej bazie wykonuje migracje wstecz. Automatyczne kopie zapasowe upstreamu są domyślnie wyłączone — włącza się je w Ustawieniach aplikacji → Kopie zapasowe.
+
+### Aktualizacje aplikacji (etap 14b)
+
+Własny mechanizm bez Sparkle i bez zależności: kod w `Rapsod/Rapsod/Updates/` i części testowalnej `RapsodUpdates` w pakiecie `Packages/AudiobookshelfKit` (wersje, odpowiedź API, wybór zasobu, plik sumy, skrypt podmiany; `swift test --filter 'AppVersion|AppUpdate|Checksum|UpdatePolicy|SwapScript'`).
+
+- **Źródło:** `https://api.github.com/repos/lakafior/rapsod/releases/latest`, anonimowo. **Repozytorium musi być publiczne** — prywatnego wydania anonimowe API nie zwraca (404, aplikacja uznaje to za „brak wydań”). Wydania próbne i szkice są pomijane.
+- **Kiedy:** przy starcie (po 15 s) i raz na dobę, jeśli włączone „Sprawdzaj aktualizacje automatycznie” w Ustawieniach → Ogólne → Aplikacja (domyślnie tak); na żądanie „Sprawdź aktualizacje…” w menu aplikacji i w menu na pasku menu. Gdy czeka nowa wersja, ta sama pozycja menu brzmi „Zainstaluj Rapsod <wersja>…”.
+- **Okno „Aktualizacja Rapsodu”:** opis zmian z wydania (Markdown: nagłówki, listy, formatowanie w wierszu), „Zainstaluj i uruchom ponownie”, „Przypomnij później” (automatycznie znów po dobie), „Pomiń tę wersję” (automatycznie nie wraca; ręczne sprawdzenie pokazuje ją dalej). Automatyczne sprawdzenie otwiera okno samo. Powiadomienie systemowe zostawia etap 14e: punktem zaczepienia jest `UpdateController.onUpdateFound`.
+- **Wymagania wydania** (spełnia je `scripts/release.sh --publish`): znacznik `v<wersja>`, zasób `Rapsod-<wersja>.dmg` i `Rapsod-<wersja>.dmg.sha256` (albo `SHA256SUMS`). Plik z dopiskiem `-nienotaryzowany` nigdy nie jest brany.
+- **Weryfikacja przed instalacją** (każdy krok musi przejść): suma SHA-256 z pliku sumy; podpis DMG certyfikatem Developer ID tego samego zespołu (Team ID odczytany z podpisu uruchomionej aplikacji, `SecCodeCopySelf`) i `spctl --assess --type open` (notaryzacja); po zamontowaniu (`hdiutil attach -nobrowse -readonly`) i skopiowaniu `ditto` obok bieżącej aplikacji jako ukryte `.Rapsod-aktualizacja.app` — na kopii: `SecStaticCodeCheckValidity` ściśle, z kodem zagnieżdżonym, z wymaganiem jak wyznaczone w wydaniu (identyfikator `net.smigi.rapsod`, Developer ID, zespół), `spctl --assess --type execute`, identyfikator pakietu i wersja z `Info.plist` równa wersji wydania i wyższa od uruchomionej. Build bez Team ID (podpis ad hoc) nie instaluje niczego.
+- **Podmiana:** po weryfikacji aplikacja kończy się jak zwykłe „Zakończ” (pozycja słuchania, tunel, źródła metadanych i serwer zatrzymane). W `applicationWillTerminate` startuje `/bin/sh` ze skryptem `SwapScript` (ścieżki jako argumenty pozycyjne): czeka na koniec procesu (do 2 minut), przenosi bieżący pakiet na `.Rapsod-poprzednia.app`, nową kopię na jego miejsce (oba `rename` w tym samym folderze; gdy drugi zawiedzie — przywraca poprzedni), usuwa stary i uruchamia aplikację `open -n` z tymi samymi argumentami. Log: `~/Library/Logs/Rapsod/aktualizacja.log`. Atrybutów nie dodajemy ani nie zdejmujemy: pobranie przez `URLSession` nie nakłada kwarantanny, `ditto` zachowuje podpis i bilet notaryzacji, więc Gatekeeper nie pyta przy ponownym uruchomieniu.
+- **Kiedy się nie da:** aplikacja uruchomiona z miejsca tymczasowego (App Translocation, czyli prosto z pobranego pliku), z obrazu dysku albo woluminu tylko do odczytu, albo bez prawa zapisu do folderu aplikacji (np. konto standardowe i `/Applications`) — okno mówi, co zrobić, i podaje stronę wydania do ręcznej instalacji.
+- **Test bez GitHuba:** argument `-RapsodUpdateFeedURL http://127.0.0.1:<port>/latest.json` zmienia tylko źródło odpowiedzi API (np. plik JSON z `python3 -m http.server`, adresy zasobów też lokalne); weryfikacja zostaje taka sama, więc DMG musi być notaryzowany. Przebieg sprawdzony 2026-11-26 — zob. ROADMAP, wpis 14b.
 
 ### Podpis i uprawnienia runtime
 

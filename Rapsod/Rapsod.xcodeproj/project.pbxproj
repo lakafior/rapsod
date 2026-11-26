@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		4B1C0A10AB5E5F0100A1C003 /* AudiobookshelfKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4B1C0A10AB5E5F0100A1C002 /* AudiobookshelfKit */; };
 		4B1C0A10AB5E5F0100A1C005 /* AudiobookshelfPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = 4B1C0A10AB5E5F0100A1C004 /* AudiobookshelfPlayback */; };
+		4B1C0A10AB5E5F0100A1C007 /* RapsodUpdates in Frameworks */ = {isa = PBXBuildFile; productRef = 4B1C0A10AB5E5F0100A1C006 /* RapsodUpdates */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 			files = (
 				4B1C0A10AB5E5F0100A1C003 /* AudiobookshelfKit in Frameworks */,
 				4B1C0A10AB5E5F0100A1C005 /* AudiobookshelfPlayback in Frameworks */,
+				4B1C0A10AB5E5F0100A1C007 /* RapsodUpdates in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +72,7 @@
 			packageProductDependencies = (
 				4B1C0A10AB5E5F0100A1C002 /* AudiobookshelfKit */,
 				4B1C0A10AB5E5F0100A1C004 /* AudiobookshelfPlayback */,
+				4B1C0A10AB5E5F0100A1C006 /* RapsodUpdates */,
 			);
 			productName = Rapsod;
 			productReference = A1B2C3D4E5F60718293A4B5C /* Rapsod.app */;
@@ -332,6 +335,10 @@
 		4B1C0A10AB5E5F0100A1C004 /* AudiobookshelfPlayback */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AudiobookshelfPlayback;
+		};
+		4B1C0A10AB5E5F0100A1C006 /* RapsodUpdates */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RapsodUpdates;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
