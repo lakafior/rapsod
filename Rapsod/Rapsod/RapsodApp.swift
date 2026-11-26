@@ -240,6 +240,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         metadataSources.activate()
         listening.activate()
         updates.activate()
+        #if DEBUG
+        // Tryb sprawdzający panel na pasku menu (etap 14d, argument `-ABSMenuBarTour YES`).
+        if MenuBarTour.isRequested {
+            Task { await MenuBarTour.run(account: account, listening: listening, libraryTasks: libraryTasks, menuBar: menuBar) }
+        }
+        #endif
         Task.detached(priority: .utility) {
             let removed = KeychainOrphans.prune()
             if removed > 0 { NSLog("Pęk kluczy: usunięto %d wpisów po nieistniejących folderach danych", removed) }

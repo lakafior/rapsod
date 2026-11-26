@@ -69,6 +69,19 @@ final class MenuBarModel {
         dropped.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
     }
 
+    /// Dodaje upuszczone foldery (w miejscu, bez kopiowania) do biblioteki i zleca skan.
+    /// Zwraca komunikat błędu albo `nil`, gdy wszystko się udało.
+    func addFolders(_ folders: [URL], to libraryID: String, account: ServerAccount) async -> String? {
+        let model = LibrarySettingsModel(account: account, libraryID: libraryID)
+        await model.load()
+        if let failure = model.status.error { return failure }
+        for folder in folders {
+            await model.addFolder(folder)
+            if let failure = model.status.error { return failure }
+        }
+        return nil
+    }
+
     // MARK: Odświeżenie przy otwarciu panelu
 
     /// Zdarzenia serwera (postęp z telefonu, pobieranie odcinków) płyną tylko przy otwartym oknie

@@ -66,12 +66,20 @@ struct MenuBarPanel: View {
         .onAppear {
             menuBar.panelOpened()
             libraryTasks.appear()
+            #if DEBUG
+            NSLog("MENUBAR panel appear")
+            #endif
         }
-        .onDisappear { libraryTasks.disappear() }
+        .onDisappear {
+            libraryTasks.disappear()
+            #if DEBUG
+            NSLog("MENUBAR panel disappear")
+            #endif
+        }
     }
 
     private func close() {
-        panelWindow.window?.close()
+        panelWindow.dismiss()
     }
 
     private func open(_ id: String) {
@@ -143,7 +151,8 @@ private struct NowPlayingSection: View {
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(book.title).font(.callout.weight(.semibold)).lineLimit(2)
-                        if let line = player.currentChapter?.title ?? book.author {
+                        // Rozdział; przy książce z jednego pliku (rozdział = tytuł) — autor.
+                        if let line = [player.currentChapter?.title, book.author].compactMap({ $0 }).first(where: { $0 != book.title }) {
                             Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
@@ -595,6 +604,21 @@ private struct PanelDivider: View {
 @MainActor
 final class WeakWindow {
     weak var window: NSWindow?
+
+    /// Zamyka panel tak, jak robi to Esc. Samo `close()` chowa okno, ale `MenuBarExtra` dalej
+    /// uważa je za otwarte i następne kliknięcie w ikonę tylko „zamyka” niewidoczny panel.
+    func dismiss() {
+        guard let window,
+              let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: window.windowNumber, context: nil, characters: "\u{1b}",
+                                            charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)
+        else { return }
+        window.sendEvent(escape)
+    }
+    #if DEBUG
+    /// Okno ostatnio otwartego panelu — dla trybu sprawdzającego (`MenuBarTour`).
+    static weak var panel: NSWindow?
+    #endif
 }
 
 private struct WindowReader: NSViewRepresentable {
@@ -616,7 +640,8 @@ private struct WindowReader: NSViewRepresentable {
             box?.window = window
             #if DEBUG
             // Sprawdzanie na kopii testowej: numer okna do `screencapture -l` (zrzuty w docs/).
-            NSLog("MENUBAR panel window %ld", window.windowNumber)
+            NSLog("MENUBAR panel window %ld %@", window.windowNumber, window.className)
+            WeakWindow.panel = window
             #endif
         }
     }

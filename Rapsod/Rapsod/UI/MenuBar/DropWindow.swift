@@ -123,18 +123,9 @@ struct DropWindow: View {
             error = nil
             Task {
                 defer { busy = false }
-                let model = LibrarySettingsModel(account: account, libraryID: libraryID)
-                await model.load()
-                if let failure = model.status.error {
+                if let failure = await menuBar.addFolders(folders, to: libraryID, account: account) {
                     error = failure
                     return
-                }
-                for folder in folders {
-                    await model.addFolder(folder)
-                    if let failure = model.status.error {
-                        error = failure
-                        return
-                    }
                 }
                 finish()
             }
