@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — Rapsod</title>
+  <meta name="description" content="Rapsod collects no personal data. Your Mac is the server; Rapsod has no server of its own.">
+  <meta name="theme-color" content="#c8431a">
+  <link rel="canonical" href="https://rapsod.smigi.net/privacy">
+  <link rel="icon" href="/assets/icon.png" type="image/png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="/">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/assets/icon-dark.png">
+        <img src="/assets/icon.png" alt="" width="34" height="34">
+      </picture>
+      Rapsod
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/support">Support</a>
+      <a href="/privacy" aria-current="page">Privacy</a>
+      <a href="https://github.com/lakafior/rapsod">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap prose">
+
+  <h1>Privacy Policy</h1>
+  <p class="updated">Effective 27 November 2026. Applies to the Rapsod app for Mac, the Rapsod app for iPhone, and this website.</p>
+  <p><b>Rapsod collects no personal data.</b> Rapsod runs an <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a> server on your own Mac. The developer does not run any servers for Rapsod and does not receive any of your data.</p>
+
+  <h2>Data Rapsod does not collect</h2>
+  <ul>
+    <li>No accounts or sign-ups with the developer</li>
+    <li>No analytics or tracking</li>
+    <li>No crash reporting of its own (if you opt in to sharing analytics with developers in your device's settings, Apple may pass on crash logs)</li>
+    <li>No ads</li>
+  </ul>
+
+  <h2>Your server</h2>
+  <p>Your library, its metadata, user accounts, listening progress, bookmarks and backups are kept by the server on your Mac. The Mac and iPhone apps, and any other audiobookshelf app you use, talk to that server and nowhere else for your library.</p>
+  <ul>
+    <li>The passwords of the server accounts Rapsod creates on your Mac, your Cloudflare Tunnel token, your Podcast Index key and your sponsor-detection API key are kept in the Mac's Keychain; the pairing key on your iPhone is kept in its Keychain.</li>
+    <li>By default the server listens only on your Mac. If you turn on sharing on the home network, devices on that network can reach it over plain HTTP, and the Mac announces it with Bonjour so a paired phone can find it.</li>
+  </ul>
+
+  <h2>Access from outside your home</h2>
+  <p>Off by default. If you enter an address of your own, Rapsod only shows it to your phones and sets up nothing behind it. If you set up a Cloudflare Tunnel, connections from outside reach your Mac through Cloudflare with the account and domain you configured, and <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a> applies to them.</p>
+
+  <h2>Metadata, covers and podcasts</h2>
+  <p>These requests go out when you, or a schedule you set, ask for them:</p>
+  <ul>
+    <li><b>Matching books.</b> To fill in details and covers, your server sends a book's title, author or ISBN to the metadata sources you have enabled, such as Audible (through Audnexus), Google Books, iTunes, Open Library, LubimyCzytać, Audioteka or Storytel.</li>
+    <li><b>Searching for podcasts.</b> The search term goes to Apple's iTunes search (through your server), to fyyd, and to Podcast Index if you have entered a Podcast Index key.</li>
+    <li><b>Feeds and episodes.</b> Your server downloads podcast feeds and episodes from their publishers, on the schedules you set. The iPhone app can also read a feed and play an episode straight from the publisher. To find dynamically inserted ads, Rapsod may ask an episode's host for a single byte to read its headers. Publishers and their hosts see these requests like any podcast app's.</li>
+  </ul>
+
+  <h2>Services you connect</h2>
+  <p>If you set up notifications, single sign-on, e-mail or other integrations in your server's settings, your server talks to the services you configured, and their privacy policies apply.</p>
+
+  <h2>Speech recognition and sponsor segments</h2>
+  <ul>
+    <li>Matching a book's text to its recording runs speech recognition on your Mac. The first time, macOS may download Apple's speech model for the language; the recordings and text never leave your Mac.</li>
+    <li>Sponsor segments in podcasts are found from chapters and feed data, on your devices. No episode content or transcript is sent anywhere for this.</li>
+    <li>Optionally, on the Mac, you can enter an OpenAI-compatible API, a model and your key, and agree to send transcripts there. Rapsod then transcribes downloaded podcast episodes on your Mac and sends the text, and only the text, to that API, whose privacy policy applies. Nothing is sent until you set this up and agree.</li>
+  </ul>
+
+  <h2>Update check</h2>
+  <p>Once a day, the Mac app asks GitHub for the newest Rapsod release. GitHub sees the request (and your IP address), nothing about your library. An update downloads from GitHub only when you choose to install it. Automatic checks can be turned off in <b>Settings › General</b>. The iPhone app does not check for updates.</p>
+  <p>The audiobookshelf web interface, if you open it, asks GitHub for the newest audiobookshelf version, as it does in every installation.</p>
+
+  <h2>Content from other sites</h2>
+  <p>Links you open, such as a book's page on a store or a podcast's website, load from their own sites, whose privacy policies apply.</p>
+
+  <h2>Children</h2>
+  <p>Rapsod is not directed at children under 13.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or concerns? Write to <a href="mailto:rapsod@smigi.net">rapsod@smigi.net</a> or open an issue on GitHub: <a href="https://github.com/lakafior/rapsod/issues">github.com/lakafior/rapsod/issues</a></p>
+
+  <h2>This website</h2>
+  <p>This site has no cookies, analytics or trackers, and loads nothing from other companies. It is served by Cloudflare, which processes the technical data any web server sees (such as your IP address) to deliver the pages, and keeps short-lived request logs that the developer uses only to fix problems with the site.</p>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Smigi · Rapsod is free software under the
+      <a href="https://github.com/lakafior/rapsod/blob/main/LICENSE">GPL-3.0</a> and
+      <a href="https://github.com/lakafior/rapsod/blob/main/iOS/LICENSE">MPL-2.0</a> ·
+      Built on <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a></span>
+    <span>
+      <a href="https://github.com/lakafior/rapsod">GitHub</a> ·
+      <a href="/support">Support</a> ·
+      <a href="/privacy">Privacy</a> ·
+      <a href="mailto:rapsod@smigi.net">rapsod@smigi.net</a>
+    </span>
+  </div>
+</footer>
+
+<!-- smigi.net window chrome: traffic lights + minimize-to-dock.
+     Loads from localhost during development, smigi.net in production. -->
+<script>
+  (function () {
+    var local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    var s = document.createElement("script");
+    s.src = (local ? "" : "https://smigi.net") + "/os/chrome.js";
+    s.dataset.app = "rapsod";
+    s.dataset.title = "Rapsod";
+    document.head.appendChild(s);
+  })();
+</script>
+
+</body>
+</html>

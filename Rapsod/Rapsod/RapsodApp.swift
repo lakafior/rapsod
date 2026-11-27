@@ -273,6 +273,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if SpotlightTour.isRequested {
             Task { await SpotlightTour.run(self) }
         }
+        // Zrzuty do README na wymyślonej bibliotece (argument `-ABSDemoTour <folder>`, `scripts/demo/`).
+        if DemoTour.isRequested {
+            Task { await DemoTour.run(self) }
+        }
         if MenuBarTour.isRequested {
             Task { await MenuBarTour.run(account: account, listening: listening, libraryTasks: libraryTasks, menuBar: menuBar) }
         }

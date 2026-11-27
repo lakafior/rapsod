@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support — Rapsod</title>
+  <meta name="description" content="Getting started with Rapsod, answers to common questions, and how to report a problem.">
+  <meta name="theme-color" content="#c8431a">
+  <link rel="canonical" href="https://rapsod.smigi.net/support">
+  <link rel="icon" href="/assets/icon.png" type="image/png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="/">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/assets/icon-dark.png">
+        <img src="/assets/icon.png" alt="" width="34" height="34">
+      </picture>
+      Rapsod
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/support" aria-current="page">Support</a>
+      <a href="/privacy">Privacy</a>
+      <a href="https://github.com/lakafior/rapsod">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap prose">
+
+  <h1>Support</h1>
+  <p>Rapsod turns your Mac into an <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a> server and gives you native apps to listen on it. Your books and the server stay on your Mac; Rapsod has no server of its own.</p>
+  <p>The interface is in Polish for now, so this page gives the Polish names of buttons and settings in brackets. English is on the way.</p>
+
+  <h2 id="getting-started">Getting started</h2>
+  <ol>
+    <li><b>Install Rapsod.</b>
+      Download the disk image from <a href="https://github.com/lakafior/rapsod/releases/latest">GitHub Releases</a> and drag Rapsod to Applications. It needs macOS 27 on a Mac with Apple silicon.</li>
+    <li><b>Pick your library folder.</b>
+      Rapsod lives in the menu bar. Choose the folder with your audiobooks; the server starts, scans it, and can start again at login. You can add more folders and libraries later, or drop a folder on the menu bar icon.</li>
+    <li><b>Listen.</b>
+      Open the Library window from the menu bar to browse, listen and read on the Mac.</li>
+    <li><b>Connect a phone, if you like.</b>
+      Turn on sharing on the home network, then use <b>Connect phone…</b> (<i>Podłącz telefon…</i>) in a person's profile under Settings › Users (<i>Ustawienia › Użytkownicy</i>). Rapsod's iPhone app scans the QR code; other audiobookshelf apps sign in with the address, user name and password the window shows.</li>
+  </ol>
+
+  <h2 id="faq">FAQ</h2>
+  <h3>What is audiobookshelf, and is Rapsod made by its authors?</h3>
+  <p><a href="https://www.audiobookshelf.org">audiobookshelf</a> is an open-source, self-hosted audiobook and podcast server by advplyr. Rapsod bundles it unmodified, with Node.js and FFmpeg, and adds a native Mac app around it. Rapsod is an independent project, not made by the audiobookshelf developers.</p>
+
+  <h3>Do I need Docker, Homebrew or a terminal?</h3>
+  <p>No. Everything the server needs is inside the app and is updated with it. The only optional extra is <code>cloudflared</code>, if you want a Cloudflare Tunnel (see below).</p>
+
+  <h3>Which apps can I listen with?</h3>
+  <p>On the Mac, Rapsod itself. On iPhone, Rapsod's own app is in development and can be <a href="https://github.com/lakafior/rapsod#building">built from source</a>; until it ships, any audiobookshelf app works, as does the audiobookshelf web interface in a browser.</p>
+
+  <h3>How do I listen away from home?</h3>
+  <p>By default the server is reachable only from your Mac, or from your home network once you turn sharing on. For access from anywhere, enter an address of your own (Tailscale, a VPN, your own tunnel), or set up a Cloudflare Tunnel: create a tunnel in your Cloudflare account, install <code>cloudflared</code> (from Cloudflare's releases or with Homebrew), and paste the tunnel's token into Rapsod, which then starts and watches <code>cloudflared</code> for you. Your phone gets the new address from a fresh QR code.</p>
+
+  <h3>Is the connection on my home network encrypted?</h3>
+  <p>No. On the home network the server speaks plain HTTP, like audiobookshelf itself, so other devices on the same network could see the traffic. A Cloudflare Tunnel or an address of your own with HTTPS encrypts the connection from outside.</p>
+
+  <h3>How does the text follow the narrator?</h3>
+  <p>When a book comes with its EPUB, Rapsod on the Mac runs speech recognition on the recording and matches every sentence to its place in the audio. It all happens on your Mac; the first time, macOS may download Apple's speech model for the language. The result is shared with the iPhone app through your server.</p>
+
+  <h3>How are sponsor segments in podcasts found?</h3>
+  <p>From the episode's chapters and feed data, without sending the episode or a transcript anywhere. If you want more, enter an OpenAI-compatible API, a model and your key on the Mac, and agree to send transcripts to it: Rapsod then transcribes downloaded episodes on your Mac and sends the text to that API. Nothing is sent until you set this up.</p>
+
+  <h3>Why do I need a key for Podcast Index?</h3>
+  <p>Podcast Index gives out free keys after you sign up on its site. Without one, podcast search still uses Apple Podcasts and fyyd.</p>
+
+  <h3>How does Rapsod update?</h3>
+  <p>Once a day it asks GitHub whether there is a newer release, and offers it to you. When you choose to install, it downloads the update from GitHub, checks it against a checksum and Apple's notarization, and restarts. Automatic checks can be turned off in Settings › General (<i>Ustawienia › Ogólne › Aplikacja</i>).</p>
+
+  <h3>Can I move from an existing audiobookshelf server?</h3>
+  <p>Rapsod runs its own copy of the server with its own data folder. You can restore an audiobookshelf backup into it from the backups settings, and add the folders your books are in.</p>
+
+  <h3>Which devices does it need?</h3>
+  <p>macOS 27 on a Mac with Apple silicon. Rapsod's iPhone app, when it ships, will need iOS 27.</p>
+
+  <h2 id="report">Reporting a problem</h2>
+  <p>Report problems on GitHub: <a href="https://github.com/lakafior/rapsod/issues">github.com/lakafior/rapsod/issues</a>, or write to <a href="mailto:rapsod@smigi.net">rapsod@smigi.net</a>.</p>
+  <p>Include:</p>
+  <ul>
+    <li>Rapsod version (in About Rapsod)</li>
+    <li>Mac model and macOS version</li>
+    <li>Steps to reproduce, and the server log from the status window if the server is involved</li>
+  </ul>
+  <p>Never paste a password, an API key, a tunnel token or a pairing QR code.</p>
+
+  <h2 id="privacy">Privacy</h2>
+  <p><a href="/privacy">Rapsod privacy policy</a></p>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Smigi · Rapsod is free software under the
+      <a href="https://github.com/lakafior/rapsod/blob/main/LICENSE">GPL-3.0</a> and
+      <a href="https://github.com/lakafior/rapsod/blob/main/iOS/LICENSE">MPL-2.0</a> ·
+      Built on <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a></span>
+    <span>
+      <a href="https://github.com/lakafior/rapsod">GitHub</a> ·
+      <a href="/support">Support</a> ·
+      <a href="/privacy">Privacy</a> ·
+      <a href="mailto:rapsod@smigi.net">rapsod@smigi.net</a>
+    </span>
+  </div>
+</footer>
+
+<!-- smigi.net window chrome: traffic lights + minimize-to-dock.
+     Loads from localhost during development, smigi.net in production. -->
+<script>
+  (function () {
+    var local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    var s = document.createElement("script");
+    s.src = (local ? "" : "https://smigi.net") + "/os/chrome.js";
+    s.dataset.app = "rapsod";
+    s.dataset.title = "Rapsod";
+    document.head.appendChild(s);
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rapsod — Your own audiobook and podcast server on the Mac</title>
+  <meta name="description" content="Rapsod runs an audiobookshelf server from your Mac's menu bar, with no Docker, terminal or web browser, and gives you native apps to listen on Mac and iPhone. No servers of its own, no trackers. Open source.">
+  <meta property="og:title" content="Rapsod — Your own audiobook and podcast server on the Mac">
+  <meta property="og:description" content="An audiobookshelf server in your menu bar, and a native library, player and reader on the Mac. Your books stay on your Mac. Open source.">
+  <meta property="og:image" content="https://rapsod.smigi.net/assets/icon.png">
+  <meta property="og:url" content="https://rapsod.smigi.net">
+  <meta name="theme-color" content="#c8431a">
+  <link rel="canonical" href="https://rapsod.smigi.net/">
+  <link rel="icon" href="/assets/icon.png" type="image/png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="/">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/assets/icon-dark.png">
+        <img src="/assets/icon.png" alt="" width="34" height="34">
+      </picture>
+      Rapsod
+    </a>
+    <nav>
+      <a href="#features" class="wide">Features</a>
+      <a href="#download">Download</a>
+      <a href="/support">Support</a>
+      <a href="/privacy">Privacy</a>
+      <a href="https://github.com/lakafior/rapsod">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="tag">Mac · iPhone soon · Open source</span>
+      <h1>Your audiobook server, native on the&nbsp;Mac.</h1>
+      <p class="lede">Rapsod runs an <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a> server from your menu bar, with no Docker, terminal or web browser, and gives you native apps to listen on Mac and iPhone.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/lakafior/rapsod/releases/latest">Download for Mac</a>
+        <a class="btn btn-secondary" href="https://github.com/lakafior/rapsod">View the source</a>
+      </div>
+      <p class="cta-note">macOS 27, Apple silicon. The interface is in Polish for now; English is on the way.</p>
+    </div>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="/assets/icon-dark.png">
+      <img class="hero-icon" src="/assets/icon.png" width="256" height="256" alt="The Rapsod icon: a book with headphones, on orange.">
+    </picture>
+  </div>
+</section>
+
+<section class="showcase" aria-label="Rapsod on Mac and iPhone">
+  <div class="wrap">
+    <div class="section-head"><h2>See it on Mac and iPhone</h2><p>The same library on both, in light and dark. Use the arrows to look around.</p></div>
+    <!-- No JavaScript: one radio per step; the arrows and dots are labels for them. -->
+    <input class="shot-radio" type="radio" name="shot" id="shot-1" checked aria-label="Your library, at home">
+    <input class="shot-radio" type="radio" name="shot" id="shot-2" aria-label="Every library in one place">
+    <input class="shot-radio" type="radio" name="shot" id="shot-3" aria-label="Book pages">
+    <div class="stage">
+      <div class="dev dev-mac">
+        <picture class="s1">
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/mac-home-dark.webp">
+          <img src="/assets/shots/mac-home-light.webp" width="1600" height="1000" alt="Rapsod's Library window on a Mac: shelves with Continue Listening and recently added books, and the player with a book in progress">
+        </picture>
+        <picture class="s2">
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/mac-grid-dark.webp">
+          <img src="/assets/shots/mac-grid-light.webp" width="1600" height="1000" alt="Rapsod on a Mac: the library as a grid of covers" loading="lazy">
+        </picture>
+        <picture class="s3">
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/mac-book-dark.webp">
+          <img src="/assets/shots/mac-book-light.webp" width="1600" height="1000" alt="Rapsod on a Mac: a book's page with its description, progress and chapters" loading="lazy">
+        </picture>
+      </div>
+      <div class="dev dev-iphone">
+        <picture class="s1">
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/iphone-home-dark.webp">
+          <img src="/assets/shots/iphone-home-light.webp" width="600" height="1304" alt="Rapsod on an iPhone: Home with Continue Listening and shelves">
+        </picture>
+        <picture class="s2">
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/iphone-audiobooks-dark.webp">
+          <img src="/assets/shots/iphone-audiobooks-light.webp" width="600" height="1304" alt="Rapsod on an iPhone: the Audiobooks tab with categories and a cover grid" loading="lazy">
+        </picture>
+        <picture class="s3">
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/iphone-book-dark.webp">
+          <img src="/assets/shots/iphone-book-light.webp" width="600" height="1304" alt="Rapsod on an iPhone: a book's page with its description, progress and chapters" loading="lazy">
+        </picture>
+      </div>
+    </div>
+    <div class="shot-nav">
+      <label class="arrow prev p1" for="shot-3" aria-label="Previous">‹</label>
+      <label class="arrow prev p2" for="shot-1" aria-label="Previous">‹</label>
+      <label class="arrow prev p3" for="shot-2" aria-label="Previous">‹</label>
+      <div class="dots">
+        <label class="dot d1" for="shot-1" aria-label="Show: Your library, at home"></label>
+        <label class="dot d2" for="shot-2" aria-label="Show: Every library in one place"></label>
+        <label class="dot d3" for="shot-3" aria-label="Show: Book pages"></label>
+      </div>
+      <label class="arrow next n1" for="shot-2" aria-label="Next">›</label>
+      <label class="arrow next n2" for="shot-3" aria-label="Next">›</label>
+      <label class="arrow next n3" for="shot-1" aria-label="Next">›</label>
+    </div>
+    <div class="captions" aria-live="polite">
+      <div class="caption c1"><h3>Your library, at home</h3><p>Shelves with Continue Listening and what was added lately, and the player for the book in progress, updated live when a phone or a scan changes something.</p></div>
+      <div class="caption c2"><h3>Every library in one place</h3><p>Shelves, a cover grid or a Finder-style list with sortable columns, plus series, authors, narrators, collections and playlists.</p></div>
+      <div class="caption c3"><h3>Book pages</h3><p>The description, your progress and chapters, and the book’s text when it comes with an EPUB.</p></div>
+    </div>
+    <p class="note" style="text-align:center; margin: 22px 0 0">Screenshots use a made-up demo library.</p>
+  </div>
+</section>
+
+<section class="alt" aria-label="The menu bar and the player">
+  <div class="wrap">
+    <ul class="phones mixed">
+      <li class="panel">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/mac-menubar-dark.webp">
+          <img src="/assets/shots/mac-menubar-light.webp" width="660" height="1064" loading="lazy" alt="The menu bar panel: the current book, Continue Listening and the server's status">
+        </picture>
+        <h3>From the menu bar</h3>
+        <p>The current book, Continue Listening and what the server is doing, one click away. Drop a folder on the icon to add it.</p>
+      </li>
+      <li>
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/iphone-player-dark.webp">
+          <img src="/assets/shots/iphone-player-light.webp" width="600" height="1304" loading="lazy" alt="The full-screen player on an iPhone">
+        </picture>
+        <h3>A player for books</h3>
+        <p>Chapters, speed, a sleep timer and bookmarks, on the lock screen and with your headphones' buttons.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <h2>Know before you use it.</h2>
+        <p>Rapsod is built on <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a>, which it bundles unmodified with Node.js and FFmpeg. A few things to know:</p>
+        <ul class="bring">
+          <li><b>Polish for now.</b> The interface is in Polish today. English is on the way.</li>
+          <li><b>The iPhone app is in development.</b> Build it from source if you like; meanwhile, any audiobookshelf app works with Rapsod's server.</li>
+          <li><b>Your Mac is the server.</b> Your books stay on it. Rapsod has no server of its own, and it is reachable from outside your home only if you set that up.</li>
+        </ul>
+        <p><a href="/privacy">Read the privacy policy →</a></p>
+      </div>
+      <ul class="facts">
+        <li><span>Runs on</span> <b>Mac</b></li>
+        <li><span>iPhone app</span> <b>in development</b></li>
+        <li><span>Servers of Rapsod's</span> <b>none</b></li>
+        <li><span>Trackers &amp; analytics</span> <b>none</b></li>
+        <li><span>Server inside</span> <b>audiobookshelf</b></li>
+        <li><span>Third-party Swift packages</span> <b>none</b></li>
+        <li><span>Licence</span> <b>GPL-3.0 · MPL-2.0</b></li>
+        <li><span>Requires</span> <b>macOS 27, Apple silicon</b></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What it does</h2>
+      <p>A server you don't have to set up, and a full native client on top of it.</p>
+    </div>
+    <div class="grid">
+      <div class="feature">
+        <h3>A server without the setup</h3>
+        <p>audiobookshelf with Node.js and FFmpeg inside the app, a library folder picked in a native window, start at login, and a supervisor that restarts the server and cleans up after it.</p>
+      </div>
+      <div class="feature">
+        <h3>A native library</h3>
+        <p>Shelves, a cover grid or a Finder-style list, series, authors, narrators, collections, playlists and listening stats, updated live.</p>
+      </div>
+      <div class="feature">
+        <h3>Listening on the Mac</h3>
+        <p>Chapters, speed, sleep timer, bookmarks, Now Playing and media keys, plus a menu bar panel with the current book.</p>
+      </div>
+      <div class="feature">
+        <h3>Reading too</h3>
+        <p>EPUB, PDF, comics, MOBI and AZW3, with your reading position shared with your phone.</p>
+      </div>
+      <div class="feature">
+        <h3>Text that follows the narrator</h3>
+        <p>When a book comes with its EPUB, speech recognition on your Mac maps every sentence to the recording. Follow along, tap a sentence to jump, or switch between reading and listening at the same spot.</p>
+      </div>
+      <div class="feature">
+        <h3>Podcasts</h3>
+        <p>Search Apple Podcasts, fyyd and Podcast Index at once, scheduled downloads, and sponsor segments marked and skipped, from chapters and feed data or, if you add one, an OpenAI-compatible model.</p>
+      </div>
+      <div class="feature">
+        <h3>The whole server, managed natively</h3>
+        <p>Libraries and scans, metadata matching (including LubimyCzytać, Audioteka, Storytel and Audible), covers, chapters, merging to M4B, users, backups, single sign-on and notifications.</p>
+      </div>
+      <div class="feature">
+        <h3>An iPhone app of its own</h3>
+        <p>Paired with the Mac by a QR code, every library merged into one, offline downloads, the synced text and an EPUB and PDF reader. In development.</p>
+      </div>
+      <div class="feature">
+        <h3>At home or away</h3>
+        <p>Sharing on your home network with Bonjour, and from anywhere through your own address or a Cloudflare Tunnel that the app runs for you.</p>
+      </div>
+      <div class="feature">
+        <h3>Part of the system</h3>
+        <p>Notifications, Shortcuts and Spotlight, and updates from GitHub, checked for Apple's notarization and a checksum before they install.</p>
+      </div>
+      <div class="feature">
+        <h3>Native, not a web view</h3>
+        <p>SwiftUI and Liquid Glass throughout, Swift 6 with strict concurrency, and no third-party Swift packages.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="split wide">
+      <div>
+        <h2>No web page to manage it.</h2>
+        <p>Libraries, users, backups, API keys, single sign-on and notifications all live in a Mac settings window, and the changes save themselves.</p>
+        <p>The audiobookshelf web interface is still there if you want it, and every audiobookshelf app keeps working with your server.</p>
+      </div>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/assets/shots/mac-settings-dark.webp">
+        <img class="window-shot" src="/assets/shots/mac-settings-light.webp" width="1400" height="933" loading="lazy" alt="Rapsod’s settings window on a Mac: Users, with each person in the house, their phones and what they are listening to">
+      </picture>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Get Rapsod</h2>
+      <p>Free and open source. You need a Mac with Apple silicon and a folder of audiobooks.</p>
+    </div>
+    <div class="platforms">
+      <div class="platform">
+        <h3>Mac</h3>
+        <p>Signed and notarized, from GitHub Releases. macOS 27 or later, Apple silicon. Rapsod checks GitHub for updates once a day and installs one when you say so.</p>
+        <a class="btn btn-primary" href="https://github.com/lakafior/rapsod/releases/latest">Download for Mac</a>
+      </div>
+      <div class="platform">
+        <h3>iPhone</h3>
+        <p>Rapsod's own iPhone app is in development. You can <a href="https://github.com/lakafior/rapsod#building">build it from source</a> today; until it ships, any audiobookshelf app connects to the server on your Mac.</p>
+        <span class="soon">In development</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Smigi · Rapsod is free software under the
+      <a href="https://github.com/lakafior/rapsod/blob/main/LICENSE">GPL-3.0</a> and
+      <a href="https://github.com/lakafior/rapsod/blob/main/iOS/LICENSE">MPL-2.0</a> ·
+      Built on <a href="https://github.com/advplyr/audiobookshelf">audiobookshelf</a></span>
+    <span>
+      <a href="https://github.com/lakafior/rapsod">GitHub</a> ·
+      <a href="/support">Support</a> ·
+      <a href="/privacy">Privacy</a> ·
+      <a href="mailto:rapsod@smigi.net">rapsod@smigi.net</a>
+    </span>
+  </div>
+</footer>
+
+<!-- smigi.net window chrome: traffic lights + minimize-to-dock.
+     Loads from localhost during development, smigi.net in production. -->
+<script>
+  (function () {
+    var local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    var s = document.createElement("script");
+    s.src = (local ? "" : "https://smigi.net") + "/os/chrome.js";
+    s.dataset.app = "rapsod";
+    s.dataset.title = "Rapsod";
+    document.head.appendChild(s);
+  })();
+</script>
+
+</body>
+</html>

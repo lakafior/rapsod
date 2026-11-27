@@ -12,7 +12,7 @@
 	<key>ABSDevelopmentRoot</key>
 	<string>$(ABS_DEVELOPMENT_ROOT)</string>
 	<key>ABSSourceURL</key>
-	<string></string>
+	<string>https://github.com/lakafior/rapsod</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Serwer audiobookshelf odczytuje audiobooki z wybranego folderu.</string>
 	<key>NSDesktopFolderUsageDescription</key>
